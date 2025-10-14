@@ -1,0 +1,48 @@
+{
+  "$schema": "https://raw.githubusercontent.com/denoland/deno/348900b8b79f4a434cab4c74b3bc8d4d2fa8ee74/cli/schemas/config-file.v1.json",
+  "lock": false,
+  "compilerOptions": {
+    "noImplicitAny": false,
+    "strict": false,
+    "jsx": "react-jsx",
+    "jsxImportSource": "https://esm.sh/react",
+    "types": [
+      "https://www.val.town/types/valtown.d.ts"
+    ],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "dom.asynciterable",
+      "deno.ns",
+      "deno.unstable"
+    ]
+  },
+  "lint": {
+    "rules": {
+      "exclude": [
+        "no-explicit-any",
+        "no-import-prefix"
+      ]
+    }
+  },
+  "include": [
+    "backend/",
+    "frontend/",
+    "shared/"
+  ],
+  "node_modules_dir": false,
+  "experimental": {
+    "unstable-node-globals": true,
+    "unstable-temporal": true,
+    "unstable-worker-options": true,
+    "unstable-sloppy-imports": true
+  },
+  "tasks": {
+    "quality": "deno fmt && deno lint",
+    "deploy": "deno task quality && vt push",
+    "check": "deno check --allow-import backend/index.ts frontend/index.tsx",
+    "test": "deno test",
+    "fmt": "deno fmt",
+    "lint": "deno lint"
+  }
+}
