@@ -20,12 +20,19 @@ export function TagSidebar({ isOpen, onToggle }: TagSidebarProps) {
     loadTags();
   }, []);
 
-  async function loadTags() {
+  async function loadTags(retryCount = 0) {
     setLoading(true);
     setError(null);
     try {
       const response = await fetch("/api/tags");
       if (!response.ok) {
+        // If we get a 503 (service unavailable), retry after a brief delay
+        if (response.status === 503 && retryCount < 3) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, 300 * (retryCount + 1))
+          );
+          return loadTags(retryCount + 1);
+        }
         throw new Error("Failed to load tags");
       }
       const data = await response.json();

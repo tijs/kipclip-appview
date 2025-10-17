@@ -110,6 +110,14 @@ tagsApi.get("/tags", async (c) => {
       return c.json({ tags: [] });
     }
 
+    // If OAuth session temporarily unavailable, return 503 for client to retry
+    if (
+      error.message?.includes("OAuth session not found") ||
+      error.message?.includes("Not authenticated")
+    ) {
+      return c.json({ error: "Session temporarily unavailable" }, 503);
+    }
+
     return c.json({ error: error.message }, 500);
   }
 });
