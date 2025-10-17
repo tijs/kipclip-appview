@@ -9,6 +9,7 @@ import type { SessionInfo } from "../../shared/types.ts";
 export function App() {
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   useEffect(() => {
     checkSession();
@@ -53,9 +54,9 @@ export function App() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+    <div className="h-screen flex flex-col">
+      <header className="bg-white shadow-sm flex-shrink-0">
+        <div className="px-4 py-4 flex items-center justify-between">
           <h1
             className="text-2xl font-bold"
             style={{ color: "var(--coral)" }}
@@ -66,8 +67,11 @@ export function App() {
         </div>
       </header>
 
-      <div className="flex flex-1">
-        <TagSidebar />
+      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
+        <TagSidebar
+          isOpen={isSidebarOpen}
+          onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
+        />
         <main className="flex-1 px-4 py-8 max-w-7xl mx-auto w-full">
           <BookmarkList />
         </main>

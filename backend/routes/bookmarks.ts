@@ -4,6 +4,8 @@ import type {
   AddBookmarkResponse,
   EnrichedBookmark,
   ListBookmarksResponse,
+  UpdateBookmarkTagsRequest,
+  UpdateBookmarkTagsResponse,
 } from "../../shared/types.ts";
 import { extractUrlMetadata } from "../services/enrichment.ts";
 import { oauth } from "../index.ts";
@@ -195,6 +197,87 @@ bookmarksApi.post("/bookmarks", async (c) => {
     return c.json(result);
   } catch (error: any) {
     console.error("Error creating bookmark:", error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+/**
+ * Update bookmark tags
+ */
+bookmarksApi.patch("/bookmarks/:rkey", async (c) => {
+  try {
+    const oauthSession = await getAuthSession(c.req.raw);
+    const rkey = c.req.param("rkey");
+    const body: UpdateBookmarkTagsRequest = await c.req.json();
+
+    if (!Array.isArray(body.tags)) {
+      return c.json({ error: "Tags must be an array" }, 400);
+    }
+
+    // Get current record to preserve all fields
+    const getParams = new URLSearchParams({
+      repo: oauthSession.did,
+      collection: BOOKMARK_COLLECTION,
+      rkey,
+    });
+    const getResponse = await oauthSession.makeRequest(
+      "GET",
+      `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.getRecord?${getParams}`,
+    );
+
+    if (!getResponse.ok) {
+      throw new Error(`Failed to get record: ${await getResponse.text()}`);
+    }
+
+    const currentRecord = await getResponse.json();
+
+    // Update record with new tags
+    const record = {
+      ...currentRecord.value,
+      tags: body.tags,
+    };
+
+    const response = await oauthSession.makeRequest(
+      "POST",
+      `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.putRecord`,
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          repo: oauthSession.did,
+          collection: BOOKMARK_COLLECTION,
+          rkey,
+          record,
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(`Failed to update record: ${await response.text()}`);
+    }
+
+    const data = await response.json();
+
+    const bookmark: EnrichedBookmark = {
+      uri: data.uri,
+      cid: data.cid,
+      subject: record.subject,
+      createdAt: record.createdAt,
+      tags: record.tags,
+      title: record.$enriched?.title,
+      description: record.$enriched?.description,
+      favicon: record.$enriched?.favicon,
+    };
+
+    const result: UpdateBookmarkTagsResponse = {
+      success: true,
+      bookmark,
+    };
+
+    return c.json(result);
+  } catch (error: any) {
+    console.error("Error updating bookmark tags:", error);
     return c.json({ error: error.message }, 500);
   }
 });

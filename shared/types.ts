@@ -85,3 +85,14 @@ export interface DeleteTagResponse {
   success: boolean;
   error?: string;
 }
+
+// Bookmark tag update request/response types
+export interface UpdateBookmarkTagsRequest {
+  tags: string[];
+}
+
+export interface UpdateBookmarkTagsResponse {
+  success: boolean;
+  bookmark?: EnrichedBookmark;
+  error?: string;
+}

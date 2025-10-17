@@ -10,6 +10,16 @@ export const staticRoutes = new Hono();
 staticRoutes.get("/frontend/*", (c) => serveFile(c.req.path, import.meta.url));
 staticRoutes.get("/shared/*", (c) => serveFile(c.req.path, import.meta.url));
 
+// Serve lexicon files
+staticRoutes.get("/lexicons/*", (c) => serveFile(c.req.path, import.meta.url));
+
+// Serve lexicon at well-known location for AT Protocol discovery
+staticRoutes.get("/.well-known/atproto/lexicons/*", (c) => {
+  // Map /.well-known/atproto/lexicons/com/kipclip/tag.json to /lexicons/com/kipclip/tag.json
+  const path = c.req.path.replace("/.well-known/atproto/lexicons", "/lexicons");
+  return serveFile(path, import.meta.url);
+});
+
 // Serve index.html for root and SPA routes
 staticRoutes.get("/", async (c) => {
   const html = await readFile("/frontend/index.html", import.meta.url);

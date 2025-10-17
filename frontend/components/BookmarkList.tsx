@@ -1,17 +1,14 @@
 /** @jsxImportSource https://esm.sh/react */
 import { useEffect, useState } from "https://esm.sh/react";
 import { AddBookmark } from "./AddBookmark.tsx";
-import type { EnrichedBookmark, SessionInfo } from "../../shared/types.ts";
+import type { EnrichedBookmark } from "../../shared/types.ts";
 
-interface BookmarkListProps {
-  session: SessionInfo;
-}
-
-export function BookmarkList({ _session }: BookmarkListProps) {
+export function BookmarkList() {
   const [bookmarks, setBookmarks] = useState<EnrichedBookmark[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dragOverBookmark, setDragOverBookmark] = useState<string | null>(null);
 
   useEffect(() => {
     loadBookmarks();
@@ -60,6 +57,53 @@ export function BookmarkList({ _session }: BookmarkListProps) {
   function handleBookmarkAdded(bookmark: EnrichedBookmark) {
     setBookmarks([bookmark, ...bookmarks]);
     setShowAddModal(false);
+  }
+
+  async function handleDropTag(bookmarkUri: string, tagValue: string) {
+    try {
+      // Extract rkey from URI
+      const rkey = bookmarkUri.split("/").pop();
+      if (!rkey) {
+        throw new Error("Invalid bookmark URI");
+      }
+
+      // Find the bookmark
+      const bookmark = bookmarks.find((b) => b.uri === bookmarkUri);
+      if (!bookmark) {
+        throw new Error("Bookmark not found");
+      }
+
+      // Check if tag already exists
+      if (bookmark.tags?.includes(tagValue)) {
+        return; // Skip if already tagged
+      }
+
+      // Add tag to existing tags
+      const newTags = [...(bookmark.tags || []), tagValue];
+
+      // Update via API
+      const response = await fetch(`/api/bookmarks/${rkey}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ tags: newTags }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to update bookmark tags");
+      }
+
+      const data = await response.json();
+
+      // Update local state
+      setBookmarks(
+        bookmarks.map((b) => b.uri === bookmarkUri ? data.bookmark : b),
+      );
+    } catch (err: any) {
+      console.error("Failed to add tag to bookmark:", err);
+      alert(`Failed to add tag: ${err.message}`);
+    }
   }
 
   if (loading) {
@@ -124,7 +168,37 @@ export function BookmarkList({ _session }: BookmarkListProps) {
         : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {bookmarks.map((bookmark) => (
-              <div key={bookmark.uri} className="card hover:scale-[1.02]">
+              <div
+                key={bookmark.uri}
+                className={`card hover:scale-[1.02] transition-all ${
+                  dragOverBookmark === bookmark.uri
+                    ? "border-2 border-blue-500 bg-blue-50"
+                    : ""
+                }`}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "copy";
+                }}
+                onDragEnter={(e) => {
+                  e.preventDefault();
+                  setDragOverBookmark(bookmark.uri);
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  // Only clear if we're leaving the card itself, not a child
+                  if (e.currentTarget === e.target) {
+                    setDragOverBookmark(null);
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOverBookmark(null);
+                  const tagValue = e.dataTransfer.getData("text/plain");
+                  if (tagValue) {
+                    handleDropTag(bookmark.uri, tagValue);
+                  }
+                }}
+              >
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1 min-w-0">
                     <h3 className="font-semibold text-gray-800 truncate mb-1">
@@ -141,8 +215,7 @@ export function BookmarkList({ _session }: BookmarkListProps) {
                   </div>
                   <button
                     type="button"
-                    onClick={() =>
-                      handleDeleteBookmark(bookmark.uri)}
+                    onClick={() => handleDeleteBookmark(bookmark.uri)}
                     className="text-gray-400 hover:text-red-600 ml-2"
                     title="Delete bookmark"
                   >
