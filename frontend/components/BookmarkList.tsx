@@ -1,18 +1,23 @@
 /** @jsxImportSource https://esm.sh/react */
 import { useEffect, useState } from "https://esm.sh/react";
 import { AddBookmark } from "./AddBookmark.tsx";
-import type { EnrichedBookmark } from "../../shared/types.ts";
+import { EditBookmark } from "./EditBookmark.tsx";
+import { useApp } from "../context/AppContext.tsx";
 
-interface BookmarkListProps {
-  bookmarks: EnrichedBookmark[];
-  onBookmarksChange: (bookmarks: EnrichedBookmark[]) => void;
-}
+export function BookmarkList() {
+  const {
+    filteredBookmarks: bookmarks,
+    tags: availableTags,
+    addBookmark,
+    updateBookmark,
+    deleteBookmark,
+    loadBookmarks: loadBookmarksFromContext,
+    loadTags,
+  } = useApp();
 
-export function BookmarkList(
-  { bookmarks, onBookmarksChange }: BookmarkListProps,
-) {
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingBookmark, setEditingBookmark] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragOverBookmark, setDragOverBookmark] = useState<string | null>(null);
 
@@ -24,12 +29,7 @@ export function BookmarkList(
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/bookmarks");
-      if (!response.ok) {
-        throw new Error("Failed to load bookmarks");
-      }
-      const data = await response.json();
-      onBookmarksChange(data.bookmarks);
+      await loadBookmarksFromContext();
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -37,31 +37,18 @@ export function BookmarkList(
     }
   }
 
-  async function handleDeleteBookmark(uri: string) {
-    if (!confirm("Are you sure you want to delete this bookmark?")) {
-      return;
-    }
-
-    try {
-      // Extract rkey from URI
-      const rkey = uri.split("/").pop();
-      const response = await fetch(`/api/bookmarks/${rkey}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to delete bookmark");
-      }
-
-      // Remove from local state
-      onBookmarksChange(bookmarks.filter((b) => b.uri !== uri));
-    } catch (err: any) {
-      alert(`Failed to delete bookmark: ${err.message}`);
-    }
+  function handleBookmarkUpdated(bookmark: any) {
+    updateBookmark(bookmark);
+    setEditingBookmark(null);
   }
 
-  function handleBookmarkAdded(bookmark: EnrichedBookmark) {
-    onBookmarksChange([bookmark, ...bookmarks]);
+  function handleBookmarkDeleted(uri: string) {
+    deleteBookmark(uri);
+    setEditingBookmark(null);
+  }
+
+  function handleBookmarkAdded(bookmark: any) {
+    addBookmark(bookmark);
     setShowAddModal(false);
   }
 
@@ -102,10 +89,8 @@ export function BookmarkList(
 
       const data = await response.json();
 
-      // Update local state
-      onBookmarksChange(
-        bookmarks.map((b) => b.uri === bookmarkUri ? data.bookmark : b),
-      );
+      // Update context state
+      updateBookmark(data.bookmark);
     } catch (err: any) {
       console.error("Failed to add tag to bookmark:", err);
       alert(`Failed to add tag: ${err.message}`);
@@ -200,11 +185,12 @@ export function BookmarkList(
             {bookmarks.map((bookmark) => (
               <div
                 key={bookmark.uri}
-                className={`card hover:scale-[1.02] transition-all ${
+                className={`card hover:scale-[1.02] transition-all cursor-pointer ${
                   dragOverBookmark === bookmark.uri
                     ? "border-2 border-blue-500 bg-blue-50"
                     : ""
                 }`}
+                onClick={() => setEditingBookmark(bookmark)}
                 onDragOver={(e) => {
                   e.preventDefault();
                   e.dataTransfer.dropEffect = "copy";
@@ -229,28 +215,13 @@ export function BookmarkList(
                   }
                 }}
               >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-gray-800 truncate mb-1">
-                      {bookmark.title || new URL(bookmark.subject).hostname}
-                    </h3>
-                    <a
-                      href={bookmark.subject}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-gray-500 hover:text-blue-600 truncate block"
-                    >
-                      {bookmark.subject}
-                    </a>
+                <div className="mb-3">
+                  <h3 className="font-semibold text-gray-800 truncate mb-1">
+                    {bookmark.title || new URL(bookmark.subject).hostname}
+                  </h3>
+                  <div className="text-sm text-gray-500 truncate">
+                    {bookmark.subject}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteBookmark(bookmark.uri)}
-                    className="text-gray-400 hover:text-red-600 ml-2"
-                    title="Delete bookmark"
-                  >
-                    ×
-                  </button>
                 </div>
 
                 <div className="text-xs text-gray-400">
@@ -278,6 +249,17 @@ export function BookmarkList(
         <AddBookmark
           onClose={() => setShowAddModal(false)}
           onBookmarkAdded={handleBookmarkAdded}
+        />
+      )}
+
+      {editingBookmark && (
+        <EditBookmark
+          bookmark={editingBookmark}
+          availableTags={availableTags}
+          onClose={() => setEditingBookmark(null)}
+          onBookmarkUpdated={handleBookmarkUpdated}
+          onBookmarkDeleted={handleBookmarkDeleted}
+          onTagsChanged={loadTags}
         />
       )}
     </div>

@@ -1,6 +1,7 @@
 /** @jsxImportSource https://esm.sh/react */
 import { useState } from "https://esm.sh/react";
 import type { EnrichedTag } from "../../shared/types.ts";
+import { useApp } from "../context/AppContext.tsx";
 
 interface EditTagProps {
   tag: EnrichedTag;
@@ -12,6 +13,7 @@ interface EditTagProps {
 export function EditTag(
   { tag, onClose, onTagUpdated, onTagDeleted }: EditTagProps,
 ) {
+  const { loadBookmarks } = useApp();
   const [value, setValue] = useState(tag.value);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -28,7 +30,10 @@ export function EditTag(
       return;
     }
 
-    if (value.trim() === tag.value) {
+    const newValue = value.trim();
+    const hasChanged = newValue !== tag.value;
+
+    if (!hasChanged) {
       // No change, just close
       onClose();
       return;
@@ -43,7 +48,7 @@ export function EditTag(
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ value: value.trim() }),
+        body: JSON.stringify({ value: newValue }),
       });
 
       if (!response.ok) {
@@ -52,6 +57,12 @@ export function EditTag(
       }
 
       const data = await response.json();
+
+      // Refresh bookmarks since tag was renamed on them
+      if (hasChanged) {
+        await loadBookmarks();
+      }
+
       if (data.tag) {
         onTagUpdated(data.tag);
       }
@@ -62,21 +73,46 @@ export function EditTag(
   }
 
   async function handleDelete() {
-    if (!confirm(`Delete tag "${tag.value}"?`)) {
-      return;
-    }
-
     setIsDeleting(true);
     setError(null);
 
     try {
-      const response = await fetch(`/api/tags/${rkey}`, {
+      // First, fetch usage count
+      const usageResponse = await fetch(`/api/tags/${rkey}/usage`);
+      if (!usageResponse.ok) {
+        throw new Error("Failed to check tag usage");
+      }
+
+      const usageData = await usageResponse.json();
+      const count = usageData.count || 0;
+
+      // Show detailed confirmation
+      let confirmMessage = `Delete tag "${tag.value}"?`;
+      if (count > 0) {
+        confirmMessage += `\n\nThis tag is used on ${count} bookmark${
+          count === 1 ? "" : "s"
+        } and will be removed from ${count === 1 ? "it" : "all of them"}.`;
+        confirmMessage += "\n\nThis action cannot be undone.";
+      }
+
+      if (!confirm(confirmMessage)) {
+        setIsDeleting(false);
+        return;
+      }
+
+      // Delete the tag (backend will remove from bookmarks)
+      const deleteResponse = await fetch(`/api/tags/${rkey}`, {
         method: "DELETE",
       });
 
-      if (!response.ok) {
-        const data = await response.json();
+      if (!deleteResponse.ok) {
+        const data = await deleteResponse.json();
         throw new Error(data.error || "Failed to delete tag");
+      }
+
+      // Refresh bookmarks if any were affected
+      if (count > 0) {
+        await loadBookmarks();
       }
 
       onTagDeleted(tag.uri);

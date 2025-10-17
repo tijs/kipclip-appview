@@ -2,48 +2,34 @@
 import { useEffect, useState } from "https://esm.sh/react";
 import { AddTag } from "./AddTag.tsx";
 import { EditTag } from "./EditTag.tsx";
-import type { EnrichedTag } from "../../shared/types.ts";
+import { useApp } from "../context/AppContext.tsx";
 
-interface TagSidebarProps {
-  tags: EnrichedTag[];
-  onTagsChange: (tags: EnrichedTag[]) => void;
-  selectedTags: Set<string>;
-  onToggleTag: (tagValue: string) => void;
-  onClearFilters: () => void;
-}
+export function TagSidebar() {
+  const {
+    tags,
+    selectedTags,
+    toggleTag,
+    clearFilters,
+    loadTags: loadTagsFromContext,
+    addTag,
+    updateTag,
+    deleteTag,
+  } = useApp();
 
-export function TagSidebar({
-  tags,
-  onTagsChange,
-  selectedTags,
-  onToggleTag,
-  onClearFilters,
-}: TagSidebarProps) {
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [editingTag, setEditingTag] = useState<EnrichedTag | null>(null);
+  const [editingTag, setEditingTag] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadTags();
   }, []);
 
-  async function loadTags(retryCount = 0) {
+  async function loadTags() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/tags");
-      if (!response.ok) {
-        if (response.status === 503 && retryCount < 3) {
-          await new Promise((resolve) =>
-            setTimeout(resolve, 300 * (retryCount + 1))
-          );
-          return loadTags(retryCount + 1);
-        }
-        throw new Error("Failed to load tags");
-      }
-      const data = await response.json();
-      onTagsChange(data.tags);
+      await loadTagsFromContext();
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -51,23 +37,23 @@ export function TagSidebar({
     }
   }
 
-  function handleTagAdded(tag: EnrichedTag) {
-    onTagsChange([tag, ...tags]);
+  function handleTagAdded(tag: any) {
+    addTag(tag);
     setShowAddModal(false);
   }
 
-  function handleTagUpdated(updatedTag: EnrichedTag) {
-    onTagsChange(tags.map((t) => t.uri === updatedTag.uri ? updatedTag : t));
+  function handleTagUpdated(updatedTag: any) {
+    updateTag(updatedTag);
     setEditingTag(null);
   }
 
   function handleTagDeleted(tagUri: string) {
-    onTagsChange(tags.filter((t) => t.uri !== tagUri));
+    deleteTag(tagUri);
     setEditingTag(null);
   }
 
   // Shared tag item renderer
-  function renderTag(tag: EnrichedTag) {
+  function renderTag(tag: any) {
     const isSelected = selectedTags.has(tag.value);
     return (
       <li
@@ -79,7 +65,7 @@ export function TagSidebar({
         }`}
         title={`Created ${new Date(tag.createdAt).toLocaleDateString()}`}
         onClick={() => {
-          onToggleTag(tag.value);
+          toggleTag(tag.value);
         }}
       >
         <div className="flex items-center gap-2">
@@ -235,7 +221,7 @@ export function TagSidebar({
           {selectedTags.size > 0 && (
             <button
               type="button"
-              onClick={onClearFilters}
+              onClick={clearFilters}
               className="flex-shrink-0 px-3 py-1 text-xs bg-gray-200 hover:bg-gray-300 rounded-lg transition text-gray-700 font-medium"
               title="Clear all filters"
             >
@@ -284,7 +270,7 @@ export function TagSidebar({
         {selectedTags.size > 0 && (
           <button
             type="button"
-            onClick={onClearFilters}
+            onClick={clearFilters}
             className="w-full mb-4 px-3 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded-lg transition text-gray-700 font-medium"
             title="Clear all filters"
           >
