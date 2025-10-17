@@ -97,6 +97,48 @@ export function BookmarkList() {
     }
   }
 
+  function handleVisit(e: React.MouseEvent, url: string) {
+    e.stopPropagation();
+    globalThis.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  async function handleShare(e: React.MouseEvent, bookmark: any) {
+    e.stopPropagation();
+
+    const shareData = {
+      title: bookmark.title || new URL(bookmark.subject).hostname,
+      text: bookmark.description
+        ? `${
+          bookmark.title || new URL(bookmark.subject).hostname
+        }\n\n${bookmark.description}`
+        : bookmark.title || new URL(bookmark.subject).hostname,
+      url: bookmark.subject,
+    };
+
+    // Check if Web Share API is supported
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+      } catch (err: any) {
+        // User cancelled or share failed
+        if (err.name !== "AbortError") {
+          console.error("Share failed:", err);
+        }
+      }
+    } else {
+      // Fallback: copy to clipboard
+      try {
+        const textToCopy =
+          `${shareData.title}\n${shareData.text}\n${shareData.url}`;
+        await navigator.clipboard.writeText(textToCopy);
+        alert("Link copied to clipboard!");
+      } catch (err) {
+        console.error("Failed to copy:", err);
+        alert("Sharing not supported on this browser");
+      }
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -185,7 +227,7 @@ export function BookmarkList() {
             {bookmarks.map((bookmark) => (
               <div
                 key={bookmark.uri}
-                className={`card hover:scale-[1.02] transition-all cursor-pointer ${
+                className={`card hover:scale-[1.02] transition-all cursor-pointer group relative ${
                   dragOverBookmark === bookmark.uri
                     ? "border-2 border-blue-500 bg-blue-50"
                     : ""
@@ -240,6 +282,94 @@ export function BookmarkList() {
                     ))}
                   </div>
                 )}
+
+                {/* Desktop: hover-reveal buttons (bottom-right) */}
+                <div className="hidden md:group-hover:flex absolute bottom-2 right-2 gap-1">
+                  <button
+                    type="button"
+                    onClick={(e) => handleVisit(e, bookmark.subject)}
+                    className="w-7 h-7 flex items-center justify-center text-gray-600 hover:text-gray-900 bg-white/90 hover:bg-white rounded-md transition-colors shadow-sm"
+                    title="Visit bookmark"
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => handleShare(e, bookmark)}
+                    className="w-7 h-7 flex items-center justify-center text-gray-600 hover:text-gray-900 bg-white/90 hover:bg-white rounded-md transition-colors shadow-sm"
+                    title="Share bookmark"
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+                      />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Mobile: always-visible buttons (bottom-right) */}
+                <div className="flex md:hidden absolute bottom-2 right-2 gap-1">
+                  <button
+                    type="button"
+                    onClick={(e) => handleVisit(e, bookmark.subject)}
+                    className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-gray-900 bg-white/90 hover:bg-white rounded-md transition-colors shadow-sm"
+                    title="Visit bookmark"
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => handleShare(e, bookmark)}
+                    className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-gray-900 bg-white/90 hover:bg-white rounded-md transition-colors shadow-sm"
+                    title="Share bookmark"
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+                      />
+                    </svg>
+                  </button>
+                </div>
               </div>
             ))}
           </div>
