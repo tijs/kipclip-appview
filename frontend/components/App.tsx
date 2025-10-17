@@ -57,12 +57,19 @@ export function App() {
     <div className="h-screen flex flex-col">
       <header className="bg-white shadow-sm flex-shrink-0">
         <div className="px-4 py-4 flex items-center justify-between">
-          <h1
-            className="text-2xl font-bold"
-            style={{ color: "var(--coral)" }}
-          >
-            kipclip
-          </h1>
+          <div className="flex items-center gap-2">
+            <img
+              src="https://res.cloudinary.com/dru3aznlk/image/upload/v1760692589/kip-vignette_h2jwct.png"
+              alt="Kip logo"
+              className="w-8 h-8"
+            />
+            <h1
+              className="text-2xl font-bold"
+              style={{ color: "var(--coral)" }}
+            >
+              kipclip
+            </h1>
+          </div>
           <UserMenu handle={session.handle} onLogout={handleLogout} />
         </div>
       </header>
