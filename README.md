@@ -54,7 +54,8 @@ BASE_URL=https://your-val.val.town
 COOKIE_SECRET=your-random-secret-string-at-least-32-chars
 ```
 
-Val.town provides SQLite automatically. The `COOKIE_SECRET` is required for encrypting OAuth session cookies.
+Val.town provides SQLite automatically. The `COOKIE_SECRET` is required for
+encrypting OAuth session cookies.
 
 ### Local Development
 

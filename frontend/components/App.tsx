@@ -2,6 +2,7 @@
 import { useEffect, useState } from "https://esm.sh/react";
 import { Login } from "./Login.tsx";
 import { BookmarkList } from "./BookmarkList.tsx";
+import { UserMenu } from "./UserMenu.tsx";
 import type { SessionInfo } from "../../shared/types.ts";
 
 export function App() {
@@ -54,24 +55,13 @@ export function App() {
     <div className="min-h-screen">
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h1
-              className="text-2xl font-bold"
-              style={{ color: "var(--coral)" }}
-            >
-              kipclip
-            </h1>
-            <span className="text-sm text-gray-600">
-              @{session.handle}
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="text-sm text-gray-600 hover:text-gray-900"
+          <h1
+            className="text-2xl font-bold"
+            style={{ color: "var(--coral)" }}
           >
-            Logout
-          </button>
+            kipclip
+          </h1>
+          <UserMenu handle={session.handle} onLogout={handleLogout} />
         </div>
       </header>
 
