@@ -4,11 +4,18 @@ import { Login } from "./Login.tsx";
 import { BookmarkList } from "./BookmarkList.tsx";
 import { UserMenu } from "./UserMenu.tsx";
 import { TagSidebar } from "./TagSidebar.tsx";
-import type { SessionInfo } from "../../shared/types.ts";
+import type {
+  EnrichedBookmark,
+  EnrichedTag,
+  SessionInfo,
+} from "../../shared/types.ts";
 
 export function App() {
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  const [bookmarks, setBookmarks] = useState<EnrichedBookmark[]>([]);
+  const [tags, setTags] = useState<EnrichedTag[]>([]);
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     checkSession();
@@ -39,6 +46,29 @@ export function App() {
       console.error("Failed to logout:", error);
     }
   }
+
+  function handleToggleTag(tagValue: string) {
+    setSelectedTags((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(tagValue)) {
+        newSet.delete(tagValue);
+      } else {
+        newSet.add(tagValue);
+      }
+      return newSet;
+    });
+  }
+
+  function handleClearFilters() {
+    setSelectedTags(new Set());
+  }
+
+  // Filter bookmarks based on selected tags (AND logic)
+  const filteredBookmarks = selectedTags.size === 0
+    ? bookmarks
+    : bookmarks.filter((bookmark) =>
+      [...selectedTags].every((tag) => bookmark.tags?.includes(tag))
+    );
 
   if (loading) {
     return (
@@ -74,9 +104,18 @@ export function App() {
       </header>
 
       <div className="flex flex-col md:flex-row flex-1 md:overflow-hidden">
-        <TagSidebar />
+        <TagSidebar
+          tags={tags}
+          onTagsChange={setTags}
+          selectedTags={selectedTags}
+          onToggleTag={handleToggleTag}
+          onClearFilters={handleClearFilters}
+        />
         <main className="flex-1 px-4 py-8 max-w-7xl mx-auto w-full md:overflow-y-auto">
-          <BookmarkList />
+          <BookmarkList
+            bookmarks={filteredBookmarks}
+            onBookmarksChange={setBookmarks}
+          />
         </main>
       </div>
     </div>

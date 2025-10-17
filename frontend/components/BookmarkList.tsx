@@ -3,8 +3,14 @@ import { useEffect, useState } from "https://esm.sh/react";
 import { AddBookmark } from "./AddBookmark.tsx";
 import type { EnrichedBookmark } from "../../shared/types.ts";
 
-export function BookmarkList() {
-  const [bookmarks, setBookmarks] = useState<EnrichedBookmark[]>([]);
+interface BookmarkListProps {
+  bookmarks: EnrichedBookmark[];
+  onBookmarksChange: (bookmarks: EnrichedBookmark[]) => void;
+}
+
+export function BookmarkList(
+  { bookmarks, onBookmarksChange }: BookmarkListProps,
+) {
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,7 +29,7 @@ export function BookmarkList() {
         throw new Error("Failed to load bookmarks");
       }
       const data = await response.json();
-      setBookmarks(data.bookmarks);
+      onBookmarksChange(data.bookmarks);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -48,14 +54,14 @@ export function BookmarkList() {
       }
 
       // Remove from local state
-      setBookmarks(bookmarks.filter((b) => b.uri !== uri));
+      onBookmarksChange(bookmarks.filter((b) => b.uri !== uri));
     } catch (err: any) {
       alert(`Failed to delete bookmark: ${err.message}`);
     }
   }
 
   function handleBookmarkAdded(bookmark: EnrichedBookmark) {
-    setBookmarks([bookmark, ...bookmarks]);
+    onBookmarksChange([bookmark, ...bookmarks]);
     setShowAddModal(false);
   }
 
@@ -97,7 +103,7 @@ export function BookmarkList() {
       const data = await response.json();
 
       // Update local state
-      setBookmarks(
+      onBookmarksChange(
         bookmarks.map((b) => b.uri === bookmarkUri ? data.bookmark : b),
       );
     } catch (err: any) {
@@ -127,21 +133,45 @@ export function BookmarkList() {
 
   return (
     <div className="fade-in">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">
-          Your Bookmarks
-          <span className="text-sm font-normal text-gray-500 ml-3">
+      <div className="mb-6">
+        {/* Desktop: side-by-side layout */}
+        <div className="hidden md:flex items-center justify-between">
+          <h2 className="text-2xl font-bold text-gray-800">
+            Your Bookmarks
+            <span className="text-sm font-normal text-gray-500 ml-3">
+              {bookmarks.length}{" "}
+              {bookmarks.length === 1 ? "bookmark" : "bookmarks"}
+            </span>
+          </h2>
+          <button
+            type="button"
+            onClick={() => setShowAddModal(true)}
+            className="btn-primary"
+          >
+            + Add Bookmark
+          </button>
+        </div>
+
+        {/* Mobile: stacked layout */}
+        <div className="md:hidden">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-2xl font-bold text-gray-800">
+              Your Bookmarks
+            </h2>
+            <button
+              type="button"
+              onClick={() => setShowAddModal(true)}
+              className="px-3 py-2 text-sm rounded-md"
+              style={{ backgroundColor: "var(--coral)", color: "white" }}
+            >
+              + Add
+            </button>
+          </div>
+          <p className="text-sm text-gray-500">
             {bookmarks.length}{" "}
             {bookmarks.length === 1 ? "bookmark" : "bookmarks"}
-          </span>
-        </h2>
-        <button
-          type="button"
-          onClick={() => setShowAddModal(true)}
-          className="btn-primary"
-        >
-          + Add Bookmark
-        </button>
+          </p>
+        </div>
       </div>
 
       {bookmarks.length === 0

@@ -4,8 +4,21 @@ import { AddTag } from "./AddTag.tsx";
 import { EditTag } from "./EditTag.tsx";
 import type { EnrichedTag } from "../../shared/types.ts";
 
-export function TagSidebar() {
-  const [tags, setTags] = useState<EnrichedTag[]>([]);
+interface TagSidebarProps {
+  tags: EnrichedTag[];
+  onTagsChange: (tags: EnrichedTag[]) => void;
+  selectedTags: Set<string>;
+  onToggleTag: (tagValue: string) => void;
+  onClearFilters: () => void;
+}
+
+export function TagSidebar({
+  tags,
+  onTagsChange,
+  selectedTags,
+  onToggleTag,
+  onClearFilters,
+}: TagSidebarProps) {
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingTag, setEditingTag] = useState<EnrichedTag | null>(null);
@@ -30,7 +43,7 @@ export function TagSidebar() {
         throw new Error("Failed to load tags");
       }
       const data = await response.json();
-      setTags(data.tags);
+      onTagsChange(data.tags);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -39,32 +52,54 @@ export function TagSidebar() {
   }
 
   function handleTagAdded(tag: EnrichedTag) {
-    setTags([tag, ...tags]);
+    onTagsChange([tag, ...tags]);
     setShowAddModal(false);
   }
 
   function handleTagUpdated(updatedTag: EnrichedTag) {
-    setTags(tags.map((t) => t.uri === updatedTag.uri ? updatedTag : t));
+    onTagsChange(tags.map((t) => t.uri === updatedTag.uri ? updatedTag : t));
     setEditingTag(null);
   }
 
   function handleTagDeleted(tagUri: string) {
-    setTags(tags.filter((t) => t.uri !== tagUri));
+    onTagsChange(tags.filter((t) => t.uri !== tagUri));
     setEditingTag(null);
   }
 
   // Shared tag item renderer
   function renderTag(tag: EnrichedTag) {
+    const isSelected = selectedTags.has(tag.value);
     return (
       <li
         key={tag.uri}
-        className="group flex items-center justify-between gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition text-sm text-gray-700 whitespace-nowrap flex-shrink-0"
+        className={`group flex items-center justify-between gap-2 px-3 py-2 rounded-lg transition text-sm whitespace-nowrap flex-shrink-0 cursor-pointer ${
+          isSelected
+            ? "bg-blue-600 text-white hover:bg-blue-700"
+            : "text-gray-700 hover:bg-gray-100"
+        }`}
         title={`Created ${new Date(tag.createdAt).toLocaleDateString()}`}
         onClick={() => {
-          console.log("Tag clicked:", tag.value);
+          onToggleTag(tag.value);
         }}
       >
-        <span>{tag.value}</span>
+        <div className="flex items-center gap-2">
+          {isSelected && (
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 13l4 4L19 7"
+              />
+            </svg>
+          )}
+          <span>{tag.value}</span>
+        </div>
         <div className="flex items-center gap-1">
           <button
             type="button"
@@ -72,11 +107,15 @@ export function TagSidebar() {
               e.stopPropagation();
               setEditingTag(tag);
             }}
-            className="opacity-0 group-hover:opacity-100 transition p-1 hover:bg-gray-200 rounded flex-shrink-0"
+            className={`opacity-0 group-hover:opacity-100 transition p-1 rounded flex-shrink-0 ${
+              isSelected ? "hover:bg-blue-500" : "hover:bg-gray-200"
+            }`}
             title="Edit tag"
           >
             <svg
-              className="w-4 h-4 text-gray-600"
+              className={`w-4 h-4 ${
+                isSelected ? "text-white" : "text-gray-600"
+              }`}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -113,11 +152,15 @@ export function TagSidebar() {
                 listItem.style.opacity = "1";
               }
             }}
-            className="opacity-0 group-hover:opacity-100 transition p-1 hover:bg-gray-200 rounded cursor-grab active:cursor-grabbing flex-shrink-0"
+            className={`opacity-0 group-hover:opacity-100 transition p-1 rounded cursor-grab active:cursor-grabbing flex-shrink-0 ${
+              isSelected ? "hover:bg-blue-500" : "hover:bg-gray-200"
+            }`}
             title="Drag to bookmark to tag it"
           >
             <svg
-              className="w-4 h-4 text-gray-600"
+              className={`w-4 h-4 ${
+                isSelected ? "text-white" : "text-gray-600"
+              }`}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -189,6 +232,16 @@ export function TagSidebar() {
                 {tags.map(renderTag)}
               </ul>
             )}
+          {selectedTags.size > 0 && (
+            <button
+              type="button"
+              onClick={onClearFilters}
+              className="flex-shrink-0 px-3 py-1 text-xs bg-gray-200 hover:bg-gray-300 rounded-lg transition text-gray-700 font-medium"
+              title="Clear all filters"
+            >
+              Clear filters
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setShowAddModal(true)}
@@ -228,12 +281,23 @@ export function TagSidebar() {
           </button>
         </div>
 
+        {selectedTags.size > 0 && (
+          <button
+            type="button"
+            onClick={onClearFilters}
+            className="w-full mb-4 px-3 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded-lg transition text-gray-700 font-medium"
+            title="Clear all filters"
+          >
+            Clear filters ({selectedTags.size})
+          </button>
+        )}
+
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-xs mb-4">
             {error}
             <button
               type="button"
-              onClick={loadTags}
+              onClick={() => loadTags()}
               className="block mt-2 underline"
             >
               Try Again
