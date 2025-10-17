@@ -43,3 +43,45 @@ export interface SessionInfo {
   did: string;
   handle: string;
 }
+
+// AT Protocol tag record type
+export interface TagRecord {
+  value: string; // Tag text (max 64 chars)
+  createdAt: string; // ISO 8601 datetime
+}
+
+// Enriched tag with metadata
+export interface EnrichedTag extends TagRecord {
+  uri: string; // AT Protocol URI for this record
+  cid: string; // Content ID
+}
+
+// Tag API request/response types
+export interface AddTagRequest {
+  value: string;
+}
+
+export interface AddTagResponse {
+  success: boolean;
+  tag?: EnrichedTag;
+  error?: string;
+}
+
+export interface ListTagsResponse {
+  tags: EnrichedTag[];
+}
+
+export interface UpdateTagRequest {
+  value: string;
+}
+
+export interface UpdateTagResponse {
+  success: boolean;
+  tag?: EnrichedTag;
+  error?: string;
+}
+
+export interface DeleteTagResponse {
+  success: boolean;
+  error?: string;
+}

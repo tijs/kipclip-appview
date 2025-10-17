@@ -4,6 +4,7 @@ import { DrizzleStorage } from "jsr:@tijs/atproto-oauth-hono@^0.3.1/drizzle";
 import { db, initializeTables } from "./database/db.ts";
 import { staticRoutes } from "./routes/static.ts";
 import { bookmarksApi } from "./routes/bookmarks.ts";
+import { tagsApi } from "./routes/tags.ts";
 
 // Run database migrations on startup
 await initializeTables();
@@ -34,6 +35,9 @@ app.route("/", oauth.routes);
 
 // Mount bookmarks API (uses oauth.sessions internally)
 app.route("/api", bookmarksApi);
+
+// Mount tags API
+app.route("/api", tagsApi);
 
 // Static file serving and SPA routing
 app.route("/", staticRoutes);

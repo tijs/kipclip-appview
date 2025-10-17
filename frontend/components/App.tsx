@@ -3,6 +3,7 @@ import { useEffect, useState } from "https://esm.sh/react";
 import { Login } from "./Login.tsx";
 import { BookmarkList } from "./BookmarkList.tsx";
 import { UserMenu } from "./UserMenu.tsx";
+import { TagSidebar } from "./TagSidebar.tsx";
 import type { SessionInfo } from "../../shared/types.ts";
 
 export function App() {
@@ -52,7 +53,7 @@ export function App() {
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen flex flex-col">
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <h1
@@ -65,9 +66,12 @@ export function App() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        <BookmarkList session={session} />
-      </main>
+      <div className="flex flex-1">
+        <TagSidebar />
+        <main className="flex-1 px-4 py-8 max-w-7xl mx-auto w-full">
+          <BookmarkList />
+        </main>
+      </div>
     </div>
   );
 }
