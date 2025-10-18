@@ -30,6 +30,25 @@ export const oauth = createATProtoOAuth({
   storage: new DrizzleStorage(db),
 });
 
+// Enforce a single canonical host so cookies/OAuth stay on one origin
+// This prevents issues where users access the app via multiple domains
+// (e.g. val.town URL vs custom domain) which splits cookie jars,
+// especially noticeable in PWAs on iOS.
+app.use("*", async (c, next) => {
+  try {
+    const reqUrl = new URL(c.req.url);
+    const canonical = new URL(BASE_URL);
+
+    if (reqUrl.host !== canonical.host) {
+      const target = `${canonical.origin}${reqUrl.pathname}${reqUrl.search}`;
+      return c.redirect(target, 308);
+    }
+  } catch {
+    // If URL parsing fails, continue to avoid blocking
+  }
+  return next();
+});
+
 // Mount OAuth routes (provides /login, /oauth/callback, /api/auth/*)
 app.route("/", oauth.routes);
 

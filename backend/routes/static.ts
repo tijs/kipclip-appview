@@ -10,11 +10,6 @@ export const staticRoutes = new Hono();
 staticRoutes.get("/frontend/*", (c) => serveFile(c.req.path, import.meta.url));
 staticRoutes.get("/shared/*", (c) => serveFile(c.req.path, import.meta.url));
 
-// Serve manifest.json at root for PWA
-staticRoutes.get(
-  "/manifest.json",
-  (_c) => serveFile("/frontend/manifest.json", import.meta.url),
-);
 
 // Serve lexicon files
 staticRoutes.get("/lexicons/*", (c) => serveFile(c.req.path, import.meta.url));
