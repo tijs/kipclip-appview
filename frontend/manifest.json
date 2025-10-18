@@ -8,13 +8,13 @@
   "theme_color": "#FF6B6B",
   "icons": [
     {
-      "src": "https://res.cloudinary.com/dru3aznlk/image/upload/v1760692589/kip-vignette_h2jwct.png",
+      "src": "https://raw.githubusercontent.com/tijs/kipclip-appview/main/resources/favicons/android-chrome-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "https://res.cloudinary.com/dru3aznlk/image/upload/v1760692589/kip-vignette_h2jwct.png",
+      "src": "https://raw.githubusercontent.com/tijs/kipclip-appview/main/resources/favicons/android-chrome-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
