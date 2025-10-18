@@ -1,16 +1,22 @@
 /** @jsxImportSource https://esm.sh/react */
-import { useState } from "https://esm.sh/react";
+import { useEffect, useRef, useState } from "https://esm.sh/react";
 
 export function Tools() {
   const [copied, setCopied] = useState(false);
+  const bookmarkletContainerRef = useRef<HTMLDivElement>(null);
 
   const bookmarkletCode =
     `javascript:(function(){window.open('https://kipclip.com/save?url='+encodeURIComponent(location.href),'kipclip','width=600,height=700')})()`;
 
-  // Create bookmarklet HTML to bypass React's security check
-  const bookmarkletHTML = `<a href="${
-    bookmarkletCode.replace(/"/g, "&quot;")
-  }" onclick="return false;" class="inline-flex items-center gap-2 px-6 py-3 rounded-lg font-bold text-white shadow-lg hover:shadow-xl transition-shadow cursor-move select-none" style="background-color: var(--coral)" draggable="true"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path></svg> Kip it</a>`;
+  useEffect(() => {
+    // Set href directly on DOM element after render to bypass React
+    if (bookmarkletContainerRef.current) {
+      const anchor = bookmarkletContainerRef.current.querySelector("a");
+      if (anchor) {
+        anchor.href = bookmarkletCode;
+      }
+    }
+  }, [bookmarkletCode]);
 
   async function handleCopy() {
     try {
@@ -93,9 +99,30 @@ export function Tools() {
               <p className="text-sm text-gray-600 mb-4 font-medium">
                 Drag this button to your bookmarks bar:
               </p>
-              <div
-                dangerouslySetInnerHTML={{ __html: bookmarkletHTML }}
-              />
+              <div ref={bookmarkletContainerRef}>
+                <a
+                  href=""
+                  onClick={(e) => e.preventDefault()}
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-lg font-bold text-white shadow-lg hover:shadow-xl transition-shadow cursor-move select-none"
+                  style={{ backgroundColor: "var(--coral)" }}
+                  draggable="true"
+                >
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+                    />
+                  </svg>
+                  Kip it
+                </a>
+              </div>
             </div>
           </div>
 
