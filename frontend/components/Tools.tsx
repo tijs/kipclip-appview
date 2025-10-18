@@ -1,11 +1,19 @@
 /** @jsxImportSource https://esm.sh/react */
-import { useState } from "https://esm.sh/react";
+import { useEffect, useRef, useState } from "https://esm.sh/react";
 
 export function Tools() {
   const [copied, setCopied] = useState(false);
+  const bookmarkletRef = useRef<HTMLAnchorElement>(null);
 
   const bookmarkletCode =
     `javascript:(function(){window.open('https://kipclip.com/save?url='+encodeURIComponent(location.href),'kipclip','width=600,height=700')})()`;
+
+  // Set href programmatically to bypass React's security check
+  useEffect(() => {
+    if (bookmarkletRef.current) {
+      bookmarkletRef.current.href = bookmarkletCode;
+    }
+  }, [bookmarkletCode]);
 
   async function handleCopy() {
     try {
@@ -15,12 +23,6 @@ export function Tools() {
     } catch (err) {
       console.error("Failed to copy:", err);
     }
-  }
-
-  function handleDragStart(e: React.DragEvent<HTMLAnchorElement>) {
-    e.dataTransfer.setData("text/uri-list", bookmarkletCode);
-    e.dataTransfer.setData("text/plain", bookmarkletCode);
-    e.dataTransfer.effectAllowed = "copy";
   }
 
   return (
@@ -95,9 +97,8 @@ export function Tools() {
                 Drag this button to your bookmarks bar:
               </p>
               <a
-                href="#"
+                ref={bookmarkletRef}
                 onClick={(e) => e.preventDefault()}
-                onDragStart={handleDragStart}
                 className="inline-flex items-center gap-2 px-6 py-3 rounded-lg font-bold text-white shadow-lg hover:shadow-xl transition-shadow cursor-move select-none"
                 style={{ backgroundColor: "var(--coral)" }}
                 draggable="true"
