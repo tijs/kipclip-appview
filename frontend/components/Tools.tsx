@@ -17,6 +17,12 @@ export function Tools() {
     }
   }
 
+  function handleDragStart(e: React.DragEvent<HTMLAnchorElement>) {
+    e.dataTransfer.setData("text/uri-list", bookmarkletCode);
+    e.dataTransfer.setData("text/plain", bookmarkletCode);
+    e.dataTransfer.effectAllowed = "copy";
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow-sm">
@@ -89,7 +95,9 @@ export function Tools() {
                 Drag this button to your bookmarks bar:
               </p>
               <a
-                href={bookmarkletCode}
+                href="#"
+                onClick={(e) => e.preventDefault()}
+                onDragStart={handleDragStart}
                 className="inline-flex items-center gap-2 px-6 py-3 rounded-lg font-bold text-white shadow-lg hover:shadow-xl transition-shadow cursor-move select-none"
                 style={{ backgroundColor: "var(--coral)" }}
                 draggable="true"
