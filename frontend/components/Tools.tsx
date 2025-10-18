@@ -229,28 +229,39 @@ export function Tools() {
 
           <div className="space-y-4">
             <div className="bg-gray-50 rounded-lg p-4">
-              <h4 className="font-semibold text-gray-800 mb-2">
-                iOS (Safari):
+              <h4 className="font-semibold text-gray-800 mb-3">
+                iOS Shortcut (Recommended):
               </h4>
-              <ol className="space-y-2 text-sm text-gray-700">
-                <li className="flex items-start gap-2">
-                  <span className="font-bold text-coral min-w-[20px]">1.</span>
-                  <span>Open kipclip.com in Safari</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="font-bold text-coral min-w-[20px]">2.</span>
-                  <span>
-                    Tap the Share button, then "Add to Home Screen"
-                  </span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="font-bold text-coral min-w-[20px]">3.</span>
-                  <span>
-                    When sharing content from other apps, look for "kipclip" in
-                    the share menu
-                  </span>
-                </li>
-              </ol>
+              <p className="text-sm text-gray-700 mb-4">
+                Install the "Kip it" shortcut to save bookmarks from Safari's
+                share menu with one tap.
+              </p>
+              <a
+                href="https://www.icloud.com/shortcuts/284a2a52e6cb46cc96ebed6f54fc0dfd"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-lg font-bold text-white shadow-lg hover:shadow-xl transition-shadow"
+                style={{ backgroundColor: "var(--coral)" }}
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+                Get iOS Shortcut
+              </a>
+              <p className="text-xs text-gray-600 mt-3">
+                After installing, "Kip it" will appear in your share menu when
+                viewing web pages in Safari.
+              </p>
             </div>
 
             <div className="bg-gray-50 rounded-lg p-4">
