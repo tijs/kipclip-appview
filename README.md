@@ -1,7 +1,7 @@
 # kipclip
 
-Bookmark your web with a friendly chicken. Save and organize bookmarks using the
-AT Protocol community bookmark lexicon.
+Find it, Kip it. Save and organize bookmarks using the AT Protocol community
+bookmark lexicon.
 
 ## Features
 
