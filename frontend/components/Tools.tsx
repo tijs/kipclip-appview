@@ -1,19 +1,16 @@
 /** @jsxImportSource https://esm.sh/react */
-import { useEffect, useRef, useState } from "https://esm.sh/react";
+import { useState } from "https://esm.sh/react";
 
 export function Tools() {
   const [copied, setCopied] = useState(false);
-  const bookmarkletRef = useRef<HTMLAnchorElement>(null);
 
   const bookmarkletCode =
     `javascript:(function(){window.open('https://kipclip.com/save?url='+encodeURIComponent(location.href),'kipclip','width=600,height=700')})()`;
 
-  // Set href programmatically to bypass React's security check
-  useEffect(() => {
-    if (bookmarkletRef.current) {
-      bookmarkletRef.current.href = bookmarkletCode;
-    }
-  }, [bookmarkletCode]);
+  // Create bookmarklet HTML to bypass React's security check
+  const bookmarkletHTML = `<a href="${
+    bookmarkletCode.replace(/"/g, "&quot;")
+  }" onclick="return false;" class="inline-flex items-center gap-2 px-6 py-3 rounded-lg font-bold text-white shadow-lg hover:shadow-xl transition-shadow cursor-move select-none" style="background-color: var(--coral)" draggable="true"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path></svg> Kip it</a>`;
 
   async function handleCopy() {
     try {
@@ -96,28 +93,9 @@ export function Tools() {
               <p className="text-sm text-gray-600 mb-4 font-medium">
                 Drag this button to your bookmarks bar:
               </p>
-              <a
-                ref={bookmarkletRef}
-                onClick={(e) => e.preventDefault()}
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-lg font-bold text-white shadow-lg hover:shadow-xl transition-shadow cursor-move select-none"
-                style={{ backgroundColor: "var(--coral)" }}
-                draggable="true"
-              >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
-                  />
-                </svg>
-                Kip it
-              </a>
+              <div
+                dangerouslySetInnerHTML={{ __html: bookmarkletHTML }}
+              />
             </div>
           </div>
 
