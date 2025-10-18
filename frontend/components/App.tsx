@@ -4,14 +4,24 @@ import { Login } from "./Login.tsx";
 import { BookmarkList } from "./BookmarkList.tsx";
 import { UserMenu } from "./UserMenu.tsx";
 import { TagSidebar } from "./TagSidebar.tsx";
+import { Tools } from "./Tools.tsx";
+import { Save } from "./Save.tsx";
 import { useApp } from "../context/AppContext.tsx";
 
 export function App() {
   const { session, setSession } = useApp();
   const [loading, setLoading] = useState(true);
+  const [currentPath, setCurrentPath] = useState(globalThis.location.pathname);
 
   useEffect(() => {
     checkSession();
+
+    // Listen for popstate events to update route
+    const handlePopState = () => {
+      setCurrentPath(globalThis.location.pathname);
+    };
+    globalThis.addEventListener("popstate", handlePopState);
+    return () => globalThis.removeEventListener("popstate", handlePopState);
   }, []);
 
   async function checkSession() {
@@ -38,6 +48,15 @@ export function App() {
     } catch (error) {
       console.error("Failed to logout:", error);
     }
+  }
+
+  // Handle special routes that don't require session check
+  if (currentPath === "/tools") {
+    return <Tools />;
+  }
+
+  if (currentPath === "/save") {
+    return <Save />;
   }
 
   if (loading) {

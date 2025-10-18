@@ -99,6 +99,27 @@ export function UserMenu({ handle, onLogout }: UserMenuProps) {
             <p className="text-sm font-medium text-gray-900">@{handle}</p>
           </div>
 
+          <a
+            href="/tools"
+            className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+            onClick={() => setIsOpen(false)}
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M13 10V3L4 14h7v7l9-11h-7z"
+              />
+            </svg>
+            Tools
+          </a>
+
           <button
             type="button"
             onClick={() => {
