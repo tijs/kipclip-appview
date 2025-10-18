@@ -1,5 +1,5 @@
 /** @jsxImportSource https://esm.sh/react */
-import { useEffect, useState } from "https://esm.sh/react";
+import { useEffect, useRef, useState } from "https://esm.sh/react";
 import { AddBookmark } from "./AddBookmark.tsx";
 import { EditBookmark } from "./EditBookmark.tsx";
 import { useApp } from "../context/AppContext.tsx";
@@ -21,9 +21,74 @@ export function BookmarkList() {
   const [error, setError] = useState<string | null>(null);
   const [dragOverBookmark, setDragOverBookmark] = useState<string | null>(null);
 
+  // Pull-to-refresh state
+  const [pullDistance, setPullDistance] = useState(0);
+  const [isPulling, setIsPulling] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const touchStartY = useRef(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     loadBookmarks();
   }, []);
+
+  // Pull-to-refresh touch handlers
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    function handleTouchStart(e: TouchEvent) {
+      // Only start pull if scrolled to top
+      if (globalThis.scrollY === 0) {
+        touchStartY.current = e.touches[0].clientY;
+        setIsPulling(true);
+      }
+    }
+
+    function handleTouchMove(e: TouchEvent) {
+      if (!isPulling || isRefreshing) return;
+
+      const touchY = e.touches[0].clientY;
+      const distance = touchY - touchStartY.current;
+
+      // Only pull down, and limit distance
+      if (distance > 0 && globalThis.scrollY === 0) {
+        e.preventDefault();
+        setPullDistance(Math.min(distance, 120));
+      }
+    }
+
+    function handleTouchEnd() {
+      if (!isPulling) return;
+
+      setIsPulling(false);
+
+      // Trigger refresh if pulled far enough
+      if (pullDistance > 80) {
+        setIsRefreshing(true);
+        loadBookmarks().finally(() => {
+          setIsRefreshing(false);
+          setPullDistance(0);
+        });
+      } else {
+        setPullDistance(0);
+      }
+    }
+
+    container.addEventListener("touchstart", handleTouchStart, {
+      passive: true,
+    });
+    container.addEventListener("touchmove", handleTouchMove, {
+      passive: false,
+    });
+    container.addEventListener("touchend", handleTouchEnd);
+
+    return () => {
+      container.removeEventListener("touchstart", handleTouchStart);
+      container.removeEventListener("touchmove", handleTouchMove);
+      container.removeEventListener("touchend", handleTouchEnd);
+    };
+  }, [isPulling, pullDistance, isRefreshing]);
 
   async function loadBookmarks() {
     setLoading(true);
@@ -159,7 +224,41 @@ export function BookmarkList() {
   }
 
   return (
-    <div className="fade-in">
+    <div className="fade-in" ref={containerRef}>
+      {/* Pull-to-refresh indicator */}
+      <div
+        style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: `${pullDistance}px`,
+          display: pullDistance > 0 ? "flex" : "none",
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: "var(--coral)",
+          color: "white",
+          zIndex: 40,
+          transition: isPulling ? "none" : "height 0.3s ease-out",
+        }}
+      >
+        {isRefreshing
+          ? (
+            <div
+              className="spinner"
+              style={{
+                borderColor: "white transparent transparent transparent",
+              }}
+            >
+            </div>
+          )
+          : (
+            <span style={{ fontSize: "24px" }}>
+              {pullDistance > 80 ? "↓" : "↑"}
+            </span>
+          )}
+      </div>
+
       <div className="mb-6">
         {/* Desktop: side-by-side layout */}
         <div className="hidden md:flex items-center justify-between">
