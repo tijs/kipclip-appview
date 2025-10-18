@@ -26,7 +26,6 @@ export function BookmarkList() {
   const [isPulling, setIsPulling] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const touchStartY = useRef(0);
-  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadBookmarks();
@@ -34,12 +33,17 @@ export function BookmarkList() {
 
   // Pull-to-refresh touch handlers
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+    function isAtTop(): boolean {
+      // Check both window scroll and main element scroll for PWA compatibility
+      const mainElement = document.querySelector("main");
+      const windowAtTop = globalThis.scrollY === 0;
+      const mainAtTop = !mainElement || mainElement.scrollTop === 0;
+      return windowAtTop && mainAtTop;
+    }
 
     function handleTouchStart(e: TouchEvent) {
       // Only start pull if scrolled to top
-      if (globalThis.scrollY === 0) {
+      if (isAtTop()) {
         touchStartY.current = e.touches[0].clientY;
         setIsPulling(true);
       }
@@ -52,7 +56,7 @@ export function BookmarkList() {
       const distance = touchY - touchStartY.current;
 
       // Only pull down, and limit distance
-      if (distance > 0 && globalThis.scrollY === 0) {
+      if (distance > 0 && isAtTop()) {
         e.preventDefault();
         setPullDistance(Math.min(distance, 120));
       }
@@ -75,18 +79,19 @@ export function BookmarkList() {
       }
     }
 
-    container.addEventListener("touchstart", handleTouchStart, {
+    // Listen on document level to catch all touch events
+    document.addEventListener("touchstart", handleTouchStart, {
       passive: true,
     });
-    container.addEventListener("touchmove", handleTouchMove, {
+    document.addEventListener("touchmove", handleTouchMove, {
       passive: false,
     });
-    container.addEventListener("touchend", handleTouchEnd);
+    document.addEventListener("touchend", handleTouchEnd);
 
     return () => {
-      container.removeEventListener("touchstart", handleTouchStart);
-      container.removeEventListener("touchmove", handleTouchMove);
-      container.removeEventListener("touchend", handleTouchEnd);
+      document.removeEventListener("touchstart", handleTouchStart);
+      document.removeEventListener("touchmove", handleTouchMove);
+      document.removeEventListener("touchend", handleTouchEnd);
     };
   }, [isPulling, pullDistance, isRefreshing]);
 
@@ -224,7 +229,7 @@ export function BookmarkList() {
   }
 
   return (
-    <div className="fade-in" ref={containerRef}>
+    <div className="fade-in">
       {/* Pull-to-refresh indicator */}
       <div
         style={{
