@@ -89,6 +89,20 @@ export function About() {
               GitHub Repository
             </a>
             <a
+              href="https://ko-fi.com/tijsteulings/tip"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-white hover:opacity-95"
+              style={{ backgroundColor: "#13C3FF" }}
+            >
+              <img
+                src="https://storage.ko-fi.com/cdn/brandasset/v2/kofi_symbol.png"
+                alt="Ko-fi"
+                className="w-5 h-5"
+              />
+              Support this project
+            </a>
+            <a
               href="https://bsky.app/profile/tijs.org"
               target="_blank"
               rel="noopener noreferrer"

@@ -1,5 +1,7 @@
 # kipclip
 
+[![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/tijsteulings/tip)
+
 Find it, Kip it. Save and organize bookmarks using the AT Protocol community
 bookmark lexicon.
 
