@@ -202,7 +202,7 @@ bookmarksApi.post("/bookmarks", async (c) => {
 });
 
 /**
- * Update bookmark tags
+ * Update bookmark tags and other fields
  */
 bookmarksApi.patch("/bookmarks/:rkey", async (c) => {
   try {
@@ -212,6 +212,18 @@ bookmarksApi.patch("/bookmarks/:rkey", async (c) => {
 
     if (!Array.isArray(body.tags)) {
       return c.json({ error: "Tags must be an array" }, 400);
+    }
+
+    // Validate URL if provided
+    if (body.url) {
+      try {
+        const urlObj = new URL(body.url);
+        if (!urlObj.protocol.startsWith("http")) {
+          return c.json({ error: "Only HTTP(S) URLs are supported" }, 400);
+        }
+      } catch {
+        return c.json({ error: "Invalid URL format" }, 400);
+      }
     }
 
     // Get current record to preserve all fields
@@ -231,10 +243,20 @@ bookmarksApi.patch("/bookmarks/:rkey", async (c) => {
 
     const currentRecord = await getResponse.json();
 
-    // Update record with new tags
+    // Update record with new fields
     const record = {
       ...currentRecord.value,
+      subject: body.url || currentRecord.value.subject,
       tags: body.tags,
+      $enriched: {
+        ...currentRecord.value.$enriched,
+        title: body.title !== undefined
+          ? body.title
+          : currentRecord.value.$enriched?.title,
+        description: body.description !== undefined
+          ? body.description
+          : currentRecord.value.$enriched?.description,
+      },
     };
 
     const response = await oauthSession.makeRequest(

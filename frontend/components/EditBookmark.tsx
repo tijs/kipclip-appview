@@ -25,6 +25,11 @@ export function EditBookmark({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Editable fields state
+  const [title, setTitle] = useState(bookmark.title || "");
+  const [url, setUrl] = useState(bookmark.subject);
+  const [description, setDescription] = useState(bookmark.description || "");
+
   // Filter suggestions based on input
   const suggestions = availableTags
     .filter((tag) =>
@@ -83,14 +88,19 @@ export function EditBookmark({
         }
       }
 
-      // Update bookmark with tags
+      // Update bookmark with all editable fields
       const rkey = bookmark.uri.split("/").pop();
       const response = await fetch(`/api/bookmarks/${rkey}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ tags }),
+        body: JSON.stringify({
+          tags,
+          title,
+          url,
+          description,
+        }),
       });
 
       if (!response.ok) {
@@ -154,42 +164,50 @@ export function EditBookmark({
         </div>
 
         <div className="px-6 py-4 space-y-4">
-          {/* Title - Read only */}
+          {/* Title - Editable */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Title
             </label>
-            <div className="w-full px-4 py-3 rounded-lg border border-gray-200 bg-gray-50 text-gray-700">
-              {bookmark.title || new URL(bookmark.subject).hostname}
-            </div>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Enter bookmark title"
+              className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-coral focus:border-transparent outline-none transition"
+              disabled={loading}
+            />
           </div>
 
-          {/* URL - Read only */}
+          {/* URL - Editable */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               URL
             </label>
-            <a
-              href={bookmark.subject}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block w-full px-4 py-3 rounded-lg border border-gray-200 bg-gray-50 text-blue-600 hover:text-blue-700 truncate"
-            >
-              {bookmark.subject}
-            </a>
+            <input
+              type="url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://example.com"
+              className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-coral focus:border-transparent outline-none transition"
+              disabled={loading}
+            />
           </div>
 
-          {/* Description - Read only */}
-          {bookmark.description && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Description
-              </label>
-              <div className="w-full px-4 py-3 rounded-lg border border-gray-200 bg-gray-50 text-gray-700 text-sm">
-                {bookmark.description}
-              </div>
-            </div>
-          )}
+          {/* Description - Editable */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Description
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Enter bookmark description (optional)"
+              rows={3}
+              className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-coral focus:border-transparent outline-none transition resize-y"
+              disabled={loading}
+            />
+          </div>
 
           {/* Tags - Editable */}
           <div>

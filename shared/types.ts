@@ -89,6 +89,9 @@ export interface DeleteTagResponse {
 // Bookmark tag update request/response types
 export interface UpdateBookmarkTagsRequest {
   tags: string[];
+  title?: string;
+  url?: string;
+  description?: string;
 }
 
 export interface UpdateBookmarkTagsResponse {

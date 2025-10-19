@@ -33,6 +33,7 @@ export const oauth = createATProtoOAuth({
 // Note: No canonical-host redirect; app runs purely as a standard website
 
 // Mount OAuth routes (provides /login, /oauth/callback, /api/auth/*)
+// @ts-expect-error TS2589: Hono's type inference hits TypeScript's recursion limit with complex nested route types
 app.route("/", oauth.routes);
 
 // Mount bookmarks API (uses oauth.sessions internally)

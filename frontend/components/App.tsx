@@ -5,6 +5,7 @@ import { BookmarkList } from "./BookmarkList.tsx";
 import { UserMenu } from "./UserMenu.tsx";
 import { TagSidebar } from "./TagSidebar.tsx";
 import { Tools } from "./Tools.tsx";
+import { About } from "./About.tsx";
 import { Save } from "./Save.tsx";
 import { useApp } from "../context/AppContext.tsx";
 
@@ -53,6 +54,10 @@ export function App() {
   // Handle special routes that don't require session check
   if (currentPath === "/tools") {
     return <Tools />;
+  }
+
+  if (currentPath === "/about") {
+    return <About />;
   }
 
   if (currentPath === "/save") {
