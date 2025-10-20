@@ -8,7 +8,8 @@ import type {
   UpdateBookmarkTagsResponse,
 } from "../../shared/types.ts";
 import { extractUrlMetadata } from "../services/enrichment.ts";
-import { oauth } from "../index.ts";
+import { getAuthSession, AuthInvalidError, clearSidCookieHeader }
+  from "../services/auth.ts";
 
 const BOOKMARK_COLLECTION = "community.lexicon.bookmarks.bookmark";
 
@@ -18,53 +19,7 @@ export const bookmarksApi = new Hono();
  * Get authenticated user session from OAuth
  * Extracts session cookie and gets OAuth session from storage
  */
-async function getAuthSession(req: Request) {
-  // Extract session cookie
-  const cookieHeader = req.headers.get("cookie");
-  if (!cookieHeader || !cookieHeader.includes("sid=")) {
-    throw new Error("Not authenticated");
-  }
-
-  const sessionCookie = cookieHeader
-    .split(";")
-    .find((c) => c.trim().startsWith("sid="))
-    ?.split("=")[1];
-
-  if (!sessionCookie) {
-    throw new Error("Not authenticated");
-  }
-
-  // Unseal session data to get DID - use the COOKIE_SECRET from env
-  const { unsealData } = await import("npm:iron-session@8.0.4");
-  const COOKIE_SECRET = Deno.env.get("COOKIE_SECRET");
-
-  if (!COOKIE_SECRET) {
-    console.error("COOKIE_SECRET environment variable not set");
-    throw new Error("Server configuration error");
-  }
-
-  const sessionData = await unsealData(decodeURIComponent(sessionCookie), {
-    password: COOKIE_SECRET,
-  });
-
-  const userDid = (sessionData as any)?.did || (sessionData as any)?.userId ||
-    (sessionData as any)?.sub;
-
-  if (!userDid) {
-    console.error("No DID found in session data:", sessionData);
-    throw new Error("Not authenticated");
-  }
-
-  // Get OAuth session using sessions manager
-  const oauthSession = await oauth.sessions.getOAuthSession(userDid);
-
-  if (!oauthSession) {
-    console.error("No OAuth session found for DID:", userDid);
-    throw new Error("OAuth session not found");
-  }
-
-  return oauthSession;
-}
+// use shared getAuthSession from services/auth.ts
 
 /**
  * List user's bookmarks
@@ -108,6 +63,11 @@ bookmarksApi.get("/bookmarks", async (c) => {
     return c.json(result);
   } catch (error: any) {
     console.error("Error listing bookmarks:", error);
+
+    if (error instanceof AuthInvalidError) {
+      c.header("Set-Cookie", clearSidCookieHeader());
+      return c.json({ error: "Authentication invalid" }, 401);
+    }
 
     // If collection doesn't exist yet, return empty array
     if (error.message?.includes("not found") || error.status === 400) {
@@ -197,6 +157,10 @@ bookmarksApi.post("/bookmarks", async (c) => {
     return c.json(result);
   } catch (error: any) {
     console.error("Error creating bookmark:", error);
+    if (error instanceof AuthInvalidError) {
+      c.header("Set-Cookie", clearSidCookieHeader());
+      return c.json({ error: "Authentication invalid" }, 401);
+    }
     return c.json({ error: error.message }, 500);
   }
 });
@@ -300,6 +264,10 @@ bookmarksApi.patch("/bookmarks/:rkey", async (c) => {
     return c.json(result);
   } catch (error: any) {
     console.error("Error updating bookmark tags:", error);
+    if (error instanceof AuthInvalidError) {
+      c.header("Set-Cookie", clearSidCookieHeader());
+      return c.json({ error: "Authentication invalid" }, 401);
+    }
     return c.json({ error: error.message }, 500);
   }
 });
@@ -334,6 +302,10 @@ bookmarksApi.delete("/bookmarks/:rkey", async (c) => {
     return c.json({ success: true });
   } catch (error: any) {
     console.error("Error deleting bookmark:", error);
+    if (error instanceof AuthInvalidError) {
+      c.header("Set-Cookie", clearSidCookieHeader());
+      return c.json({ error: "Authentication invalid" }, 401);
+    }
     return c.json({ error: error.message }, 500);
   }
 });
