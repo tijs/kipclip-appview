@@ -10,6 +10,7 @@ import type {
   EnrichedTag,
   SessionInfo,
 } from "../../shared/types.ts";
+import { apiGet } from "../utils/api.ts";
 
 interface AppState {
   session: SessionInfo | null;
@@ -57,7 +58,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Bookmark actions
   async function loadBookmarks() {
     try {
-      const response = await fetch("/api/bookmarks");
+      const response = await apiGet("/api/bookmarks");
       if (!response.ok) {
         throw new Error("Failed to load bookmarks");
       }
@@ -86,7 +87,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Tag actions
   async function loadTags() {
     try {
-      const response = await fetch("/api/tags");
+      const response = await apiGet("/api/tags");
       if (!response.ok) {
         throw new Error("Failed to load tags");
       }
