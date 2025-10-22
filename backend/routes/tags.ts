@@ -8,70 +8,25 @@ import type {
   UpdateTagRequest,
   UpdateTagResponse,
 } from "../../shared/types.ts";
-import { oauth } from "../index.ts";
+import {
+  getAuthSession,
+  handleAuthError,
+  isAuthError,
+} from "../services/auth.ts";
 
 const TAG_COLLECTION = "com.kipclip.tag";
 
 export const tagsApi = new Hono();
 
 /**
- * Get authenticated user session from OAuth
- * Extracts session cookie and gets OAuth session from storage
- */
-async function getAuthSession(req: Request) {
-  // Extract session cookie
-  const cookieHeader = req.headers.get("cookie");
-  if (!cookieHeader || !cookieHeader.includes("sid=")) {
-    throw new Error("Not authenticated");
-  }
-
-  const sessionCookie = cookieHeader
-    .split(";")
-    .find((c) => c.trim().startsWith("sid="))
-    ?.split("=")[1];
-
-  if (!sessionCookie) {
-    throw new Error("Not authenticated");
-  }
-
-  // Unseal session data to get DID - use the COOKIE_SECRET from env
-  const { unsealData } = await import("npm:iron-session@8.0.4");
-  const COOKIE_SECRET = Deno.env.get("COOKIE_SECRET");
-
-  if (!COOKIE_SECRET) {
-    console.error("COOKIE_SECRET environment variable not set");
-    throw new Error("Server configuration error");
-  }
-
-  const sessionData = await unsealData(decodeURIComponent(sessionCookie), {
-    password: COOKIE_SECRET,
-  });
-
-  const userDid = (sessionData as any)?.did || (sessionData as any)?.userId ||
-    (sessionData as any)?.sub;
-
-  if (!userDid) {
-    console.error("No DID found in session data:", sessionData);
-    throw new Error("Not authenticated");
-  }
-
-  // Get OAuth session using sessions manager
-  const oauthSession = await oauth.sessions.getOAuthSession(userDid);
-
-  if (!oauthSession) {
-    console.error("No OAuth session found for DID:", userDid);
-    throw new Error("OAuth session not found");
-  }
-
-  return oauthSession;
-}
-
-/**
  * List user's tags
  */
 tagsApi.get("/tags", async (c) => {
+  let userDid: string | undefined;
+
   try {
     const oauthSession = await getAuthSession(c.req.raw);
+    userDid = oauthSession.did;
 
     // List records from the tag collection using makeRequest
     const params = new URLSearchParams({
@@ -85,7 +40,15 @@ tagsApi.get("/tags", async (c) => {
     );
 
     if (!response.ok) {
-      throw new Error(`Failed to list records: ${await response.text()}`);
+      const errorText = await response.text();
+      // Check if it's an authentication error (401/403)
+      if (response.status === 401 || response.status === 403) {
+        throw Object.assign(
+          new Error(`Authentication failed: ${errorText}`),
+          { status: response.status },
+        );
+      }
+      throw new Error(`Failed to list records: ${errorText}`);
     }
 
     const data = await response.json();
@@ -105,17 +68,14 @@ tagsApi.get("/tags", async (c) => {
   } catch (error: any) {
     console.error("Error listing tags:", error);
 
+    // Check if this is an authentication error
+    if (isAuthError(error)) {
+      return await handleAuthError(c, error, userDid);
+    }
+
     // If collection doesn't exist yet, return empty array
     if (error.message?.includes("not found") || error.status === 400) {
       return c.json({ tags: [] });
-    }
-
-    // If OAuth session temporarily unavailable, return 503 for client to retry
-    if (
-      error.message?.includes("OAuth session not found") ||
-      error.message?.includes("Not authenticated")
-    ) {
-      return c.json({ error: "Session temporarily unavailable" }, 503);
     }
 
     return c.json({ error: error.message }, 500);
@@ -126,8 +86,12 @@ tagsApi.get("/tags", async (c) => {
  * Add a new tag
  */
 tagsApi.post("/tags", async (c) => {
+  let userDid: string | undefined;
+
   try {
     const oauthSession = await getAuthSession(c.req.raw);
+    userDid = oauthSession.did;
+
     const body: AddTagRequest = await c.req.json();
 
     if (!body.value || typeof body.value !== "string") {
@@ -165,7 +129,14 @@ tagsApi.post("/tags", async (c) => {
     );
 
     if (!response.ok) {
-      throw new Error(`Failed to create record: ${await response.text()}`);
+      const errorText = await response.text();
+      if (response.status === 401 || response.status === 403) {
+        throw Object.assign(
+          new Error(`Authentication failed: ${errorText}`),
+          { status: response.status },
+        );
+      }
+      throw new Error(`Failed to create record: ${errorText}`);
     }
 
     const data = await response.json();
@@ -185,6 +156,12 @@ tagsApi.post("/tags", async (c) => {
     return c.json(result);
   } catch (error: any) {
     console.error("Error creating tag:", error);
+
+    // Check if this is an authentication error
+    if (isAuthError(error)) {
+      return await handleAuthError(c, error, userDid);
+    }
+
     return c.json({ error: error.message }, 500);
   }
 });
@@ -193,8 +170,12 @@ tagsApi.post("/tags", async (c) => {
  * Update a tag and rename it in all bookmarks
  */
 tagsApi.put("/tags/:rkey", async (c) => {
+  let userDid: string | undefined;
+
   try {
     const oauthSession = await getAuthSession(c.req.raw);
+    userDid = oauthSession.did;
+
     const rkey = c.req.param("rkey");
     const body: UpdateTagRequest = await c.req.json();
 
@@ -223,7 +204,14 @@ tagsApi.put("/tags/:rkey", async (c) => {
     );
 
     if (!getResponse.ok) {
-      throw new Error(`Failed to get record: ${await getResponse.text()}`);
+      const errorText = await getResponse.text();
+      if (getResponse.status === 401 || getResponse.status === 403) {
+        throw Object.assign(
+          new Error(`Authentication failed: ${errorText}`),
+          { status: getResponse.status },
+        );
+      }
+      throw new Error(`Failed to get record: ${errorText}`);
     }
 
     const currentRecord = await getResponse.json();
@@ -255,6 +243,14 @@ tagsApi.put("/tags/:rkey", async (c) => {
       "GET",
       `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${listParams}`,
     );
+
+    if (!listResponse.ok && (listResponse.status === 401 || listResponse.status === 403)) {
+      const errorText = await listResponse.text();
+      throw Object.assign(
+        new Error(`Authentication failed: ${errorText}`),
+        { status: listResponse.status },
+      );
+    }
 
     if (listResponse.ok) {
       const bookmarksData = await listResponse.json();
@@ -325,9 +321,14 @@ tagsApi.put("/tags/:rkey", async (c) => {
     );
 
     if (!updateResponse.ok) {
-      throw new Error(
-        `Failed to update tag record: ${await updateResponse.text()}`,
-      );
+      const errorText = await updateResponse.text();
+      if (updateResponse.status === 401 || updateResponse.status === 403) {
+        throw Object.assign(
+          new Error(`Authentication failed: ${errorText}`),
+          { status: updateResponse.status },
+        );
+      }
+      throw new Error(`Failed to update tag record: ${errorText}`);
     }
 
     const data = await updateResponse.json();
@@ -347,6 +348,12 @@ tagsApi.put("/tags/:rkey", async (c) => {
     return c.json(result);
   } catch (error: any) {
     console.error("Error updating tag:", error);
+
+    // Check if this is an authentication error
+    if (isAuthError(error)) {
+      return await handleAuthError(c, error, userDid);
+    }
+
     return c.json({ error: error.message }, 500);
   }
 });
@@ -355,8 +362,12 @@ tagsApi.put("/tags/:rkey", async (c) => {
  * Get tag usage (count of bookmarks using this tag)
  */
 tagsApi.get("/tags/:rkey/usage", async (c) => {
+  let userDid: string | undefined;
+
   try {
     const oauthSession = await getAuthSession(c.req.raw);
+    userDid = oauthSession.did;
+
     const rkey = c.req.param("rkey");
 
     // First, get the tag to find its value
@@ -371,7 +382,14 @@ tagsApi.get("/tags/:rkey/usage", async (c) => {
     );
 
     if (!getResponse.ok) {
-      throw new Error(`Failed to get tag: ${await getResponse.text()}`);
+      const errorText = await getResponse.text();
+      if (getResponse.status === 401 || getResponse.status === 403) {
+        throw Object.assign(
+          new Error(`Authentication failed: ${errorText}`),
+          { status: getResponse.status },
+        );
+      }
+      throw new Error(`Failed to get tag: ${errorText}`);
     }
 
     const tagData = await getResponse.json();
@@ -390,9 +408,14 @@ tagsApi.get("/tags/:rkey/usage", async (c) => {
     );
 
     if (!listResponse.ok) {
-      throw new Error(
-        `Failed to list bookmarks: ${await listResponse.text()}`,
-      );
+      const errorText = await listResponse.text();
+      if (listResponse.status === 401 || listResponse.status === 403) {
+        throw Object.assign(
+          new Error(`Authentication failed: ${errorText}`),
+          { status: listResponse.status },
+        );
+      }
+      throw new Error(`Failed to list bookmarks: ${errorText}`);
     }
 
     const bookmarksData = await listResponse.json();
@@ -405,6 +428,12 @@ tagsApi.get("/tags/:rkey/usage", async (c) => {
     return c.json({ count, tagValue });
   } catch (error: any) {
     console.error("Error getting tag usage:", error);
+
+    // Check if this is an authentication error
+    if (isAuthError(error)) {
+      return await handleAuthError(c, error, userDid);
+    }
+
     return c.json({ error: error.message }, 500);
   }
 });
@@ -413,8 +442,12 @@ tagsApi.get("/tags/:rkey/usage", async (c) => {
  * Delete a tag and remove it from all bookmarks
  */
 tagsApi.delete("/tags/:rkey", async (c) => {
+  let userDid: string | undefined;
+
   try {
     const oauthSession = await getAuthSession(c.req.raw);
+    userDid = oauthSession.did;
+
     const rkey = c.req.param("rkey");
 
     // First, get the tag to find its value
@@ -429,7 +462,14 @@ tagsApi.delete("/tags/:rkey", async (c) => {
     );
 
     if (!getResponse.ok) {
-      throw new Error(`Failed to get tag: ${await getResponse.text()}`);
+      const errorText = await getResponse.text();
+      if (getResponse.status === 401 || getResponse.status === 403) {
+        throw Object.assign(
+          new Error(`Authentication failed: ${errorText}`),
+          { status: getResponse.status },
+        );
+      }
+      throw new Error(`Failed to get tag: ${errorText}`);
     }
 
     const tagData = await getResponse.json();
@@ -446,6 +486,14 @@ tagsApi.delete("/tags/:rkey", async (c) => {
       "GET",
       `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${listParams}`,
     );
+
+    if (!listResponse.ok && (listResponse.status === 401 || listResponse.status === 403)) {
+      const errorText = await listResponse.text();
+      throw Object.assign(
+        new Error(`Authentication failed: ${errorText}`),
+        { status: listResponse.status },
+      );
+    }
 
     if (listResponse.ok) {
       const bookmarksData = await listResponse.json();
@@ -510,15 +558,26 @@ tagsApi.delete("/tags/:rkey", async (c) => {
     );
 
     if (!deleteResponse.ok) {
-      throw new Error(
-        `Failed to delete tag record: ${await deleteResponse.text()}`,
-      );
+      const errorText = await deleteResponse.text();
+      if (deleteResponse.status === 401 || deleteResponse.status === 403) {
+        throw Object.assign(
+          new Error(`Authentication failed: ${errorText}`),
+          { status: deleteResponse.status },
+        );
+      }
+      throw new Error(`Failed to delete tag record: ${errorText}`);
     }
 
     const result: DeleteTagResponse = { success: true };
     return c.json(result);
   } catch (error: any) {
     console.error("Error deleting tag:", error);
+
+    // Check if this is an authentication error
+    if (isAuthError(error)) {
+      return await handleAuthError(c, error, userDid);
+    }
+
     const result: DeleteTagResponse = {
       success: false,
       error: error.message,
