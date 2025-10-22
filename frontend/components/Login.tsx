@@ -11,8 +11,17 @@ export function Login() {
 
     setLoading(true);
     try {
+      // Preserve redirect parameter if present
+      const params = new URLSearchParams(globalThis.location.search);
+      const redirect = params.get("redirect");
+
+      let loginUrl = `/login?handle=${encodeURIComponent(handle)}`;
+      if (redirect) {
+        loginUrl += `&redirect=${encodeURIComponent(redirect)}`;
+      }
+
       // Redirect to OAuth login
-      globalThis.location.href = `/login?handle=${encodeURIComponent(handle)}`;
+      globalThis.location.href = loginUrl;
     } catch (error) {
       console.error("Login failed:", error);
       setLoading(false);
