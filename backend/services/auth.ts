@@ -1,5 +1,6 @@
 import { oauth } from "../index.ts";
 import type { Context } from "https://esm.sh/hono";
+import type { SessionInterface } from "jsr:@tijs/hono-oauth-sessions@^0.5.0";
 
 /**
  * Get authenticated user session from OAuth with automatic token refresh.
@@ -25,7 +26,7 @@ import type { Context } from "https://esm.sh/hono";
  */
 export async function getAuthSession(
   req: Request,
-): Promise<any | null> {
+): Promise<SessionInterface | null> {
   try {
     // Extract session cookie
     const cookieHeader = req.headers.get("cookie");
