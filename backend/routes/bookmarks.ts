@@ -8,11 +8,7 @@ import type {
   UpdateBookmarkTagsResponse,
 } from "../../shared/types.ts";
 import { extractUrlMetadata } from "../services/enrichment.ts";
-import {
-  getAuthSession,
-  handleAuthError,
-  isAuthError,
-} from "../services/auth.ts";
+import { getAuthSession, unauthorizedResponse } from "../services/auth.ts";
 
 const BOOKMARK_COLLECTION = "community.lexicon.bookmarks.bookmark";
 
@@ -22,11 +18,12 @@ export const bookmarksApi = new Hono();
  * List user's bookmarks
  */
 bookmarksApi.get("/bookmarks", async (c) => {
-  let userDid: string | undefined;
-
   try {
+    // Get authenticated session (automatically refreshes expired tokens)
     const oauthSession = await getAuthSession(c.req.raw);
-    userDid = oauthSession.did;
+    if (!oauthSession) {
+      return unauthorizedResponse(c);
+    }
 
     // List records from the bookmark collection using makeRequest
     const params = new URLSearchParams({
@@ -41,13 +38,6 @@ bookmarksApi.get("/bookmarks", async (c) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      // Check if it's an authentication error (401/403)
-      if (response.status === 401 || response.status === 403) {
-        throw Object.assign(
-          new Error(`Authentication failed: ${errorText}`),
-          { status: response.status },
-        );
-      }
       throw new Error(`Failed to list records: ${errorText}`);
     }
 
@@ -72,11 +62,6 @@ bookmarksApi.get("/bookmarks", async (c) => {
   } catch (error: any) {
     console.error("Error listing bookmarks:", error);
 
-    // Check if this is an authentication error
-    if (isAuthError(error)) {
-      return await handleAuthError(c, error, userDid);
-    }
-
     // If collection doesn't exist yet, return empty array
     if (error.message?.includes("not found") || error.status === 400) {
       return c.json({ bookmarks: [] });
@@ -90,11 +75,12 @@ bookmarksApi.get("/bookmarks", async (c) => {
  * Add a new bookmark
  */
 bookmarksApi.post("/bookmarks", async (c) => {
-  let userDid: string | undefined;
-
   try {
+    // Get authenticated session (automatically refreshes expired tokens)
     const oauthSession = await getAuthSession(c.req.raw);
-    userDid = oauthSession.did;
+    if (!oauthSession) {
+      return unauthorizedResponse(c);
+    }
 
     const body: AddBookmarkRequest = await c.req.json();
 
@@ -146,13 +132,6 @@ bookmarksApi.post("/bookmarks", async (c) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      // Check if it's an authentication error (401/403)
-      if (response.status === 401 || response.status === 403) {
-        throw Object.assign(
-          new Error(`Authentication failed: ${errorText}`),
-          { status: response.status },
-        );
-      }
       throw new Error(`Failed to create record: ${errorText}`);
     }
 
@@ -177,12 +156,6 @@ bookmarksApi.post("/bookmarks", async (c) => {
     return c.json(result);
   } catch (error: any) {
     console.error("Error creating bookmark:", error);
-
-    // Check if this is an authentication error
-    if (isAuthError(error)) {
-      return await handleAuthError(c, error, userDid);
-    }
-
     return c.json({ error: error.message }, 500);
   }
 });
@@ -191,11 +164,12 @@ bookmarksApi.post("/bookmarks", async (c) => {
  * Update bookmark tags and other fields
  */
 bookmarksApi.patch("/bookmarks/:rkey", async (c) => {
-  let userDid: string | undefined;
-
   try {
+    // Get authenticated session (automatically refreshes expired tokens)
     const oauthSession = await getAuthSession(c.req.raw);
-    userDid = oauthSession.did;
+    if (!oauthSession) {
+      return unauthorizedResponse(c);
+    }
 
     const rkey = c.req.param("rkey");
     const body: UpdateBookmarkTagsRequest = await c.req.json();
@@ -229,12 +203,6 @@ bookmarksApi.patch("/bookmarks/:rkey", async (c) => {
 
     if (!getResponse.ok) {
       const errorText = await getResponse.text();
-      if (getResponse.status === 401 || getResponse.status === 403) {
-        throw Object.assign(
-          new Error(`Authentication failed: ${errorText}`),
-          { status: getResponse.status },
-        );
-      }
       throw new Error(`Failed to get record: ${errorText}`);
     }
 
@@ -274,12 +242,6 @@ bookmarksApi.patch("/bookmarks/:rkey", async (c) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      if (response.status === 401 || response.status === 403) {
-        throw Object.assign(
-          new Error(`Authentication failed: ${errorText}`),
-          { status: response.status },
-        );
-      }
       throw new Error(`Failed to update record: ${errorText}`);
     }
 
@@ -304,12 +266,6 @@ bookmarksApi.patch("/bookmarks/:rkey", async (c) => {
     return c.json(result);
   } catch (error: any) {
     console.error("Error updating bookmark tags:", error);
-
-    // Check if this is an authentication error
-    if (isAuthError(error)) {
-      return await handleAuthError(c, error, userDid);
-    }
-
     return c.json({ error: error.message }, 500);
   }
 });
@@ -318,11 +274,12 @@ bookmarksApi.patch("/bookmarks/:rkey", async (c) => {
  * Delete a bookmark
  */
 bookmarksApi.delete("/bookmarks/:rkey", async (c) => {
-  let userDid: string | undefined;
-
   try {
+    // Get authenticated session (automatically refreshes expired tokens)
     const oauthSession = await getAuthSession(c.req.raw);
-    userDid = oauthSession.did;
+    if (!oauthSession) {
+      return unauthorizedResponse(c);
+    }
 
     const rkey = c.req.param("rkey");
 
@@ -343,24 +300,12 @@ bookmarksApi.delete("/bookmarks/:rkey", async (c) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      if (response.status === 401 || response.status === 403) {
-        throw Object.assign(
-          new Error(`Authentication failed: ${errorText}`),
-          { status: response.status },
-        );
-      }
       throw new Error(`Failed to delete record: ${errorText}`);
     }
 
     return c.json({ success: true });
   } catch (error: any) {
     console.error("Error deleting bookmark:", error);
-
-    // Check if this is an authentication error
-    if (isAuthError(error)) {
-      return await handleAuthError(c, error, userDid);
-    }
-
     return c.json({ error: error.message }, 500);
   }
 });

@@ -35,14 +35,14 @@ export async function apiFetch(
 /**
  * Helper for GET requests
  */
-export async function apiGet(url: string): Promise<Response> {
+export function apiGet(url: string): Promise<Response> {
   return apiFetch(url);
 }
 
 /**
  * Helper for POST requests
  */
-export async function apiPost(
+export function apiPost(
   url: string,
   body?: any,
 ): Promise<Response> {
@@ -58,7 +58,7 @@ export async function apiPost(
 /**
  * Helper for PATCH requests
  */
-export async function apiPatch(
+export function apiPatch(
   url: string,
   body?: any,
 ): Promise<Response> {
@@ -74,7 +74,7 @@ export async function apiPatch(
 /**
  * Helper for PUT requests
  */
-export async function apiPut(
+export function apiPut(
   url: string,
   body?: any,
 ): Promise<Response> {
@@ -90,7 +90,7 @@ export async function apiPut(
 /**
  * Helper for DELETE requests
  */
-export async function apiDelete(url: string): Promise<Response> {
+export function apiDelete(url: string): Promise<Response> {
   return apiFetch(url, {
     method: "DELETE",
   });
