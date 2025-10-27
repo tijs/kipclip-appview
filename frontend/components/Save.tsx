@@ -81,7 +81,7 @@ export function Save() {
   }
 
   if (!session) {
-    const loginUrl = `/login?redirect=${
+    const loginUrl = `/?redirect=${
       encodeURIComponent(
         globalThis.location.pathname + globalThis.location.search,
       )
