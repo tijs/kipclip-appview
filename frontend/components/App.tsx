@@ -8,6 +8,7 @@ import { Tools } from "./Tools.tsx";
 import { About } from "./About.tsx";
 import { Save } from "./Save.tsx";
 import { FAQ } from "./FAQ.tsx";
+import { SharedBookmarks } from "./SharedBookmarks.tsx";
 import { useApp } from "../context/AppContext.tsx";
 
 export function App() {
@@ -67,6 +68,16 @@ export function App() {
 
   if (currentPath === "/save") {
     return <Save />;
+  }
+
+  // Handle shared bookmarks route: /share/:did/:encodedTags
+  if (currentPath.startsWith("/share/")) {
+    const pathParts = currentPath.split("/");
+    if (pathParts.length === 4) {
+      const did = pathParts[2];
+      const encodedTags = pathParts[3];
+      return <SharedBookmarks did={did} encodedTags={encodedTags} />;
+    }
   }
 
   if (loading) {

@@ -3,6 +3,7 @@ import { useEffect, useState } from "https://esm.sh/react";
 import { AddTag } from "./AddTag.tsx";
 import { EditTag } from "./EditTag.tsx";
 import { useApp } from "../context/AppContext.tsx";
+import { encodeTagsForUrl } from "../../shared/utils.ts";
 
 export function TagSidebar() {
   const {
@@ -14,6 +15,7 @@ export function TagSidebar() {
     addTag,
     updateTag,
     deleteTag,
+    session,
   } = useApp();
 
   const [loading, setLoading] = useState(true);
@@ -50,6 +52,38 @@ export function TagSidebar() {
   function handleTagDeleted(tagUri: string) {
     deleteTag(tagUri);
     setEditingTag(null);
+  }
+
+  async function handleShareFiltered() {
+    if (!session || selectedTags.size === 0) return;
+
+    try {
+      // Generate share URL
+      const encodedTags = encodeTagsForUrl([...selectedTags]);
+      const shareUrl =
+        `${globalThis.location.origin}/share/${session.did}/${encodedTags}`;
+
+      // Use Web Share API if available
+      if (navigator.share) {
+        await navigator.share({
+          title: "My Kipclip Bookmarks Collection",
+          text: `Check out my bookmarks collection tagged with: ${
+            [...selectedTags].join(", ")
+          }`,
+          url: shareUrl,
+        });
+      } else {
+        // Fallback: copy to clipboard
+        await navigator.clipboard.writeText(shareUrl);
+        alert("Share link copied to clipboard!");
+      }
+    } catch (err: any) {
+      // User cancelled or share failed
+      if (err.name !== "AbortError") {
+        console.error("Share failed:", err);
+        alert("Failed to share link");
+      }
+    }
   }
 
   // Shared tag item renderer
@@ -219,14 +253,38 @@ export function TagSidebar() {
               </ul>
             )}
           {selectedTags.size > 0 && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="flex-shrink-0 px-3 py-1 text-xs bg-gray-200 hover:bg-gray-300 rounded-lg transition text-gray-700 font-medium"
-              title="Clear all filters"
-            >
-              Clear filters
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="flex-shrink-0 px-3 py-1 text-xs bg-gray-200 hover:bg-gray-300 rounded-lg transition text-gray-700 font-medium"
+                title="Clear all filters"
+              >
+                Clear filters
+              </button>
+              <button
+                type="button"
+                onClick={handleShareFiltered}
+                className="flex-shrink-0 px-3 py-1 text-xs rounded-lg transition text-white font-medium flex items-center gap-1"
+                style={{ backgroundColor: "var(--coral)" }}
+                title="Share these filtered bookmarks"
+              >
+                <svg
+                  className="w-3 h-3"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+                  />
+                </svg>
+                Share
+              </button>
+            </>
           )}
           <button
             type="button"
@@ -268,14 +326,38 @@ export function TagSidebar() {
         </div>
 
         {selectedTags.size > 0 && (
-          <button
-            type="button"
-            onClick={clearFilters}
-            className="w-full mb-4 px-3 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded-lg transition text-gray-700 font-medium"
-            title="Clear all filters"
-          >
-            Clear filters ({selectedTags.size})
-          </button>
+          <div className="mb-4 space-y-2">
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="w-full px-3 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded-lg transition text-gray-700 font-medium"
+              title="Clear all filters"
+            >
+              Clear filters ({selectedTags.size})
+            </button>
+            <button
+              type="button"
+              onClick={handleShareFiltered}
+              className="w-full px-3 py-2 text-sm rounded-lg transition text-white font-medium flex items-center justify-center gap-2"
+              style={{ backgroundColor: "var(--coral)" }}
+              title="Share these filtered bookmarks"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+                />
+              </svg>
+              Share collection
+            </button>
+          </div>
         )}
 
         {error && (

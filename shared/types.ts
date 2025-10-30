@@ -99,3 +99,11 @@ export interface UpdateBookmarkTagsResponse {
   bookmark?: EnrichedBookmark;
   error?: string;
 }
+
+// Shared bookmarks API types (public, no auth)
+export interface SharedBookmarksResponse {
+  bookmarks: EnrichedBookmark[];
+  handle: string;
+  tags: string[];
+  error?: string;
+}

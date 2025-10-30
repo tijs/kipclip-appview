@@ -5,6 +5,7 @@ import { db, initializeTables } from "./database/db.ts";
 import { staticRoutes } from "./routes/static.ts";
 import { bookmarksApi } from "./routes/bookmarks.ts";
 import { tagsApi } from "./routes/tags.ts";
+import { sharedApi } from "./routes/shared.ts";
 
 // Run database migrations on startup
 await initializeTables();
@@ -41,6 +42,9 @@ app.route("/api", bookmarksApi);
 
 // Mount tags API
 app.route("/api", tagsApi);
+
+// Mount shared bookmarks API (public, no auth)
+app.route("/api", sharedApi);
 
 // Static file serving and SPA routing
 app.route("/", staticRoutes);
