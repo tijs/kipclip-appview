@@ -68,6 +68,20 @@ export function About() {
           </p>
         </section>
 
+        <section className="bg-white rounded-lg shadow-md p-6 space-y-3">
+          <h3 className="text-xl font-bold text-gray-800">Have questions?</h3>
+          <p className="text-gray-700">
+            Check out our{" "}
+            <a
+              href="/faq"
+              className="underline hover:text-gray-800"
+            >
+              Frequently Asked Questions
+            </a>{" "}
+            page to learn more about AT Protocol, login, data storage, and more.
+          </p>
+        </section>
+
         <section className="bg-white rounded-lg shadow-md p-6">
           <h3 className="text-xl font-bold text-gray-800 mb-4">Links</h3>
           <div className="flex flex-col sm:flex-row gap-3">

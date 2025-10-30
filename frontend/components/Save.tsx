@@ -107,7 +107,7 @@ export function Save() {
             href={loginUrl}
             className="inline-block w-full btn-primary py-3 px-4 rounded-lg text-center"
           >
-            Sign in with AT Protocol
+            Sign in
           </a>
         </div>
       </div>

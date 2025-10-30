@@ -7,6 +7,7 @@ import { TagSidebar } from "./TagSidebar.tsx";
 import { Tools } from "./Tools.tsx";
 import { About } from "./About.tsx";
 import { Save } from "./Save.tsx";
+import { FAQ } from "./FAQ.tsx";
 import { useApp } from "../context/AppContext.tsx";
 
 export function App() {
@@ -58,6 +59,10 @@ export function App() {
 
   if (currentPath === "/about") {
     return <About />;
+  }
+
+  if (currentPath === "/faq") {
+    return <FAQ />;
   }
 
   if (currentPath === "/save") {

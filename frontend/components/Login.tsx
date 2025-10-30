@@ -55,14 +55,14 @@ export function Login() {
                 htmlFor="handle"
                 className="block text-sm font-medium text-gray-700 mb-2"
               >
-                Your AT Protocol handle
+                Your Bluesky or AT Protocol handle
               </label>
               <input
                 type="text"
                 id="handle"
                 value={handle}
                 onChange={(e) => setHandle(e.target.value)}
-                placeholder="alice.bsky.social"
+                placeholder="alice.bsky.social or your-domain.com"
                 className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-coral focus:border-transparent outline-none transition"
                 disabled={loading}
                 autoFocus
@@ -82,22 +82,21 @@ export function Login() {
                   </span>
                 )
                 : (
-                  "Sign in with AT Protocol"
+                  "Sign in"
                 )}
             </button>
           </form>
 
-          <div className="mt-6 text-center text-sm text-gray-500">
+          <div className="mt-6 text-center text-sm text-gray-500 space-y-3">
             <p>
-              kipclip saves bookmarks to your personal data server using the
-              {" "}
+              kipclip works with your Bluesky account or any AT Protocol handle.
+              Your bookmarks are saved to your own personal data server, so you
+              own and control your data.{" "}
               <a
-                href="https://github.com/lexicon-community/lexicon/blob/main/community/lexicon/bookmarks/bookmark.json"
-                target="_blank"
-                rel="noopener noreferrer"
+                href="/faq"
                 className="underline hover:text-gray-700"
               >
-                community bookmark lexicon
+                Learn more
               </a>
             </p>
           </div>
