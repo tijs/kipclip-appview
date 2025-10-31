@@ -169,7 +169,14 @@ export function SharedBookmarks({ did, encodedTags }: SharedBookmarksProps) {
         <div className="mb-8">
           <div className="flex items-center gap-2 text-sm text-gray-600 mb-2">
             <span>Shared by</span>
-            <span className="font-semibold text-gray-800">{handle}</span>
+            <a
+              href={`https://bsky.app/profile/${handle}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+            >
+              {handle}
+            </a>
           </div>
           <h1 className="text-3xl font-bold text-gray-800 mb-4">
             Bookmarks Collection
@@ -227,19 +234,6 @@ export function SharedBookmarks({ did, encodedTags }: SharedBookmarksProps) {
                   <div className="text-xs text-gray-400">
                     {new Date(bookmark.createdAt).toLocaleDateString()}
                   </div>
-
-                  {bookmark.tags && bookmark.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {bookmark.tags.map((tag, i) => (
-                        <span
-                          key={i}
-                          className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-700"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
 
                   {/* Desktop: hover-reveal buttons (bottom-right) */}
                   <div className="hidden md:group-hover:flex absolute bottom-2 right-2 gap-1">
