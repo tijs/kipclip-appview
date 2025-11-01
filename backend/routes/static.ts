@@ -119,6 +119,18 @@ staticRoutes.get("*", async (c) => {
             `name="twitter:url" content="${urlEscaped}"`,
           );
 
+          // Add RSS auto-discovery link
+          const rssUrl = `${baseUrl}/share/${did}/${encodedTags}/rss`;
+          const rssUrlEscaped = escapeHtml(rssUrl);
+          const rssLink =
+            `\n    <link rel="alternate" type="application/rss+xml" title="${titleEscaped}" href="${rssUrlEscaped}" />`;
+
+          // Insert RSS link before closing </head> tag
+          html = html.replace(
+            /<\/head>/,
+            `${rssLink}\n  </head>`,
+          );
+
           console.log("Replaced meta tags for share URL:", {
             did,
             encodedTags,
