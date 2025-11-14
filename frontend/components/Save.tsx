@@ -25,7 +25,9 @@ export function Save() {
 
   async function checkSession() {
     try {
-      const response = await fetch("/api/auth/session");
+      const response = await fetch("/api/auth/session", {
+        credentials: "include",
+      });
       if (response.ok) {
         const data = await response.json();
         setSession({
@@ -53,8 +55,20 @@ export function Save() {
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: "include",
         body: JSON.stringify({ url: url.trim() }),
       });
+
+      // If session expired, redirect to login with current page
+      if (response.status === 401) {
+        const loginUrl = `/login?redirect=${
+          encodeURIComponent(
+            globalThis.location.pathname + globalThis.location.search,
+          )
+        }`;
+        globalThis.location.href = loginUrl;
+        return;
+      }
 
       if (!response.ok) {
         const data = await response.json();

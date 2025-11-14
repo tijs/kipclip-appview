@@ -1,6 +1,14 @@
 import { oauth } from "../index.ts";
 import type { Context } from "https://esm.sh/hono";
-import type { SessionInterface } from "jsr:@tijs/hono-oauth-sessions@^0.5.0";
+import type { SessionInterface } from "jsr:@tijs/hono-oauth-sessions@^1.0.0";
+import {
+  NetworkError,
+  RefreshTokenExpiredError,
+  RefreshTokenRevokedError,
+  SessionError,
+  SessionNotFoundError,
+  TokenExchangeError,
+} from "jsr:@tijs/atproto-oauth-hono@^1.0.2";
 
 /**
  * Get authenticated user session from OAuth with automatic token refresh.
@@ -67,16 +75,46 @@ export async function getAuthSession(
     // Get OAuth session using sessions manager
     // This automatically refreshes expired tokens via the underlying oauth-client-deno
     // restore() method which checks session.isExpired and calls refresh() if needed
-    const oauthSession = await oauth.sessions.getOAuthSession(userDid);
+    try {
+      const oauthSession = await oauth.sessions.getOAuthSession(userDid);
 
-    if (!oauthSession) {
-      console.log(
-        `OAuth session not found or refresh failed for DID: ${userDid}`,
-      );
+      if (!oauthSession) {
+        console.log(`OAuth session not found for DID: ${userDid}`);
+        return null;
+      }
+
+      return oauthSession;
+    } catch (error) {
+      // Handle typed errors that bubble through from atproto-oauth-hono v1.0.2+
+      if (error instanceof SessionNotFoundError) {
+        console.log(
+          `Session not found for DID ${userDid} - user needs to re-authenticate`,
+        );
+      } else if (error instanceof RefreshTokenExpiredError) {
+        console.log(
+          `Refresh token expired for DID ${userDid} - re-authentication required`,
+        );
+      } else if (error instanceof RefreshTokenRevokedError) {
+        console.log(
+          `Refresh token revoked for DID ${userDid} - access has been revoked`,
+        );
+      } else if (error instanceof NetworkError) {
+        console.error(
+          `Network error during session restoration for DID ${userDid}:`,
+          error,
+        );
+      } else if (error instanceof TokenExchangeError) {
+        console.error(`Token exchange failed for DID ${userDid}:`, error);
+      } else if (error instanceof SessionError) {
+        console.error(`Session error for DID ${userDid}:`, error);
+      } else {
+        console.error(
+          `Unexpected error restoring session for DID ${userDid}:`,
+          error,
+        );
+      }
       return null;
     }
-
-    return oauthSession;
   } catch (error) {
     console.error("Failed to get authenticated session:", error);
     return null;
