@@ -1,6 +1,6 @@
 import { Hono } from "https://esm.sh/hono";
-import { createATProtoOAuth } from "jsr:@tijs/atproto-oauth-hono@^2.0.0";
-import { DrizzleStorage } from "jsr:@tijs/atproto-oauth-hono@^2.0.0/drizzle";
+import { createATProtoOAuth } from "jsr:@tijs/atproto-oauth-hono@^2.0.1";
+import { DrizzleStorage } from "jsr:@tijs/atproto-oauth-hono@^2.0.1/drizzle";
 import { db, initializeTables } from "./database/db.ts";
 import { staticRoutes } from "./routes/static.ts";
 import { bookmarksApi } from "./routes/bookmarks.ts";

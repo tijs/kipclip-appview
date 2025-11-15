@@ -1,6 +1,6 @@
 import { oauth } from "../index.ts";
 import type { Context } from "https://esm.sh/hono";
-import type { SessionInterface } from "jsr:@tijs/atproto-oauth-hono@^2.0.0";
+import type { SessionInterface } from "jsr:@tijs/atproto-oauth-hono@^2.0.1";
 import {
   NetworkError,
   RefreshTokenExpiredError,
@@ -8,7 +8,7 @@ import {
   SessionError,
   SessionNotFoundError,
   TokenExchangeError,
-} from "jsr:@tijs/atproto-oauth-hono@^2.0.0";
+} from "jsr:@tijs/atproto-oauth-hono@^2.0.1";
 
 /**
  * Get authenticated user session from OAuth with automatic token refresh.
