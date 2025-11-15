@@ -3,18 +3,17 @@ import { drizzle } from "https://esm.sh/drizzle-orm@0.44.5/sqlite-proxy";
 import * as schema from "./schema.ts";
 
 // Use Val.Town sqlite in production, local adapter in development
-// Detect Val.Town by checking if we're running from esm.town URL
-const isValTown = import.meta.url.startsWith("https://esm.town/");
+const isProduction = Deno.env.get("ENVIRONMENT") === "PRODUCTION";
 
 let rawDb: any;
-if (isValTown) {
+if (isProduction) {
   const { sqlite } = await import("https://esm.town/v/std/sqlite2");
   rawDb = sqlite;
-  console.log("✅ Using Val.Town SQLite");
+  console.log("✅ Using Val.Town SQLite (production)");
 } else {
   const { createLocalSqlite } = await import("./local-sqlite.ts");
   rawDb = createLocalSqlite();
-  console.log("✅ Using local SQLite");
+  console.log("✅ Using local SQLite (development)");
 }
 
 // Create Drizzle database instance with schema using sqlite-proxy adapter
