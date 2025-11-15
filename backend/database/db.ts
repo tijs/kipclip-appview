@@ -18,8 +18,10 @@ if (isValTown) {
 
 // Create Drizzle database instance with schema using sqlite-proxy adapter
 export const db = drizzle(
-  async (sql, params) => {
+  async (sql, params, method) => {
+    console.log(`[SQLITE-PROXY] method=${method}, sql=${sql.substring(0, 100)}, params=`, params);
     const result = await rawDb.execute({ sql, args: params || [] });
+    console.log(`[SQLITE-PROXY] result=`, result);
     return { rows: result.rows };
   },
   { schema },
