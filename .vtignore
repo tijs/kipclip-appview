@@ -2,6 +2,7 @@
 .vscode
 .cursorrules
 .DS_Store
+.local
 node_modules
 vendor
 resources

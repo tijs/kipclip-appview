@@ -2,21 +2,22 @@ import { Hono } from "https://esm.sh/hono";
 import { decodeTagsFromUrl } from "../../shared/utils.ts";
 
 // Use Val.Town's utilities in production, our esbuild version locally
-const isValTown = Deno.env.get("DENO_REGION") !== undefined;
-
+// Try Val.Town utilities first, fall back to local if unavailable
 let readFile: (path: string, baseUrl: string) => Promise<string>;
 let serveFile: (path: string, baseUrl: string) => Promise<Response>;
 
-if (isValTown) {
-  // On Val.Town: use their native utilities (already handle TS transpilation)
+try {
+  // Try to use Val.Town's native utilities (already handle TS transpilation)
   const utils = await import("https://esm.town/v/std/utils@85-main/index.ts");
   readFile = utils.readFile;
   serveFile = utils.serveFile;
-} else {
-  // Locally: use our esbuild-based transpilation
+  console.log("✅ Using Val.Town utilities for file serving");
+} catch {
+  // Fall back to local esbuild-based transpilation
   const localUtils = await import("../utils/file-server.ts");
   readFile = localUtils.readFile;
   serveFile = localUtils.serveFile;
+  console.log("✅ Using local esbuild utilities for file serving");
 }
 
 export const staticRoutes = new Hono();
