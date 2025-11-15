@@ -49,13 +49,13 @@ export function createLocalSqlite(dbPath = ".local/kipclip.db") {
         if (sql.trim().toUpperCase().startsWith("SELECT")) {
           // Deno SQLite returns objects by default, which is what we want
           const rows = db.prepare(sql).all(...args) as SqliteRow[];
-          return { rows };
+          return Promise.resolve({ rows });
         }
 
         // For queries that modify data (INSERT, UPDATE, DELETE, CREATE, etc.)
         // Note: CREATE TABLE IF NOT EXISTS won't throw if table exists
         db.prepare(sql).run(...args);
-        return { rows: [] };
+        return Promise.resolve({ rows: [] });
       } catch (error) {
         // Re-throw error without logging (migrations will handle it)
         throw error;
