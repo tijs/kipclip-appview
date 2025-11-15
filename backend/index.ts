@@ -1,6 +1,6 @@
 import { Hono } from "https://esm.sh/hono";
-import { createATProtoOAuth } from "jsr:@tijs/atproto-oauth-hono@^2.0.1";
-import { DrizzleStorage } from "jsr:@tijs/atproto-oauth-hono@^2.0.1/drizzle";
+import { createATProtoOAuth } from "jsr:@tijs/atproto-oauth-hono@^2.0.2";
+import { DrizzleStorage } from "jsr:@tijs/atproto-oauth-hono@^2.0.2/drizzle";
 import { db, initializeTables } from "./database/db.ts";
 import { staticRoutes } from "./routes/static.ts";
 import { bookmarksApi } from "./routes/bookmarks.ts";
@@ -30,6 +30,7 @@ export const oauth = createATProtoOAuth({
   cookieSecret: COOKIE_SECRET,
   sessionTtl: 60 * 60 * 24 * 30, // 30 days in seconds
   storage: new DrizzleStorage(db),
+  logger: console, // Explicit logger for better debugging
 });
 
 // Note: No canonical-host redirect; app runs purely as a standard website
