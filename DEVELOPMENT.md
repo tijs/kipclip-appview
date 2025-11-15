@@ -11,12 +11,12 @@ The local dev server provides complete full-stack development:
 - ✅ **Database** - Local SQLite with migrations
 - ⚠️ **OAuth Flow** - Requires public URL (see below)
 
-### OAuth Limitations
+### OAuth Setup with ngrok
 
 ATProto OAuth requires a **publicly accessible** client metadata URL. For local
-development:
+development, use ngrok to expose your local server:
 
-**Option 1: Use ngrok (recommended for full OAuth testing)**
+**Setup Steps:**
 
 ```bash
 # In terminal 1: Start dev server
@@ -27,7 +27,14 @@ ngrok http 8000
 
 # Update .env with ngrok URL
 BASE_URL=https://your-random-id.ngrok.io
+
+# Restart dev server to pick up new BASE_URL
+# Ctrl+C in terminal 1, then:
+deno task dev
 ```
+
+**Important:** Always restart the dev server after changing `BASE_URL` in `.env`
+so OAuth redirects work correctly.
 
 **Option 2: Mock authentication (recommended for API development)**
 
