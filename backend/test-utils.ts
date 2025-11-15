@@ -3,9 +3,8 @@
  * Provides helpers for creating test OAuth instances and mock sessions.
  */
 
-import { createATProtoOAuth } from "jsr:@tijs/atproto-oauth-hono@2.0.7";
-import { MemoryStorage } from "jsr:@tijs/atproto-oauth-hono@2.0.7";
-import type { ATProtoOAuthInstance } from "jsr:@tijs/atproto-oauth-hono@2.0.7";
+import { createATProtoOAuth, MemoryStorage } from "jsr:@tijs/atproto-oauth-hono@2.0.8";
+import type { ATProtoOAuthInstance } from "jsr:@tijs/atproto-oauth-hono@2.0.8";
 import type { SessionInterface } from "jsr:@tijs/hono-oauth-sessions@2.1.1";
 
 /**

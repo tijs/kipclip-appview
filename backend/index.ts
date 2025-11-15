@@ -1,7 +1,6 @@
 import { Hono } from "https://esm.sh/hono";
-import { createATProtoOAuth } from "jsr:@tijs/atproto-oauth-hono@2.0.7";
-import { DrizzleStorage } from "jsr:@tijs/atproto-oauth-hono@2.0.7/drizzle";
-import { db, initializeTables } from "./database/db.ts";
+import { createATProtoOAuth, SQLiteStorage } from "jsr:@tijs/atproto-oauth-hono@2.0.8";
+import { db, rawDb, initializeTables } from "./database/db.ts";
 import { staticRoutes } from "./routes/static.ts";
 import { bookmarksApi } from "./routes/bookmarks.ts";
 import { tagsApi } from "./routes/tags.ts";
@@ -23,13 +22,13 @@ if (!COOKIE_SECRET) {
   throw new Error("COOKIE_SECRET environment variable is required");
 }
 
-// Create OAuth integration with DrizzleStorage
+// Create OAuth integration with SQLiteStorage
 export const oauth = createATProtoOAuth({
   baseUrl: BASE_URL,
   appName: "kipclip",
   cookieSecret: COOKIE_SECRET,
   sessionTtl: 60 * 60 * 24 * 30, // 30 days in seconds
-  storage: new DrizzleStorage(db),
+  storage: new SQLiteStorage(rawDb),
   logger: console, // Explicit logger for better debugging
 });
 

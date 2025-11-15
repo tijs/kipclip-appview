@@ -1,5 +1,6 @@
 // Database migrations for kipclip
-// This provides proper schema versioning and safe migrations
+// SQLiteStorage creates the iron_session_storage table automatically
+// This file is kept for future application-specific migrations
 
 import { rawDb } from "./db.ts";
 
@@ -14,25 +15,13 @@ const MIGRATIONS_TABLE = `
 `;
 
 // List of all migrations in order
-const MIGRATIONS = [
-  {
-    version: "001_initial_schema",
-    description: "Create initial OAuth session storage table",
-    sql: `
-      -- Create iron_session_storage table for OAuth sessions
-      CREATE TABLE IF NOT EXISTS iron_session_storage (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL,
-        expires_at INTEGER,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      );
-
-      -- Create index for efficient cleanup of expired sessions
-      CREATE INDEX IF NOT EXISTS idx_iron_session_expires
-      ON iron_session_storage(expires_at);
-    `,
-  },
+// SQLiteStorage handles iron_session_storage table creation
+const MIGRATIONS: Array<{
+  version: string;
+  description: string;
+  sql: string;
+}> = [
+  // Future application-specific migrations will go here
 ];
 
 export async function runMigrations() {
