@@ -38,10 +38,12 @@
     "unstable-sloppy-imports": true
   },
   "tasks": {
+    "dev": "deno run --allow-all --watch backend/dev.ts",
     "quality": "deno fmt && deno lint",
     "deploy": "deno task quality && vt push",
     "check": "deno check --allow-import backend/index.ts frontend/index.tsx",
-    "test": "deno test",
+    "test": "deno test --allow-all",
+    "test:watch": "deno test --allow-all --watch",
     "fmt": "deno fmt",
     "lint": "deno lint"
   }

@@ -51,9 +51,14 @@ export async function runMigrations() {
       args: [],
     });
 
-    // Get executed versions from row arrays (sqlite2 returns arrays, not objects)
+    // Get executed versions - handle both object rows and array rows
     const executedVersions = new Set(
-      executed.rows?.map((row) => row[0] as string) || [],
+      executed.rows?.map((row: any) => {
+        // If row is an array, use first element
+        if (Array.isArray(row)) return row[0] as string;
+        // If row is an object, use the version property
+        return row.version as string;
+      }) || [],
     );
 
     // Run pending migrations
@@ -70,6 +75,7 @@ export async function runMigrations() {
           .filter((stmt) => stmt.length > 0);
 
         // Execute each statement
+        let migrationSucceeded = true;
         for (const statement of statements) {
           try {
             await rawDb.execute({
@@ -77,19 +83,40 @@ export async function runMigrations() {
               args: [],
             });
           } catch (error) {
-            console.warn(
-              `⚠️  Statement warning (likely table exists): ${error.message}`,
-            );
+            // If it's a "table already exists" error, that's fine - continue
+            if (error.message?.includes("already exists")) {
+              console.warn(
+                `⚠️  Table already exists, skipping: ${error.message}`,
+              );
+            } else {
+              // For other errors, mark migration as failed
+              console.error(`❌ Migration statement failed: ${error.message}`);
+              migrationSucceeded = false;
+              throw error;
+            }
           }
         }
 
-        // Record migration as executed
-        await rawDb.execute({
-          sql: "INSERT INTO migrations (version, description) VALUES (?, ?)",
-          args: [migration.version, migration.description],
-        });
-
-        console.log(`✅ Completed migration: ${migration.version}`);
+        // Only record migration if all statements succeeded
+        if (migrationSucceeded) {
+          // Check if migration was already recorded (could happen on retry)
+          try {
+            await rawDb.execute({
+              sql:
+                "INSERT INTO migrations (version, description) VALUES (?, ?)",
+              args: [migration.version, migration.description],
+            });
+            console.log(`✅ Completed migration: ${migration.version}`);
+          } catch (error) {
+            if (error.message?.includes("UNIQUE constraint")) {
+              console.log(
+                `ℹ️  Migration ${migration.version} already recorded`,
+              );
+            } else {
+              throw error;
+            }
+          }
+        }
       }
     }
 

@@ -3,6 +3,12 @@
 .env.local
 .env.*.local
 
+# Local development
+.local/
+*.db
+*.db-shm
+*.db-wal
+
 # Deno
 .deno/
 
