@@ -34,9 +34,7 @@ export function createLocalSqlite(dbPath = ".local/kipclip.db") {
     }
   }
 
-  // Create database with int64 mode to handle JavaScript timestamps (> 2^31)
-  // Without this, timestamps get truncated to 32-bit signed integers
-  const db = new Database(dbPath, { int64: true });
+  const db = new Database(dbPath);
 
   return {
     /**
