@@ -14,9 +14,18 @@ interface SqliteResult {
   rows: unknown[][];
 }
 
+type SqliteBindValue =
+  | string
+  | number
+  | boolean
+  | null
+  | Uint8Array
+  | bigint
+  | Date;
+
 interface ExecuteOptions {
   sql: string;
-  args?: unknown[];
+  args?: SqliteBindValue[];
 }
 
 /**
