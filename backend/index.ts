@@ -29,6 +29,8 @@ if (!COOKIE_SECRET) {
 export const oauth = createATProtoOAuth({
   baseUrl: BASE_URL,
   appName: "kipclip",
+  logoUri:
+    "https://res.cloudinary.com/dru3aznlk/image/upload/v1760692589/kip-vignette_h2jwct.png",
   cookieSecret: COOKIE_SECRET,
   sessionTtl: 60 * 60 * 24 * 14, // 14 days in seconds (max for public clients per AT Protocol OAuth spec)
   storage: new SQLiteStorage(rawDb),
