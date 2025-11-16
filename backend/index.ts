@@ -2,7 +2,7 @@ import { Hono } from "https://esm.sh/hono";
 import {
   createATProtoOAuth,
   SQLiteStorage,
-} from "jsr:@tijs/atproto-oauth-hono@2.2.0";
+} from "jsr:@tijs/atproto-oauth-hono@2.2.1";
 import { initializeTables, rawDb } from "./database/db.ts";
 import { staticRoutes } from "./routes/static.ts";
 import { bookmarksApi } from "./routes/bookmarks.ts";
