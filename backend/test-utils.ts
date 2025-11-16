@@ -6,8 +6,8 @@
 import {
   createATProtoOAuth,
   MemoryStorage,
-} from "jsr:@tijs/atproto-oauth-hono@2.0.10";
-import type { ATProtoOAuthInstance } from "jsr:@tijs/atproto-oauth-hono@2.0.10";
+} from "jsr:@tijs/atproto-oauth-hono@2.0.11";
+import type { ATProtoOAuthInstance } from "jsr:@tijs/atproto-oauth-hono@2.0.11";
 import type { SessionInterface } from "jsr:@tijs/hono-oauth-sessions@2.1.1";
 
 /**

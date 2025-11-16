@@ -10,7 +10,8 @@ interface SqliteRow {
 }
 
 interface SqliteResult {
-  rows: SqliteRow[];
+  columns: string[];
+  rows: unknown[][];
 }
 
 interface ExecuteOptions {
@@ -47,15 +48,28 @@ export function createLocalSqlite(dbPath = ".local/kipclip.db") {
       try {
         // For queries that return data (SELECT)
         if (sql.trim().toUpperCase().startsWith("SELECT")) {
-          // Deno SQLite returns objects by default, which is what we want
-          const rows = db.prepare(sql).all(...args) as SqliteRow[];
-          return Promise.resolve({ rows });
+          // Deno SQLite returns objects, but we need arrays to match Val.Town's API
+          const objectRows = db.prepare(sql).all(...args) as SqliteRow[];
+
+          if (objectRows.length === 0) {
+            return Promise.resolve({ columns: [], rows: [] });
+          }
+
+          // Extract column names from first row
+          const columns = Object.keys(objectRows[0]);
+
+          // Convert object rows to array rows
+          const rows = objectRows.map(obj =>
+            columns.map(col => obj[col])
+          );
+
+          return Promise.resolve({ columns, rows });
         }
 
         // For queries that modify data (INSERT, UPDATE, DELETE, CREATE, etc.)
         // Note: CREATE TABLE IF NOT EXISTS won't throw if table exists
         db.prepare(sql).run(...args);
-        return Promise.resolve({ rows: [] });
+        return Promise.resolve({ columns: [], rows: [] });
       } catch (error) {
         // Re-throw error without logging (migrations will handle it)
         throw error;
