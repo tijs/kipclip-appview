@@ -2,7 +2,7 @@ import { Hono } from "https://esm.sh/hono";
 import {
   createATProtoOAuth,
   SQLiteStorage,
-} from "jsr:@tijs/atproto-oauth-hono@2.1.0";
+} from "jsr:@tijs/atproto-oauth-hono@2.1.1";
 import { initializeTables, rawDb } from "./database/db.ts";
 import { staticRoutes } from "./routes/static.ts";
 import { bookmarksApi } from "./routes/bookmarks.ts";
@@ -30,7 +30,7 @@ export const oauth = createATProtoOAuth({
   baseUrl: BASE_URL,
   appName: "kipclip",
   cookieSecret: COOKIE_SECRET,
-  sessionTtl: 60 * 60 * 24 * 30, // 30 days in seconds
+  sessionTtl: 60 * 60 * 24 * 14, // 14 days in seconds (max for public clients per AT Protocol OAuth spec)
   storage: new SQLiteStorage(rawDb),
   logger: console, // Explicit logger for better debugging
 });

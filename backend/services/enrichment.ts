@@ -1,4 +1,5 @@
 import type { UrlMetadata } from "../../shared/types.ts";
+import { decode } from "https://esm.sh/html-entities@2.5.2";
 
 /**
  * Extracts metadata from a URL by fetching and parsing the HTML
@@ -62,7 +63,7 @@ function parseHtmlMetadata(html: string, url: URL): UrlMetadata {
   // Extract title - try <title> tag first
   const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
   if (titleMatch) {
-    metadata.title = decodeHtmlEntities(titleMatch[1].trim());
+    metadata.title = decode(titleMatch[1].trim());
   }
 
   // Try og:title as fallback
@@ -71,7 +72,7 @@ function parseHtmlMetadata(html: string, url: URL): UrlMetadata {
       /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i,
     );
     if (ogTitleMatch) {
-      metadata.title = decodeHtmlEntities(ogTitleMatch[1].trim());
+      metadata.title = decode(ogTitleMatch[1].trim());
     }
   }
 
@@ -80,7 +81,7 @@ function parseHtmlMetadata(html: string, url: URL): UrlMetadata {
     /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i,
   );
   if (descMatch) {
-    metadata.description = decodeHtmlEntities(descMatch[1].trim());
+    metadata.description = decode(descMatch[1].trim());
   }
 
   // Try og:description as fallback
@@ -89,7 +90,7 @@ function parseHtmlMetadata(html: string, url: URL): UrlMetadata {
       /<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i,
     );
     if (ogDescMatch) {
-      metadata.description = decodeHtmlEntities(ogDescMatch[1].trim());
+      metadata.description = decode(ogDescMatch[1].trim());
     }
   }
 
@@ -114,22 +115,6 @@ function parseHtmlMetadata(html: string, url: URL): UrlMetadata {
   }
 
   return metadata;
-}
-
-/**
- * Decode common HTML entities
- */
-function decodeHtmlEntities(text: string): string {
-  const entities: Record<string, string> = {
-    "&amp;": "&",
-    "&lt;": "<",
-    "&gt;": ">",
-    "&quot;": '"',
-    "&#39;": "'",
-    "&apos;": "'",
-  };
-
-  return text.replace(/&[^;]+;/g, (entity) => entities[entity] || entity);
 }
 
 /**
