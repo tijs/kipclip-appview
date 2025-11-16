@@ -59,9 +59,7 @@ export function createLocalSqlite(dbPath = ".local/kipclip.db") {
           const columns = Object.keys(objectRows[0]);
 
           // Convert object rows to array rows
-          const rows = objectRows.map(obj =>
-            columns.map(col => obj[col])
-          );
+          const rows = objectRows.map((obj) => columns.map((col) => obj[col]));
 
           return Promise.resolve({ columns, rows });
         }

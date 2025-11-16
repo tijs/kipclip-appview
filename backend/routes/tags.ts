@@ -8,7 +8,7 @@ import type {
   UpdateTagRequest,
   UpdateTagResponse,
 } from "../../shared/types.ts";
-import { getAuthSession, unauthorizedResponse } from "../services/auth.ts";
+import { oauth } from "../index.ts";
 
 const TAG_COLLECTION = "com.kipclip.tag";
 
@@ -20,9 +20,20 @@ export const tagsApi = new Hono();
 tagsApi.get("/tags", async (c) => {
   try {
     // Get authenticated session (automatically refreshes expired tokens)
-    const oauthSession = await getAuthSession(c.req.raw);
+    const oauthSession = await oauth.sessions.getOAuthSessionFromRequest(
+      c.req.raw,
+    );
     if (!oauthSession) {
-      return unauthorizedResponse(c);
+      const response = c.json(
+        {
+          error: "Authentication required",
+          message: "Please log in again",
+          code: "SESSION_EXPIRED",
+        },
+        401,
+      );
+      response.headers.set("Set-Cookie", oauth.sessions.getClearCookieHeader());
+      return response;
     }
 
     // List records from the tag collection using makeRequest
@@ -73,9 +84,20 @@ tagsApi.get("/tags", async (c) => {
 tagsApi.post("/tags", async (c) => {
   try {
     // Get authenticated session (automatically refreshes expired tokens)
-    const oauthSession = await getAuthSession(c.req.raw);
+    const oauthSession = await oauth.sessions.getOAuthSessionFromRequest(
+      c.req.raw,
+    );
     if (!oauthSession) {
-      return unauthorizedResponse(c);
+      const response = c.json(
+        {
+          error: "Authentication required",
+          message: "Please log in again",
+          code: "SESSION_EXPIRED",
+        },
+        401,
+      );
+      response.headers.set("Set-Cookie", oauth.sessions.getClearCookieHeader());
+      return response;
     }
 
     const body: AddTagRequest = await c.req.json();
@@ -147,9 +169,20 @@ tagsApi.post("/tags", async (c) => {
 tagsApi.put("/tags/:rkey", async (c) => {
   try {
     // Get authenticated session (automatically refreshes expired tokens)
-    const oauthSession = await getAuthSession(c.req.raw);
+    const oauthSession = await oauth.sessions.getOAuthSessionFromRequest(
+      c.req.raw,
+    );
     if (!oauthSession) {
-      return unauthorizedResponse(c);
+      const response = c.json(
+        {
+          error: "Authentication required",
+          message: "Please log in again",
+          code: "SESSION_EXPIRED",
+        },
+        401,
+      );
+      response.headers.set("Set-Cookie", oauth.sessions.getClearCookieHeader());
+      return response;
     }
 
     const rkey = c.req.param("rkey");
@@ -327,9 +360,20 @@ tagsApi.put("/tags/:rkey", async (c) => {
 tagsApi.get("/tags/:rkey/usage", async (c) => {
   try {
     // Get authenticated session (automatically refreshes expired tokens)
-    const oauthSession = await getAuthSession(c.req.raw);
+    const oauthSession = await oauth.sessions.getOAuthSessionFromRequest(
+      c.req.raw,
+    );
     if (!oauthSession) {
-      return unauthorizedResponse(c);
+      const response = c.json(
+        {
+          error: "Authentication required",
+          message: "Please log in again",
+          code: "SESSION_EXPIRED",
+        },
+        401,
+      );
+      response.headers.set("Set-Cookie", oauth.sessions.getClearCookieHeader());
+      return response;
     }
 
     const rkey = c.req.param("rkey");
@@ -403,9 +447,20 @@ tagsApi.get("/tags/:rkey/usage", async (c) => {
 tagsApi.delete("/tags/:rkey", async (c) => {
   try {
     // Get authenticated session (automatically refreshes expired tokens)
-    const oauthSession = await getAuthSession(c.req.raw);
+    const oauthSession = await oauth.sessions.getOAuthSessionFromRequest(
+      c.req.raw,
+    );
     if (!oauthSession) {
-      return unauthorizedResponse(c);
+      const response = c.json(
+        {
+          error: "Authentication required",
+          message: "Please log in again",
+          code: "SESSION_EXPIRED",
+        },
+        401,
+      );
+      response.headers.set("Set-Cookie", oauth.sessions.getClearCookieHeader());
+      return response;
     }
 
     const rkey = c.req.param("rkey");

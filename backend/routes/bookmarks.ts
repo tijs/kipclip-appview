@@ -8,7 +8,7 @@ import type {
   UpdateBookmarkTagsResponse,
 } from "../../shared/types.ts";
 import { extractUrlMetadata } from "../services/enrichment.ts";
-import { getAuthSession, unauthorizedResponse } from "../services/auth.ts";
+import { oauth } from "../index.ts";
 
 const BOOKMARK_COLLECTION = "community.lexicon.bookmarks.bookmark";
 
@@ -20,9 +20,20 @@ export const bookmarksApi = new Hono();
 bookmarksApi.get("/bookmarks", async (c) => {
   try {
     // Get authenticated session (automatically refreshes expired tokens)
-    const oauthSession = await getAuthSession(c.req.raw);
+    const oauthSession = await oauth.sessions.getOAuthSessionFromRequest(
+      c.req.raw,
+    );
     if (!oauthSession) {
-      return unauthorizedResponse(c);
+      const response = c.json(
+        {
+          error: "Authentication required",
+          message: "Please log in again",
+          code: "SESSION_EXPIRED",
+        },
+        401,
+      );
+      response.headers.set("Set-Cookie", oauth.sessions.getClearCookieHeader());
+      return response;
     }
 
     // List records from the bookmark collection using makeRequest
@@ -77,9 +88,20 @@ bookmarksApi.get("/bookmarks", async (c) => {
 bookmarksApi.post("/bookmarks", async (c) => {
   try {
     // Get authenticated session (automatically refreshes expired tokens)
-    const oauthSession = await getAuthSession(c.req.raw);
+    const oauthSession = await oauth.sessions.getOAuthSessionFromRequest(
+      c.req.raw,
+    );
     if (!oauthSession) {
-      return unauthorizedResponse(c);
+      const response = c.json(
+        {
+          error: "Authentication required",
+          message: "Please log in again",
+          code: "SESSION_EXPIRED",
+        },
+        401,
+      );
+      response.headers.set("Set-Cookie", oauth.sessions.getClearCookieHeader());
+      return response;
     }
 
     const body: AddBookmarkRequest = await c.req.json();
@@ -166,9 +188,20 @@ bookmarksApi.post("/bookmarks", async (c) => {
 bookmarksApi.patch("/bookmarks/:rkey", async (c) => {
   try {
     // Get authenticated session (automatically refreshes expired tokens)
-    const oauthSession = await getAuthSession(c.req.raw);
+    const oauthSession = await oauth.sessions.getOAuthSessionFromRequest(
+      c.req.raw,
+    );
     if (!oauthSession) {
-      return unauthorizedResponse(c);
+      const response = c.json(
+        {
+          error: "Authentication required",
+          message: "Please log in again",
+          code: "SESSION_EXPIRED",
+        },
+        401,
+      );
+      response.headers.set("Set-Cookie", oauth.sessions.getClearCookieHeader());
+      return response;
     }
 
     const rkey = c.req.param("rkey");
@@ -276,9 +309,20 @@ bookmarksApi.patch("/bookmarks/:rkey", async (c) => {
 bookmarksApi.delete("/bookmarks/:rkey", async (c) => {
   try {
     // Get authenticated session (automatically refreshes expired tokens)
-    const oauthSession = await getAuthSession(c.req.raw);
+    const oauthSession = await oauth.sessions.getOAuthSessionFromRequest(
+      c.req.raw,
+    );
     if (!oauthSession) {
-      return unauthorizedResponse(c);
+      const response = c.json(
+        {
+          error: "Authentication required",
+          message: "Please log in again",
+          code: "SESSION_EXPIRED",
+        },
+        401,
+      );
+      response.headers.set("Set-Cookie", oauth.sessions.getClearCookieHeader());
+      return response;
     }
 
     const rkey = c.req.param("rkey");
