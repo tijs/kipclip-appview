@@ -6,3 +6,6 @@
 node_modules
 vendor
 resources
+*.db
+*.db-shm
+*.db-wal
