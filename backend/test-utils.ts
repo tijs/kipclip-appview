@@ -62,7 +62,7 @@ export function createMockSession(
     refreshToken: "mock-refresh-token",
     pdsUrl: "https://bsky.social",
     timeUntilExpiry: 3600000, // 1 hour in milliseconds
-    makeRequest: async () => new Response(),
+    makeRequest: () => Promise.resolve(new Response()),
     toJSON: () => ({
       did: "did:plc:test123",
       handle: "test.bsky.social",
