@@ -6,8 +6,8 @@
 import {
   createATProtoOAuth,
   MemoryStorage,
-} from "jsr:@tijs/atproto-oauth-hono@2.0.11";
-import type { ATProtoOAuthInstance } from "jsr:@tijs/atproto-oauth-hono@2.0.11";
+} from "jsr:@tijs/atproto-oauth-hono@2.3.0";
+import type { ATProtoOAuthInstance } from "jsr:@tijs/atproto-oauth-hono@2.3.0";
 import type { SessionInterface } from "jsr:@tijs/hono-oauth-sessions@2.1.1";
 
 /**
@@ -47,7 +47,7 @@ export function createTestOAuth(): ATProtoOAuthInstance {
  *
  * // Create session for specific user
  * const session = createMockSession({
- *   sub: "did:plc:customuser123",
+ *   did: "did:plc:customuser123",
  *   handle: "custom.test",
  * });
  * ```
@@ -55,35 +55,19 @@ export function createTestOAuth(): ATProtoOAuthInstance {
 export function createMockSession(
   overrides?: Partial<SessionInterface>,
 ): SessionInterface {
-  const now = Math.floor(Date.now() / 1000);
   const defaultSession: SessionInterface = {
-    sub: "did:plc:test123",
+    did: "did:plc:test123",
     handle: "test.bsky.social",
     accessToken: "mock-access-token",
     refreshToken: "mock-refresh-token",
-    tokenType: "DPoP",
-    scope: "atproto",
-    expiresAt: now + 3600, // 1 hour from now
-    dpopKey: {
-      kty: "EC",
-      crv: "P-256",
-      x: "mock-x-value",
-      y: "mock-y-value",
-      d: "mock-d-value",
-    },
-    serverMetadata: {
-      issuer: "https://bsky.social",
-      authorization_endpoint: "https://bsky.social/oauth/authorize",
-      token_endpoint: "https://bsky.social/oauth/token",
-      pushed_authorization_request_endpoint: "https://bsky.social/oauth/par",
-      dpop_signing_alg_values_supported: ["ES256"],
-      grant_types_supported: ["authorization_code", "refresh_token"],
-      response_types_supported: ["code"],
-      scopes_supported: ["atproto"],
-      token_endpoint_auth_methods_supported: ["none"],
-      authorization_response_iss_parameter_supported: true,
-      require_pushed_authorization_requests: true,
-    },
+    pdsUrl: "https://bsky.social",
+    timeUntilExpiry: 3600000, // 1 hour in milliseconds
+    makeRequest: async () => new Response(),
+    toJSON: () => ({
+      did: "did:plc:test123",
+      handle: "test.bsky.social",
+      pdsUrl: "https://bsky.social",
+    }),
   };
 
   return { ...defaultSession, ...overrides };

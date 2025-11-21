@@ -80,11 +80,15 @@ Cloudinary-hosted mascot image.
 
 ## OAuth Flow
 
+kipclip uses [@tijs/atproto-oauth-hono](https://jsr.io/@tijs/atproto-oauth-hono) for AT Protocol authentication.
+
 1. User enters their AT Protocol handle
 2. App redirects to `/login?handle=user.bsky.social`
 3. OAuth package handles authentication with user's PDS
 4. Session stored in Val.town SQLite (30 days)
 5. User can now view/add bookmarks
+
+For implementation details, see the [package documentation](https://jsr.io/@tijs/atproto-oauth-hono).
 
 ## API Endpoints
 
