@@ -1,3 +1,6 @@
+// Load test environment before importing application code
+import "../test-setup.ts";
+
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { rssApi } from "./rss.ts";
 

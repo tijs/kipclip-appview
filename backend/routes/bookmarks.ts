@@ -8,7 +8,7 @@ import type {
   UpdateBookmarkTagsResponse,
 } from "../../shared/types.ts";
 import { extractUrlMetadata } from "../services/enrichment.ts";
-import { oauth } from "../index.ts";
+import { oauth } from "../oauth-config.ts";
 
 const BOOKMARK_COLLECTION = "community.lexicon.bookmarks.bookmark";
 

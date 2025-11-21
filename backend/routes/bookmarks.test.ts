@@ -3,11 +3,14 @@
  * Uses MemoryStorage and mocked OAuth sessions for fast, isolated testing.
  */
 
+// Load test environment before importing application code
+import "../test-setup.ts";
+
 import { assertEquals } from "jsr:@std/assert@1";
 import { bookmarksApi } from "./bookmarks.ts";
 
 Deno.test("GET /bookmarks - returns 401 when not authenticated", async () => {
-  const req = new Request("https://test.val.town/api/bookmarks");
+  const req = new Request("https://test.val.town/bookmarks");
   const res = await bookmarksApi.fetch(req);
 
   assertEquals(res.status, 401);
@@ -17,7 +20,7 @@ Deno.test("GET /bookmarks - returns 401 when not authenticated", async () => {
 
 Deno.test("GET /bookmarks - requires authentication", async () => {
   // Make request without session cookie
-  const req = new Request("https://test.val.town/api/bookmarks", {
+  const req = new Request("https://test.val.town/bookmarks", {
     method: "GET",
   });
 

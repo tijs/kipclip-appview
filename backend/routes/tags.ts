@@ -8,7 +8,7 @@ import type {
   UpdateTagRequest,
   UpdateTagResponse,
 } from "../../shared/types.ts";
-import { oauth } from "../index.ts";
+import { oauth } from "../oauth-config.ts";
 
 const TAG_COLLECTION = "com.kipclip.tag";
 
