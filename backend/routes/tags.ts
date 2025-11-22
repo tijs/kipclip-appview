@@ -8,7 +8,10 @@ import type {
   UpdateTagRequest,
   UpdateTagResponse,
 } from "../../shared/types.ts";
-import { oauth } from "../oauth-config.ts";
+import {
+  getClearSessionCookie,
+  getSessionFromRequest,
+} from "../utils/session.ts";
 
 const TAG_COLLECTION = "com.kipclip.tag";
 
@@ -19,20 +22,20 @@ export const tagsApi = new Hono();
  */
 tagsApi.get("/tags", async (c) => {
   try {
-    // Get authenticated session (automatically refreshes expired tokens)
-    const oauthSession = await oauth.sessions.getOAuthSessionFromRequest(
+    // Get authenticated session with detailed error logging
+    const { session: oauthSession, error } = await getSessionFromRequest(
       c.req.raw,
     );
     if (!oauthSession) {
       const response = c.json(
         {
           error: "Authentication required",
-          message: "Please log in again",
-          code: "SESSION_EXPIRED",
+          message: error?.message || "Please log in again",
+          code: error?.type || "SESSION_EXPIRED",
         },
         401,
       );
-      response.headers.set("Set-Cookie", oauth.sessions.getClearCookieHeader());
+      response.headers.set("Set-Cookie", getClearSessionCookie());
       return response;
     }
 
@@ -83,20 +86,20 @@ tagsApi.get("/tags", async (c) => {
  */
 tagsApi.post("/tags", async (c) => {
   try {
-    // Get authenticated session (automatically refreshes expired tokens)
-    const oauthSession = await oauth.sessions.getOAuthSessionFromRequest(
+    // Get authenticated session with detailed error logging
+    const { session: oauthSession, error } = await getSessionFromRequest(
       c.req.raw,
     );
     if (!oauthSession) {
       const response = c.json(
         {
           error: "Authentication required",
-          message: "Please log in again",
-          code: "SESSION_EXPIRED",
+          message: error?.message || "Please log in again",
+          code: error?.type || "SESSION_EXPIRED",
         },
         401,
       );
-      response.headers.set("Set-Cookie", oauth.sessions.getClearCookieHeader());
+      response.headers.set("Set-Cookie", getClearSessionCookie());
       return response;
     }
 
@@ -168,20 +171,20 @@ tagsApi.post("/tags", async (c) => {
  */
 tagsApi.put("/tags/:rkey", async (c) => {
   try {
-    // Get authenticated session (automatically refreshes expired tokens)
-    const oauthSession = await oauth.sessions.getOAuthSessionFromRequest(
+    // Get authenticated session with detailed error logging
+    const { session: oauthSession, error } = await getSessionFromRequest(
       c.req.raw,
     );
     if (!oauthSession) {
       const response = c.json(
         {
           error: "Authentication required",
-          message: "Please log in again",
-          code: "SESSION_EXPIRED",
+          message: error?.message || "Please log in again",
+          code: error?.type || "SESSION_EXPIRED",
         },
         401,
       );
-      response.headers.set("Set-Cookie", oauth.sessions.getClearCookieHeader());
+      response.headers.set("Set-Cookie", getClearSessionCookie());
       return response;
     }
 
@@ -359,20 +362,20 @@ tagsApi.put("/tags/:rkey", async (c) => {
  */
 tagsApi.get("/tags/:rkey/usage", async (c) => {
   try {
-    // Get authenticated session (automatically refreshes expired tokens)
-    const oauthSession = await oauth.sessions.getOAuthSessionFromRequest(
+    // Get authenticated session with detailed error logging
+    const { session: oauthSession, error } = await getSessionFromRequest(
       c.req.raw,
     );
     if (!oauthSession) {
       const response = c.json(
         {
           error: "Authentication required",
-          message: "Please log in again",
-          code: "SESSION_EXPIRED",
+          message: error?.message || "Please log in again",
+          code: error?.type || "SESSION_EXPIRED",
         },
         401,
       );
-      response.headers.set("Set-Cookie", oauth.sessions.getClearCookieHeader());
+      response.headers.set("Set-Cookie", getClearSessionCookie());
       return response;
     }
 
@@ -446,20 +449,20 @@ tagsApi.get("/tags/:rkey/usage", async (c) => {
  */
 tagsApi.delete("/tags/:rkey", async (c) => {
   try {
-    // Get authenticated session (automatically refreshes expired tokens)
-    const oauthSession = await oauth.sessions.getOAuthSessionFromRequest(
+    // Get authenticated session with detailed error logging
+    const { session: oauthSession, error } = await getSessionFromRequest(
       c.req.raw,
     );
     if (!oauthSession) {
       const response = c.json(
         {
           error: "Authentication required",
-          message: "Please log in again",
-          code: "SESSION_EXPIRED",
+          message: error?.message || "Please log in again",
+          code: error?.type || "SESSION_EXPIRED",
         },
         401,
       );
-      response.headers.set("Set-Cookie", oauth.sessions.getClearCookieHeader());
+      response.headers.set("Set-Cookie", getClearSessionCookie());
       return response;
     }
 

@@ -8,7 +8,10 @@ import type {
   UpdateBookmarkTagsResponse,
 } from "../../shared/types.ts";
 import { extractUrlMetadata } from "../services/enrichment.ts";
-import { oauth } from "../oauth-config.ts";
+import {
+  getClearSessionCookie,
+  getSessionFromRequest,
+} from "../utils/session.ts";
 
 const BOOKMARK_COLLECTION = "community.lexicon.bookmarks.bookmark";
 
@@ -19,20 +22,20 @@ export const bookmarksApi = new Hono();
  */
 bookmarksApi.get("/bookmarks", async (c) => {
   try {
-    // Get authenticated session (automatically refreshes expired tokens)
-    const oauthSession = await oauth.sessions.getOAuthSessionFromRequest(
+    // Get authenticated session with detailed error logging
+    const { session: oauthSession, error } = await getSessionFromRequest(
       c.req.raw,
     );
     if (!oauthSession) {
       const response = c.json(
         {
           error: "Authentication required",
-          message: "Please log in again",
-          code: "SESSION_EXPIRED",
+          message: error?.message || "Please log in again",
+          code: error?.type || "SESSION_EXPIRED",
         },
         401,
       );
-      response.headers.set("Set-Cookie", oauth.sessions.getClearCookieHeader());
+      response.headers.set("Set-Cookie", getClearSessionCookie());
       return response;
     }
 
@@ -87,20 +90,20 @@ bookmarksApi.get("/bookmarks", async (c) => {
  */
 bookmarksApi.post("/bookmarks", async (c) => {
   try {
-    // Get authenticated session (automatically refreshes expired tokens)
-    const oauthSession = await oauth.sessions.getOAuthSessionFromRequest(
+    // Get authenticated session with detailed error logging
+    const { session: oauthSession, error } = await getSessionFromRequest(
       c.req.raw,
     );
     if (!oauthSession) {
       const response = c.json(
         {
           error: "Authentication required",
-          message: "Please log in again",
-          code: "SESSION_EXPIRED",
+          message: error?.message || "Please log in again",
+          code: error?.type || "SESSION_EXPIRED",
         },
         401,
       );
-      response.headers.set("Set-Cookie", oauth.sessions.getClearCookieHeader());
+      response.headers.set("Set-Cookie", getClearSessionCookie());
       return response;
     }
 
@@ -187,20 +190,20 @@ bookmarksApi.post("/bookmarks", async (c) => {
  */
 bookmarksApi.patch("/bookmarks/:rkey", async (c) => {
   try {
-    // Get authenticated session (automatically refreshes expired tokens)
-    const oauthSession = await oauth.sessions.getOAuthSessionFromRequest(
+    // Get authenticated session with detailed error logging
+    const { session: oauthSession, error } = await getSessionFromRequest(
       c.req.raw,
     );
     if (!oauthSession) {
       const response = c.json(
         {
           error: "Authentication required",
-          message: "Please log in again",
-          code: "SESSION_EXPIRED",
+          message: error?.message || "Please log in again",
+          code: error?.type || "SESSION_EXPIRED",
         },
         401,
       );
-      response.headers.set("Set-Cookie", oauth.sessions.getClearCookieHeader());
+      response.headers.set("Set-Cookie", getClearSessionCookie());
       return response;
     }
 
@@ -308,20 +311,20 @@ bookmarksApi.patch("/bookmarks/:rkey", async (c) => {
  */
 bookmarksApi.delete("/bookmarks/:rkey", async (c) => {
   try {
-    // Get authenticated session (automatically refreshes expired tokens)
-    const oauthSession = await oauth.sessions.getOAuthSessionFromRequest(
+    // Get authenticated session with detailed error logging
+    const { session: oauthSession, error } = await getSessionFromRequest(
       c.req.raw,
     );
     if (!oauthSession) {
       const response = c.json(
         {
           error: "Authentication required",
-          message: "Please log in again",
-          code: "SESSION_EXPIRED",
+          message: error?.message || "Please log in again",
+          code: error?.type || "SESSION_EXPIRED",
         },
         401,
       );
-      response.headers.set("Set-Cookie", oauth.sessions.getClearCookieHeader());
+      response.headers.set("Set-Cookie", getClearSessionCookie());
       return response;
     }
 

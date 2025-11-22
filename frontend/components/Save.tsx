@@ -34,6 +34,20 @@ export function Save() {
           did: data.did,
           handle: data.handle,
         });
+      } else {
+        // Session check failed - log for debugging
+        console.warn("Session check failed:", {
+          status: response.status,
+          statusText: response.statusText,
+        });
+
+        // Try to get error details
+        try {
+          const errorData = await response.json();
+          console.warn("Session error details:", errorData);
+        } catch {
+          // Ignore JSON parse errors
+        }
       }
     } catch (error) {
       console.error("Failed to check session:", error);
@@ -61,6 +75,14 @@ export function Save() {
 
       // If session expired, redirect to login with current page
       if (response.status === 401) {
+        // Log error details for debugging
+        try {
+          const errorData = await response.json();
+          console.warn("Authentication error during save:", errorData);
+        } catch {
+          // Ignore JSON parse errors
+        }
+
         const loginUrl = `/login?redirect=${
           encodeURIComponent(
             globalThis.location.pathname + globalThis.location.search,
@@ -72,7 +94,8 @@ export function Save() {
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || "Failed to add bookmark");
+        console.error("Failed to save bookmark:", data);
+        throw new Error(data.message || data.error || "Failed to add bookmark");
       }
 
       setSaved(true);

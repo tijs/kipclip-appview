@@ -1,13 +1,65 @@
 /** @jsxImportSource https://esm.sh/react */
 import { useState } from "https://esm.sh/react";
 
+/**
+ * Validate an AT Protocol handle format.
+ * Valid formats:
+ * - user.bsky.social
+ * - example.com
+ * - subdomain.example.com
+ */
+function validateHandle(handle: string): { valid: boolean; error?: string } {
+  const trimmed = handle.trim();
+
+  if (!trimmed) {
+    return { valid: false, error: "Handle is required" };
+  }
+
+  // Handle must contain at least one dot
+  if (!trimmed.includes(".")) {
+    return {
+      valid: false,
+      error: "Handle must include a domain (e.g., alice.bsky.social)",
+    };
+  }
+
+  // Basic format check: alphanumeric, dots, hyphens only
+  const validPattern = /^[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]$/;
+  if (!validPattern.test(trimmed)) {
+    return {
+      valid: false,
+      error: "Handle contains invalid characters",
+    };
+  }
+
+  // Check for consecutive dots or dots at start/end (already handled by pattern above)
+  if (trimmed.includes("..")) {
+    return {
+      valid: false,
+      error: "Handle cannot contain consecutive dots",
+    };
+  }
+
+  return { valid: true };
+}
+
 export function Login() {
   const [handle, setHandle] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function handleLogin(e: React.FormEvent) {
     e.preventDefault();
+    setError(null);
+
     if (!handle.trim()) return;
+
+    // Validate handle format
+    const validation = validateHandle(handle);
+    if (!validation.valid) {
+      setError(validation.error || "Invalid handle format");
+      return;
+    }
 
     setLoading(true);
     try {
@@ -15,7 +67,7 @@ export function Login() {
       const params = new URLSearchParams(globalThis.location.search);
       const redirect = params.get("redirect");
 
-      let loginUrl = `/login?handle=${encodeURIComponent(handle)}`;
+      let loginUrl = `/login?handle=${encodeURIComponent(handle.trim())}`;
       if (redirect) {
         loginUrl += `&redirect=${encodeURIComponent(redirect)}`;
       }
@@ -24,6 +76,7 @@ export function Login() {
       globalThis.location.href = loginUrl;
     } catch (error) {
       console.error("Login failed:", error);
+      setError("Login failed. Please try again.");
       setLoading(false);
     }
   }
@@ -68,6 +121,12 @@ export function Login() {
                 autoFocus
               />
             </div>
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                {error}
+              </div>
+            )}
 
             <button
               type="submit"

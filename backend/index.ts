@@ -6,6 +6,7 @@ import { bookmarksApi } from "./routes/bookmarks.ts";
 import { tagsApi } from "./routes/tags.ts";
 import { sharedApi } from "./routes/shared.ts";
 import { rssApi } from "./routes/rss.ts";
+import { debugApi } from "./routes/debug.ts";
 
 // Run database migrations on startup
 await initializeTables();
@@ -30,6 +31,9 @@ app.route("/api", tagsApi);
 
 // Mount shared bookmarks API (public, no auth)
 app.route("/api", sharedApi);
+
+// Mount debug API (for troubleshooting)
+app.route("/api", debugApi);
 
 // Mount RSS feeds (must come before static routes to match /share/*/rss)
 app.route("/", rssApi);
