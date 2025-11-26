@@ -1,5 +1,5 @@
 /** @jsxImportSource https://esm.sh/react */
-import { useState } from "https://esm.sh/react";
+import { useEffect, useRef, useState } from "https://esm.sh/react";
 
 /**
  * Validate an AT Protocol handle format.
@@ -47,15 +47,34 @@ export function Login() {
   const [handle, setHandle] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Sync handle state when the Web Component updates the input value
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+
+    // The actor-typeahead component sets input.value directly,
+    // so we need to listen for input events to sync React state
+    const handleInput = () => {
+      setHandle(input.value);
+    };
+
+    input.addEventListener("input", handleInput);
+    return () => input.removeEventListener("input", handleInput);
+  }, []);
 
   function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
-    if (!handle.trim()) return;
+    // Read directly from input in case Web Component updated it without firing input event
+    const currentHandle = inputRef.current?.value || handle;
+
+    if (!currentHandle.trim()) return;
 
     // Validate handle format
-    const validation = validateHandle(handle);
+    const validation = validateHandle(currentHandle);
     if (!validation.valid) {
       setError(validation.error || "Invalid handle format");
       return;
@@ -67,7 +86,9 @@ export function Login() {
       const params = new URLSearchParams(globalThis.location.search);
       const redirect = params.get("redirect");
 
-      let loginUrl = `/login?handle=${encodeURIComponent(handle.trim())}`;
+      let loginUrl = `/login?handle=${
+        encodeURIComponent(currentHandle.trim())
+      }`;
       if (redirect) {
         loginUrl += `&redirect=${encodeURIComponent(redirect)}`;
       }
@@ -110,16 +131,18 @@ export function Login() {
               >
                 Your Bluesky or AT Protocol handle
               </label>
-              <input
-                type="text"
-                id="handle"
-                value={handle}
-                onChange={(e) => setHandle(e.target.value)}
-                placeholder="alice.bsky.social or your-domain.com"
-                className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-coral focus:border-transparent outline-none transition"
-                disabled={loading}
-                autoFocus
-              />
+              {/* @ts-ignore - actor-typeahead is a custom element */}
+              <actor-typeahead>
+                <input
+                  ref={inputRef}
+                  type="text"
+                  id="handle"
+                  placeholder="alice.bsky.social or your-domain.com"
+                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-coral focus:border-transparent outline-none transition"
+                  disabled={loading}
+                  autoFocus
+                />
+              </actor-typeahead>
             </div>
 
             {error && (

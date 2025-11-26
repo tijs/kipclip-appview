@@ -105,3 +105,14 @@ body {
     transform: translateY(0);
   }
 }
+
+/* Actor typeahead autocomplete - kipclip themed */
+actor-typeahead {
+  --color-background: #ffffff;
+  --color-border: var(--light-gray);
+  --color-shadow: #000000;
+  --color-hover: #fff1f1;
+  --color-avatar-fallback: #fecaca;
+  --radius: 8px;
+  --padding-menu: 4px;
+}
