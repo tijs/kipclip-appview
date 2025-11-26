@@ -28,7 +28,8 @@ Deno.test("GET /bookmarks - requires authentication", async () => {
 
   assertEquals(res.status, 401);
   const data = await res.json();
-  assertEquals(data.code, "SESSION_EXPIRED");
+  // Returns NO_COOKIE when no session cookie is present (more precise error type)
+  assertEquals(data.code, "NO_COOKIE");
 });
 
 // Note: Full integration tests with real PDS would go in a separate integration test file

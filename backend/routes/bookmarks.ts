@@ -18,14 +18,28 @@ const BOOKMARK_COLLECTION = "community.lexicon.bookmarks.bookmark";
 export const bookmarksApi = new Hono();
 
 /**
+ * Helper to set session refresh cookie on response
+ */
+function setSessionCookie(
+  response: Response,
+  setCookieHeader: string | undefined,
+): Response {
+  if (setCookieHeader) {
+    response.headers.set("Set-Cookie", setCookieHeader);
+  }
+  return response;
+}
+
+/**
  * List user's bookmarks
  */
 bookmarksApi.get("/bookmarks", async (c) => {
   try {
     // Get authenticated session with detailed error logging
-    const { session: oauthSession, error } = await getSessionFromRequest(
-      c.req.raw,
-    );
+    const { session: oauthSession, setCookieHeader, error } =
+      await getSessionFromRequest(
+        c.req.raw,
+      );
     if (!oauthSession) {
       const response = c.json(
         {
@@ -72,7 +86,7 @@ bookmarksApi.get("/bookmarks", async (c) => {
     );
 
     const result: ListBookmarksResponse = { bookmarks };
-    return c.json(result);
+    return setSessionCookie(c.json(result), setCookieHeader);
   } catch (error: any) {
     console.error("Error listing bookmarks:", error);
 
@@ -91,9 +105,10 @@ bookmarksApi.get("/bookmarks", async (c) => {
 bookmarksApi.post("/bookmarks", async (c) => {
   try {
     // Get authenticated session with detailed error logging
-    const { session: oauthSession, error } = await getSessionFromRequest(
-      c.req.raw,
-    );
+    const { session: oauthSession, setCookieHeader, error } =
+      await getSessionFromRequest(
+        c.req.raw,
+      );
     if (!oauthSession) {
       const response = c.json(
         {
@@ -178,7 +193,7 @@ bookmarksApi.post("/bookmarks", async (c) => {
       bookmark,
     };
 
-    return c.json(result);
+    return setSessionCookie(c.json(result), setCookieHeader);
   } catch (error: any) {
     console.error("Error creating bookmark:", error);
     return c.json({ error: error.message }, 500);
@@ -191,9 +206,10 @@ bookmarksApi.post("/bookmarks", async (c) => {
 bookmarksApi.patch("/bookmarks/:rkey", async (c) => {
   try {
     // Get authenticated session with detailed error logging
-    const { session: oauthSession, error } = await getSessionFromRequest(
-      c.req.raw,
-    );
+    const { session: oauthSession, setCookieHeader, error } =
+      await getSessionFromRequest(
+        c.req.raw,
+      );
     if (!oauthSession) {
       const response = c.json(
         {
@@ -299,7 +315,7 @@ bookmarksApi.patch("/bookmarks/:rkey", async (c) => {
       bookmark,
     };
 
-    return c.json(result);
+    return setSessionCookie(c.json(result), setCookieHeader);
   } catch (error: any) {
     console.error("Error updating bookmark tags:", error);
     return c.json({ error: error.message }, 500);
@@ -312,9 +328,10 @@ bookmarksApi.patch("/bookmarks/:rkey", async (c) => {
 bookmarksApi.delete("/bookmarks/:rkey", async (c) => {
   try {
     // Get authenticated session with detailed error logging
-    const { session: oauthSession, error } = await getSessionFromRequest(
-      c.req.raw,
-    );
+    const { session: oauthSession, setCookieHeader, error } =
+      await getSessionFromRequest(
+        c.req.raw,
+      );
     if (!oauthSession) {
       const response = c.json(
         {
@@ -350,7 +367,7 @@ bookmarksApi.delete("/bookmarks/:rkey", async (c) => {
       throw new Error(`Failed to delete record: ${errorText}`);
     }
 
-    return c.json({ success: true });
+    return setSessionCookie(c.json({ success: true }), setCookieHeader);
   } catch (error: any) {
     console.error("Error deleting bookmark:", error);
     return c.json({ error: error.message }, 500);

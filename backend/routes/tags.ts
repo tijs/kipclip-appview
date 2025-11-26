@@ -18,14 +18,28 @@ const TAG_COLLECTION = "com.kipclip.tag";
 export const tagsApi = new Hono();
 
 /**
+ * Helper to set session refresh cookie on response
+ */
+function setSessionCookie(
+  response: Response,
+  setCookieHeader: string | undefined,
+): Response {
+  if (setCookieHeader) {
+    response.headers.set("Set-Cookie", setCookieHeader);
+  }
+  return response;
+}
+
+/**
  * List user's tags
  */
 tagsApi.get("/tags", async (c) => {
   try {
     // Get authenticated session with detailed error logging
-    const { session: oauthSession, error } = await getSessionFromRequest(
-      c.req.raw,
-    );
+    const { session: oauthSession, setCookieHeader, error } =
+      await getSessionFromRequest(
+        c.req.raw,
+      );
     if (!oauthSession) {
       const response = c.json(
         {
@@ -68,7 +82,7 @@ tagsApi.get("/tags", async (c) => {
     );
 
     const result: ListTagsResponse = { tags };
-    return c.json(result);
+    return setSessionCookie(c.json(result), setCookieHeader);
   } catch (error: any) {
     console.error("Error listing tags:", error);
 
@@ -87,9 +101,10 @@ tagsApi.get("/tags", async (c) => {
 tagsApi.post("/tags", async (c) => {
   try {
     // Get authenticated session with detailed error logging
-    const { session: oauthSession, error } = await getSessionFromRequest(
-      c.req.raw,
-    );
+    const { session: oauthSession, setCookieHeader, error } =
+      await getSessionFromRequest(
+        c.req.raw,
+      );
     if (!oauthSession) {
       const response = c.json(
         {
@@ -158,7 +173,7 @@ tagsApi.post("/tags", async (c) => {
       tag,
     };
 
-    return c.json(result);
+    return setSessionCookie(c.json(result), setCookieHeader);
   } catch (error: any) {
     console.error("Error creating tag:", error);
 
@@ -172,9 +187,10 @@ tagsApi.post("/tags", async (c) => {
 tagsApi.put("/tags/:rkey", async (c) => {
   try {
     // Get authenticated session with detailed error logging
-    const { session: oauthSession, error } = await getSessionFromRequest(
-      c.req.raw,
-    );
+    const { session: oauthSession, setCookieHeader, error } =
+      await getSessionFromRequest(
+        c.req.raw,
+      );
     if (!oauthSession) {
       const response = c.json(
         {
@@ -238,10 +254,13 @@ tagsApi.put("/tags/:rkey", async (c) => {
         createdAt: currentRecord.value.createdAt,
       };
 
-      return c.json({
-        success: true,
-        tag,
-      });
+      return setSessionCookie(
+        c.json({
+          success: true,
+          tag,
+        }),
+        setCookieHeader,
+      );
     }
 
     // Update all bookmarks that have the old tag value
@@ -349,7 +368,7 @@ tagsApi.put("/tags/:rkey", async (c) => {
       tag,
     };
 
-    return c.json(result);
+    return setSessionCookie(c.json(result), setCookieHeader);
   } catch (error: any) {
     console.error("Error updating tag:", error);
 
@@ -363,9 +382,10 @@ tagsApi.put("/tags/:rkey", async (c) => {
 tagsApi.get("/tags/:rkey/usage", async (c) => {
   try {
     // Get authenticated session with detailed error logging
-    const { session: oauthSession, error } = await getSessionFromRequest(
-      c.req.raw,
-    );
+    const { session: oauthSession, setCookieHeader, error } =
+      await getSessionFromRequest(
+        c.req.raw,
+      );
     if (!oauthSession) {
       const response = c.json(
         {
@@ -436,7 +456,7 @@ tagsApi.get("/tags/:rkey/usage", async (c) => {
       record.value.tags?.includes(tagValue)
     ).length;
 
-    return c.json({ count, tagValue });
+    return setSessionCookie(c.json({ count, tagValue }), setCookieHeader);
   } catch (error: any) {
     console.error("Error getting tag usage:", error);
 
@@ -450,9 +470,10 @@ tagsApi.get("/tags/:rkey/usage", async (c) => {
 tagsApi.delete("/tags/:rkey", async (c) => {
   try {
     // Get authenticated session with detailed error logging
-    const { session: oauthSession, error } = await getSessionFromRequest(
-      c.req.raw,
-    );
+    const { session: oauthSession, setCookieHeader, error } =
+      await getSessionFromRequest(
+        c.req.raw,
+      );
     if (!oauthSession) {
       const response = c.json(
         {
@@ -579,7 +600,7 @@ tagsApi.delete("/tags/:rkey", async (c) => {
     }
 
     const result: DeleteTagResponse = { success: true };
-    return c.json(result);
+    return setSessionCookie(c.json(result), setCookieHeader);
   } catch (error: any) {
     console.error("Error deleting tag:", error);
 

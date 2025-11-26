@@ -6,7 +6,7 @@
 import {
   createATProtoOAuth,
   SQLiteStorage,
-} from "jsr:@tijs/atproto-oauth-hono@2.3.0";
+} from "jsr:@tijs/atproto-oauth-hono@2.4.0";
 import { rawDb } from "./database/db.ts";
 
 // Get base URL and cookie secret from environment
