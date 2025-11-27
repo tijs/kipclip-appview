@@ -26,7 +26,7 @@ bookmark lexicon.
 
 ## Project Structure
 
-```
+```text
 kipclip-appview/
 ├── backend/
 │   ├── database/          # Drizzle schema & migrations
