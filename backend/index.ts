@@ -20,9 +20,11 @@ export { oauth };
 
 // Note: No canonical-host redirect; app runs purely as a standard website
 
-// Mount OAuth routes (provides /login, /oauth/callback, /api/auth/*)
-// @ts-expect-error TS2589: Hono's type inference hits TypeScript's recursion limit with complex nested route types
-app.route("/", oauth.routes);
+// OAuth routes (provides /login, /oauth/callback, /oauth-client-metadata.json, /api/auth/logout)
+app.get("/login", (c) => oauth.handleLogin(c.req.raw));
+app.get("/oauth/callback", (c) => oauth.handleCallback(c.req.raw));
+app.get("/oauth-client-metadata.json", () => oauth.handleClientMetadata());
+app.post("/api/auth/logout", (c) => oauth.handleLogout(c.req.raw));
 
 // Mount bookmarks API (uses oauth.sessions internally)
 app.route("/api", bookmarksApi);

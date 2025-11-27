@@ -3,10 +3,8 @@
  * Separate from main app to avoid circular dependencies in tests.
  */
 
-import {
-  createATProtoOAuth,
-  SQLiteStorage,
-} from "jsr:@tijs/atproto-oauth-hono@2.4.0";
+import { createATProtoOAuth } from "jsr:@tijs/atproto-oauth@0.1.0";
+import { SQLiteStorage, valTownAdapter } from "jsr:@tijs/atproto-storage@0.1.1";
 import { rawDb } from "./database/db.ts";
 
 // Get base URL and cookie secret from environment
@@ -19,6 +17,7 @@ if (!COOKIE_SECRET) {
 }
 
 // Create OAuth integration with SQLiteStorage
+// Use "iron_session_storage" table name for backward compatibility
 export const oauth = createATProtoOAuth({
   baseUrl: BASE_URL,
   appName: "kipclip",
@@ -26,6 +25,9 @@ export const oauth = createATProtoOAuth({
     "https://res.cloudinary.com/dru3aznlk/image/upload/v1760692589/kip-vignette_h2jwct.png",
   cookieSecret: COOKIE_SECRET,
   sessionTtl: 60 * 60 * 24 * 14, // 14 days in seconds (max for public clients per AT Protocol OAuth spec)
-  storage: new SQLiteStorage(rawDb),
+  storage: new SQLiteStorage(valTownAdapter(rawDb), {
+    tableName: "iron_session_storage", // Match existing table name
+    logger: console,
+  }),
   logger: console, // Explicit logger for better debugging
 });
