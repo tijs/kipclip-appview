@@ -26,6 +26,22 @@ app.get("/oauth/callback", (c) => oauth.handleCallback(c.req.raw));
 app.get("/oauth-client-metadata.json", () => oauth.handleClientMetadata());
 app.post("/api/auth/logout", (c) => oauth.handleLogout(c.req.raw));
 
+// Session check endpoint (app-specific, returns { did, handle } for frontend)
+app.get("/api/auth/session", async (c) => {
+  const result = await oauth.getSessionFromRequest(c.req.raw);
+  if (!result.session) {
+    return c.json({ error: result.error?.message || "Not authenticated" }, 401);
+  }
+  const response = c.json({
+    did: result.session.did,
+    handle: result.session.handle,
+  });
+  if (result.setCookieHeader) {
+    response.headers.set("Set-Cookie", result.setCookieHeader);
+  }
+  return response;
+});
+
 // Mount bookmarks API (uses oauth.sessions internally)
 app.route("/api", bookmarksApi);
 
