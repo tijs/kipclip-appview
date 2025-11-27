@@ -1,5 +1,7 @@
 # kipclip
 
+[![Test](https://github.com/tijs/kipclip-appview/actions/workflows/test.yml/badge.svg)](https://github.com/tijs/kipclip-appview/actions/workflows/test.yml)
+
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/tijsteulings/tip)
 
 Find it, Kip it. Save and organize bookmarks using the AT Protocol community
