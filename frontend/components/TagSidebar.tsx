@@ -1,5 +1,5 @@
 /** @jsxImportSource https://esm.sh/react */
-import { useEffect, useState } from "https://esm.sh/react";
+import { useState } from "https://esm.sh/react";
 import { AddTag } from "./AddTag.tsx";
 import { EditTag } from "./EditTag.tsx";
 import { useApp } from "../context/AppContext.tsx";
@@ -18,24 +18,22 @@ export function TagSidebar() {
     session,
   } = useApp();
 
-  const [loading, setLoading] = useState(true);
+  // Data is pre-loaded by App.tsx via loadInitialData(), so no initial loading state
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingTag, setEditingTag] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    loadTags();
-  }, []);
-
+  // Manual refresh (for retry button)
   async function loadTags() {
-    setLoading(true);
+    setRefreshing(true);
     setError(null);
     try {
       await loadTagsFromContext();
     } catch (err: any) {
       setError(err.message);
     } finally {
-      setLoading(false);
+      setRefreshing(false);
     }
   }
 
@@ -198,32 +196,6 @@ export function TagSidebar() {
     );
   }
 
-  if (loading) {
-    return (
-      <>
-        {/* Mobile: Horizontal sticky bar */}
-        <div
-          style={{ backgroundColor: "var(--sidebar-bg)" }}
-          className="md:hidden w-full sticky top-0 z-10 border-b border-gray-200 p-3"
-        >
-          <div className="flex items-center justify-center">
-            <div className="spinner"></div>
-          </div>
-        </div>
-
-        {/* Desktop: Vertical sidebar */}
-        <aside
-          style={{ backgroundColor: "var(--sidebar-bg)" }}
-          className="hidden md:flex md:flex-col w-64 border-r border-gray-200 p-4"
-        >
-          <div className="flex items-center justify-center py-10">
-            <div className="spinner"></div>
-          </div>
-        </aside>
-      </>
-    );
-  }
-
   return (
     <>
       {/* Mobile: Horizontal sticky bar */}
@@ -366,9 +338,10 @@ export function TagSidebar() {
             <button
               type="button"
               onClick={() => loadTags()}
-              className="block mt-2 underline"
+              disabled={refreshing}
+              className="block mt-2 underline disabled:opacity-50"
             >
-              Try Again
+              {refreshing ? "Loading..." : "Try Again"}
             </button>
           </div>
         )}

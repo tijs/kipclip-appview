@@ -12,8 +12,9 @@ import { SharedBookmarks } from "./SharedBookmarks.tsx";
 import { useApp } from "../context/AppContext.tsx";
 
 export function App() {
-  const { session, setSession } = useApp();
+  const { session, setSession, loadInitialData } = useApp();
   const [loading, setLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(false);
   const [currentPath, setCurrentPath] = useState(globalThis.location.pathname);
 
   useEffect(() => {
@@ -26,6 +27,20 @@ export function App() {
     globalThis.addEventListener("popstate", handlePopState);
     return () => globalThis.removeEventListener("popstate", handlePopState);
   }, []);
+
+  // Load initial data after session is confirmed
+  useEffect(() => {
+    if (session && !dataLoading) {
+      setDataLoading(true);
+      loadInitialData()
+        .catch((error) => {
+          console.error("Failed to load initial data:", error);
+        })
+        .finally(() => {
+          setDataLoading(false);
+        });
+    }
+  }, [session]);
 
   async function checkSession() {
     try {
@@ -80,7 +95,7 @@ export function App() {
     }
   }
 
-  if (loading) {
+  if (loading || dataLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="spinner"></div>

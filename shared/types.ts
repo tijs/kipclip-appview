@@ -107,3 +107,9 @@ export interface SharedBookmarksResponse {
   tags: string[];
   error?: string;
 }
+
+// Combined initial data response (for optimized page load)
+export interface InitialDataResponse {
+  bookmarks: EnrichedBookmark[];
+  tags: EnrichedTag[];
+}

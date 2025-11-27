@@ -15,7 +15,7 @@ export function BookmarkList() {
     loadTags,
   } = useApp();
 
-  const [loading, setLoading] = useState(true);
+  // Data is pre-loaded by App.tsx via loadInitialData(), so no initial loading state
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingBookmark, setEditingBookmark] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
@@ -26,10 +26,6 @@ export function BookmarkList() {
   const [isPulling, setIsPulling] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const touchStartY = useRef(0);
-
-  useEffect(() => {
-    loadBookmarks();
-  }, []);
 
   // Pull-to-refresh touch handlers
   useEffect(() => {
@@ -95,15 +91,13 @@ export function BookmarkList() {
     };
   }, [isPulling, pullDistance, isRefreshing]);
 
+  // Manual refresh (for pull-to-refresh and retry button)
   async function loadBookmarks() {
-    setLoading(true);
     setError(null);
     try {
       await loadBookmarksFromContext();
     } catch (err: any) {
       setError(err.message);
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -207,14 +201,6 @@ export function BookmarkList() {
         alert("Sharing not supported on this browser");
       }
     }
-  }
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <div className="spinner"></div>
-      </div>
-    );
   }
 
   if (error) {

@@ -8,6 +8,7 @@ import {
 import type {
   EnrichedBookmark,
   EnrichedTag,
+  InitialDataResponse,
   SessionInfo,
 } from "../../shared/types.ts";
 import { apiGet } from "../utils/api.ts";
@@ -37,6 +38,9 @@ interface AppContextValue extends AppState {
   updateTag: (tag: EnrichedTag) => void;
   deleteTag: (uri: string) => void;
   loadTags: () => Promise<void>;
+
+  // Combined initial data loading (avoids token refresh race condition)
+  loadInitialData: () => Promise<void>;
 
   // Filter actions
   toggleTag: (tagValue: string) => void;
@@ -111,6 +115,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTags((prev) => prev.filter((t) => t.uri !== uri));
   }
 
+  // Combined initial data loading (avoids token refresh race condition)
+  async function loadInitialData() {
+    try {
+      const response = await apiGet("/api/initial-data");
+      if (!response.ok) {
+        throw new Error("Failed to load initial data");
+      }
+      const data: InitialDataResponse = await response.json();
+      setBookmarks(data.bookmarks);
+      setTags(data.tags);
+    } catch (err) {
+      console.error("Failed to load initial data:", err);
+      throw err;
+    }
+  }
+
   // Filter actions
   function toggleTag(tagValue: string) {
     setSelectedTags((prev) => {
@@ -159,6 +179,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     updateTag,
     deleteTag,
     loadTags,
+
+    // Combined initial data loading
+    loadInitialData,
 
     // Filter actions
     toggleTag,
