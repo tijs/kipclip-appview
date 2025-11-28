@@ -1,10 +1,13 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with
+code in this repository.
 
 ## Project Overview
 
-kipclip is a bookmark manager for the AT Protocol ecosystem. Users authenticate via Bluesky OAuth and store bookmarks on their personal data server (PDS) using the community bookmark lexicon.
+kipclip is a bookmark manager for the AT Protocol ecosystem. Users authenticate
+via Bluesky OAuth and store bookmarks on their personal data server (PDS) using
+the community bookmark lexicon.
 
 ## Commands
 
@@ -27,15 +30,17 @@ deno lint               # Lint code
 ### OAuth Stack
 
 Uses framework-agnostic OAuth libraries:
+
 - `@tijs/atproto-oauth` - OAuth orchestration and route handlers
 - `@tijs/atproto-storage` - SQLite session storage with Val Town adapter
 - `@tijs/atproto-sessions` - Cookie/token management
 
 OAuth routes are registered individually in `backend/index.ts`:
+
 ```typescript
 app.get("/login", (c) => oauth.handleLogin(c.req.raw));
 app.get("/oauth/callback", (c) => oauth.handleCallback(c.req.raw));
-app.get("/api/auth/session", async (c) => { /* app-specific */ });
+app.get("/api/auth/session", async (c) => {/* app-specific */});
 ```
 
 ### Key Files
@@ -55,7 +60,8 @@ app.get("/api/auth/session", async (c) => { /* app-specific */ });
 
 ## Testing
 
-Tests use `MemoryStorage` from `@tijs/atproto-storage` for isolation. Place test files next to source: `service.ts` → `service.test.ts`.
+Tests use `MemoryStorage` from `@tijs/atproto-storage` for isolation. Place test
+files next to source: `service.ts` → `service.test.ts`.
 
 ## Code Style
 

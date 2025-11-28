@@ -82,8 +82,8 @@ Cloudinary-hosted mascot image.
 
 ## OAuth Flow
 
-kipclip uses [@tijs/atproto-oauth](https://jsr.io/@tijs/atproto-oauth)
-for AT Protocol authentication.
+kipclip uses [@tijs/atproto-oauth](https://jsr.io/@tijs/atproto-oauth) for AT
+Protocol authentication.
 
 1. User enters their AT Protocol handle
 2. App redirects to `/login?handle=user.bsky.social`
@@ -96,9 +96,12 @@ For implementation details, see the
 
 ### Dependencies
 
-- [@tijs/atproto-oauth](https://jsr.io/@tijs/atproto-oauth) - OAuth orchestration
-- [@tijs/atproto-storage](https://jsr.io/@tijs/atproto-storage) - SQLite session storage
-- [@tijs/atproto-sessions](https://jsr.io/@tijs/atproto-sessions) - Cookie/token management
+- [@tijs/atproto-oauth](https://jsr.io/@tijs/atproto-oauth) - OAuth
+  orchestration
+- [@tijs/atproto-storage](https://jsr.io/@tijs/atproto-storage) - SQLite session
+  storage
+- [@tijs/atproto-sessions](https://jsr.io/@tijs/atproto-sessions) - Cookie/token
+  management
 
 ## API Endpoints
 
