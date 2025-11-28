@@ -29,7 +29,7 @@ bookmark lexicon.
 ```text
 kipclip-appview/
 ├── backend/
-│   ├── database/          # Drizzle schema & migrations
+│   ├── database/          # SQLite migrations
 │   ├── routes/            # API & static routes
 │   ├── services/          # URL enrichment
 │   └── index.ts           # Main Hono app
