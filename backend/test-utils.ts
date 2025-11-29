@@ -3,11 +3,11 @@
  * Provides helpers for creating test OAuth instances and mock sessions.
  */
 
-import { createATProtoOAuth } from "jsr:@tijs/atproto-oauth@1.1.0";
+import { createATProtoOAuth } from "jsr:@tijs/atproto-oauth@2.0.0";
 import type {
   ATProtoOAuthInstance,
   SessionInterface,
-} from "jsr:@tijs/atproto-oauth@1.1.0";
+} from "jsr:@tijs/atproto-oauth@2.0.0";
 import { MemoryStorage } from "jsr:@tijs/atproto-storage@0.1.1";
 
 /**
