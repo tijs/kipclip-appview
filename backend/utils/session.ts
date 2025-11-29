@@ -3,8 +3,8 @@
  * Uses @tijs/atproto-oauth for OAuth and session management.
  */
 
-import type { SessionInterface } from "jsr:@tijs/atproto-oauth@0.1.0";
-import { SessionManager } from "jsr:@tijs/atproto-sessions@0.1.1";
+import type { SessionInterface } from "jsr:@tijs/atproto-oauth@1.1.0";
+import { SessionManager } from "jsr:@tijs/atproto-sessions@1.0.0";
 import { email } from "https://esm.town/v/std/email";
 import { oauth } from "../oauth-config.ts";
 
