@@ -3,7 +3,7 @@
  * Separate from main app to avoid circular dependencies in tests.
  */
 
-import { createATProtoOAuth } from "jsr:@tijs/atproto-oauth@2.0.0";
+import { createATProtoOAuth } from "jsr:@tijs/atproto-oauth@2.1.0";
 import { SQLiteStorage, valTownAdapter } from "jsr:@tijs/atproto-storage@0.1.1";
 import { rawDb } from "./database/db.ts";
 
