@@ -47,6 +47,7 @@ export function registerBookmarksRoutes(app: App<any>): App<any> {
 ```
 
 Key differences from Hono:
+
 - `ctx.req` instead of `c.req.raw`
 - `ctx.params.id` instead of `c.req.param("id")`
 - `Response.json()` instead of `c.json()`

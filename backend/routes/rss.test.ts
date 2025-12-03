@@ -2,9 +2,18 @@
 import "../test-setup.ts";
 
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { rssApi } from "./rss.ts";
+import { App } from "jsr:@fresh/core@^2.2.0";
+import { registerRssRoutes } from "./rss.ts";
+
+// Create a test app with the RSS routes
+function createTestApp() {
+  let app = new App<any>();
+  app = registerRssRoutes(app);
+  return app.handler();
+}
 
 Deno.test("RSS feed - generates valid RSS XML structure", async () => {
+  const handler = createTestApp();
   // Create a test request
   const req = new Request(
     "http://localhost/share/did:plc:test123/dGVzdA==/rss",
@@ -13,7 +22,7 @@ Deno.test("RSS feed - generates valid RSS XML structure", async () => {
   // Note: This test will fail in CI without actual PDS access
   // It serves as an integration test for local development
   try {
-    const res = await rssApi.fetch(req);
+    const res = await handler(req);
 
     // Check response status and content type
     assertEquals(res.status, 200);

@@ -7,24 +7,34 @@
 import "../test-setup.ts";
 
 import { assertEquals } from "jsr:@std/assert@1";
-import { bookmarksApi } from "./bookmarks.ts";
+import { App } from "jsr:@fresh/core@^2.2.0";
+import { registerBookmarksRoutes } from "./bookmarks.ts";
 
-Deno.test("GET /bookmarks - returns 401 when not authenticated", async () => {
-  const req = new Request("https://test.val.town/bookmarks");
-  const res = await bookmarksApi.fetch(req);
+// Create a test app with the bookmarks routes
+function createTestApp() {
+  let app = new App<any>();
+  app = registerBookmarksRoutes(app);
+  return app.handler();
+}
+
+Deno.test("GET /api/bookmarks - returns 401 when not authenticated", async () => {
+  const handler = createTestApp();
+  const req = new Request("https://test.val.town/api/bookmarks");
+  const res = await handler(req);
 
   assertEquals(res.status, 401);
   const body = await res.json();
   assertEquals(body.error, "Authentication required");
 });
 
-Deno.test("GET /bookmarks - requires authentication", async () => {
+Deno.test("GET /api/bookmarks - requires authentication", async () => {
+  const handler = createTestApp();
   // Make request without session cookie
-  const req = new Request("https://test.val.town/bookmarks", {
+  const req = new Request("https://test.val.town/api/bookmarks", {
     method: "GET",
   });
 
-  const res = await bookmarksApi.fetch(req);
+  const res = await handler(req);
 
   assertEquals(res.status, 401);
   const data = await res.json();
