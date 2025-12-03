@@ -20,9 +20,10 @@ bookmark lexicon.
 ## Architecture
 
 - **Frontend**: React + TypeScript + Tailwind CSS
-- **Backend**: Hono + AT Protocol OAuth
+- **Backend**: Fresh 2.x + AT Protocol OAuth
 - **Database**: Val.town SQLite for OAuth session storage
 - **Bookmark Storage**: User's PDS (not in appview database)
+- **Static Assets**: Bunny CDN (`cdn.kipclip.com`)
 
 ## Project Structure
 
@@ -32,7 +33,7 @@ kipclip-appview/
 │   ├── database/          # SQLite migrations
 │   ├── routes/            # API & static routes
 │   ├── services/          # URL enrichment
-│   └── index.ts           # Main Hono app
+│   └── index.ts           # Main Fresh app
 ├── frontend/
 │   ├── components/        # React components
 │   ├── index.html         # Bootstrap
@@ -76,9 +77,8 @@ deno task deploy
 
 ## Mascot
 
-The kipclip mascot is a friendly chicken carrying a bookmark bag. Replace the
-placeholder image URL in `frontend/components/Login.tsx` with your
-Cloudinary-hosted mascot image.
+The kipclip mascot is Kip, a friendly chicken. Mascot images are hosted on Bunny
+CDN at `cdn.kipclip.com/images/`.
 
 ## OAuth Flow
 
