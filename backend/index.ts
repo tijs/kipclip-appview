@@ -23,7 +23,30 @@ export { oauth };
 // OAuth routes (provides /login, /oauth/callback, /oauth-client-metadata.json, /api/auth/logout)
 app.get("/login", (c) => oauth.handleLogin(c.req.raw));
 app.get("/oauth/callback", (c) => oauth.handleCallback(c.req.raw));
-app.get("/oauth-client-metadata.json", () => oauth.handleClientMetadata());
+// Serve static OAuth client metadata (faster than dynamic generation)
+app.get("/oauth-client-metadata.json", () => {
+  return new Response(
+    JSON.stringify({
+      client_name: "kipclip",
+      client_id: "https://kipclip.com/oauth-client-metadata.json",
+      client_uri: "https://kipclip.com",
+      redirect_uris: ["https://kipclip.com/oauth/callback"],
+      scope: "atproto transition:generic",
+      grant_types: ["authorization_code", "refresh_token"],
+      response_types: ["code"],
+      application_type: "web",
+      token_endpoint_auth_method: "none",
+      dpop_bound_access_tokens: true,
+      logo_uri: "https://cdn.kipclip.com/images/kip-vignette.png",
+    }),
+    {
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "public, max-age=3600", // Cache for 1 hour
+      },
+    },
+  );
+});
 app.post("/api/auth/logout", (c) => oauth.handleLogout(c.req.raw));
 
 // Session check endpoint (app-specific, returns { did, handle } for frontend)

@@ -3,6 +3,7 @@
 .cursorrules
 .DS_Store
 .local
+.claude
 node_modules
 vendor
 resources
