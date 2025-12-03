@@ -1,30 +1,39 @@
-import { Hono } from "https://esm.sh/hono";
+import { App } from "jsr:@fresh/core@^2.2.0";
 import { initializeTables } from "./database/db.ts";
 import { oauth } from "./oauth-config.ts";
-import { staticRoutes } from "./routes/static.ts";
-import { bookmarksApi } from "./routes/bookmarks.ts";
-import { tagsApi } from "./routes/tags.ts";
-import { initialDataApi } from "./routes/initial-data.ts";
-import { sharedApi } from "./routes/shared.ts";
-import { rssApi } from "./routes/rss.ts";
-import { debugApi } from "./routes/debug.ts";
+import { registerStaticRoutes } from "./routes/static.ts";
+import { registerBookmarksRoutes } from "./routes/bookmarks.ts";
+import { registerTagsRoutes } from "./routes/tags.ts";
+import { registerInitialDataRoutes } from "./routes/initial-data.ts";
+import { registerSharedRoutes } from "./routes/shared.ts";
+import { registerRssRoutes } from "./routes/rss.ts";
+import { registerDebugRoutes } from "./routes/debug.ts";
 
 // Run database migrations on startup
 await initializeTables();
 
-// Create the main app
-const app = new Hono();
-
 // Re-export oauth for backward compatibility
 export { oauth };
 
-// Note: No canonical-host redirect; app runs purely as a standard website
+// Create the Fresh app
+let app = new App();
 
-// OAuth routes (provides /login, /oauth/callback, /oauth-client-metadata.json, /api/auth/logout)
-app.get("/login", (c) => oauth.handleLogin(c.req.raw));
-app.get("/oauth/callback", (c) => oauth.handleCallback(c.req.raw));
+// Error handling middleware
+app = app.use(async (ctx) => {
+  try {
+    return await ctx.next();
+  } catch (err) {
+    console.error("Application error:", err);
+    throw err;
+  }
+});
+
+// OAuth routes
+app = app.get("/login", (ctx) => oauth.handleLogin(ctx.req));
+app = app.get("/oauth/callback", (ctx) => oauth.handleCallback(ctx.req));
+
 // Serve static OAuth client metadata (faster than dynamic generation)
-app.get("/oauth-client-metadata.json", () => {
+app = app.get("/oauth-client-metadata.json", () => {
   return new Response(
     JSON.stringify({
       client_name: "kipclip",
@@ -42,20 +51,24 @@ app.get("/oauth-client-metadata.json", () => {
     {
       headers: {
         "Content-Type": "application/json",
-        "Cache-Control": "public, max-age=3600", // Cache for 1 hour
+        "Cache-Control": "public, max-age=3600",
       },
     },
   );
 });
-app.post("/api/auth/logout", (c) => oauth.handleLogout(c.req.raw));
 
-// Session check endpoint (app-specific, returns { did, handle } for frontend)
-app.get("/api/auth/session", async (c) => {
-  const result = await oauth.getSessionFromRequest(c.req.raw);
+app = app.post("/api/auth/logout", (ctx) => oauth.handleLogout(ctx.req));
+
+// Session check endpoint
+app = app.get("/api/auth/session", async (ctx) => {
+  const result = await oauth.getSessionFromRequest(ctx.req);
   if (!result.session) {
-    return c.json({ error: result.error?.message || "Not authenticated" }, 401);
+    return Response.json(
+      { error: result.error?.message || "Not authenticated" },
+      { status: 401 },
+    );
   }
-  const response = c.json({
+  const response = Response.json({
     did: result.session.did,
     handle: result.session.handle,
   });
@@ -65,31 +78,18 @@ app.get("/api/auth/session", async (c) => {
   return response;
 });
 
-// Mount bookmarks API (uses oauth.sessions internally)
-app.route("/api", bookmarksApi);
+// Register API routes
+app = registerBookmarksRoutes(app);
+app = registerTagsRoutes(app);
+app = registerInitialDataRoutes(app);
+app = registerSharedRoutes(app);
+app = registerDebugRoutes(app);
 
-// Mount tags API
-app.route("/api", tagsApi);
+// Register RSS routes (must come before static routes)
+app = registerRssRoutes(app);
 
-// Mount initial data API (combined bookmarks + tags for optimized page load)
-app.route("/api", initialDataApi);
+// Register static file serving and SPA routing (must be last)
+app = registerStaticRoutes(app);
 
-// Mount shared bookmarks API (public, no auth)
-app.route("/api", sharedApi);
-
-// Mount debug API (for troubleshooting)
-app.route("/api", debugApi);
-
-// Mount RSS feeds (must come before static routes to match /share/*/rss)
-app.route("/", rssApi);
-
-// Static file serving and SPA routing
-app.route("/", staticRoutes);
-
-// Error handler - let errors bubble up with full context
-app.onError((err, _c) => {
-  console.error("Application error:", err);
-  throw err;
-});
-
-export default app.fetch;
+// Export handler for Val Town
+export default app.handler();

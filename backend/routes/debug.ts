@@ -3,39 +3,50 @@
  * Only accessible in development or with debug flag.
  */
 
-import { Hono } from "https://esm.sh/hono";
+import type { App } from "jsr:@fresh/core@^2.2.0";
+
+// Fresh App with any state type (we don't use Fresh's state management)
+type FreshApp = App<any>;
 import { getSessionFromRequest } from "../utils/session.ts";
 
-export const debugApi = new Hono();
-
 /**
- * Debug endpoint to diagnose session issues.
- * Returns detailed information about the current session state.
+ * Register debug routes on the Fresh app
  */
-debugApi.get("/auth/debug", async (c) => {
-  const request = c.req.raw;
-  const cookies = request.headers.get("cookie") || "";
-  const hasSidCookie = cookies.includes("sid=");
-  const sidCookiePreview = cookies.match(/sid=([^;]+)/)?.[1]?.substring(0, 30);
+export function registerDebugRoutes(app: FreshApp): FreshApp {
+  /**
+   * Debug endpoint to diagnose session issues.
+   * Returns detailed information about the current session state.
+   */
+  app = app.get("/api/auth/debug", async (ctx) => {
+    const request = ctx.req;
+    const cookies = request.headers.get("cookie") || "";
+    const hasSidCookie = cookies.includes("sid=");
+    const sidCookiePreview = cookies.match(/sid=([^;]+)/)?.[1]?.substring(
+      0,
+      30,
+    );
 
-  // Try to get session
-  const { session, error } = await getSessionFromRequest(request);
+    // Try to get session
+    const { session, error } = await getSessionFromRequest(request);
 
-  return c.json({
-    debug: {
-      timestamp: new Date().toISOString(),
-      url: request.url,
-      cookies: {
-        hasSidCookie,
-        sidCookiePreview: sidCookiePreview ? `${sidCookiePreview}...` : null,
+    return Response.json({
+      debug: {
+        timestamp: new Date().toISOString(),
+        url: request.url,
+        cookies: {
+          hasSidCookie,
+          sidCookiePreview: sidCookiePreview ? `${sidCookiePreview}...` : null,
+        },
+        session: session
+          ? {
+            did: session.did,
+            pdsUrl: session.pdsUrl,
+          }
+          : null,
+        error: error || null,
       },
-      session: session
-        ? {
-          did: session.did,
-          pdsUrl: session.pdsUrl,
-        }
-        : null,
-      error: error || null,
-    },
+    });
   });
-});
+
+  return app;
+}
