@@ -59,6 +59,25 @@ app = app.get("/oauth-client-metadata.json", () => {
 
 app = app.post("/api/auth/logout", (ctx) => oauth.handleLogout(ctx.req));
 
+// Serve robots.txt
+app = app.get("/robots.txt", () => {
+  return new Response(
+    `User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /oauth/
+
+Sitemap: https://kipclip.com/sitemap.xml
+`,
+    {
+      headers: {
+        "Content-Type": "text/plain",
+        "Cache-Control": "public, max-age=86400",
+      },
+    },
+  );
+});
+
 // Session check endpoint
 app = app.get("/api/auth/session", async (ctx) => {
   const result = await oauth.getSessionFromRequest(ctx.req);
