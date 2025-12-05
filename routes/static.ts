@@ -7,19 +7,26 @@ import type { App } from "@fresh/core";
 import { getBundleFileName, readFile, serveFile } from "../lib/file-server.ts";
 import { decodeTagsFromUrl } from "../shared/utils.ts";
 
-// Cache the bundle filename at startup (lazy loaded on first request)
+// Cache the bundle filename and base URL
 let cachedBundleFileName: string | null = null;
+let baseModuleUrl: string | null = null;
 
 /**
  * Get the HTML template with the correct hashed bundle filename injected.
  */
-export async function getHtmlWithBundle(): Promise<string> {
-  // Lazy load the bundle filename
-  if (!cachedBundleFileName) {
-    cachedBundleFileName = await getBundleFileName(import.meta.url);
+async function getHtmlWithBundle(): Promise<string> {
+  if (!baseModuleUrl) {
+    throw new Error(
+      "Static routes not initialized - call registerStaticRoutes first",
+    );
   }
 
-  let html = await readFile("/frontend/index.html", import.meta.url);
+  // Lazy load the bundle filename
+  if (!cachedBundleFileName) {
+    cachedBundleFileName = await getBundleFileName(baseModuleUrl);
+  }
+
+  let html = await readFile("/frontend/index.html", baseModuleUrl);
 
   // Replace the bundle reference with the hashed version
   html = html.replace(
@@ -30,7 +37,17 @@ export async function getHtmlWithBundle(): Promise<string> {
   return html;
 }
 
-export function registerStaticRoutes(app: App<any>): App<any> {
+/**
+ * Register static file routes.
+ * @param app - Fresh app instance
+ * @param moduleUrl - import.meta.url from the main module (project root)
+ */
+export function registerStaticRoutes(
+  app: App<any>,
+  moduleUrl: string,
+): App<any> {
+  // Store the base module URL for path resolution
+  baseModuleUrl = moduleUrl;
   // robots.txt
   app = app.get("/robots.txt", () => {
     return new Response(
@@ -53,23 +70,23 @@ Sitemap: https://kipclip.com/sitemap.xml
   // Serve static files (frontend bundle)
   app = app.get("/static/*", (ctx) => {
     const path = new URL(ctx.req.url).pathname;
-    return serveFile(path, import.meta.url);
+    return serveFile(path, baseModuleUrl!);
   });
 
   // Serve frontend files
   app = app.get("/frontend/*", (ctx) => {
     const path = new URL(ctx.req.url).pathname;
-    return serveFile(path, import.meta.url);
+    return serveFile(path, baseModuleUrl!);
   });
 
   app = app.get("/shared/*", (ctx) => {
     const path = new URL(ctx.req.url).pathname;
-    return serveFile(path, import.meta.url);
+    return serveFile(path, baseModuleUrl!);
   });
 
   app = app.get("/lexicons/*", (ctx) => {
     const path = new URL(ctx.req.url).pathname;
-    return serveFile(path, import.meta.url);
+    return serveFile(path, baseModuleUrl!);
   });
 
   app = app.get("/.well-known/atproto/lexicons/*", (ctx) => {
@@ -77,7 +94,7 @@ Sitemap: https://kipclip.com/sitemap.xml
       "/.well-known/atproto/lexicons",
       "/lexicons",
     );
-    return serveFile(path, import.meta.url);
+    return serveFile(path, baseModuleUrl!);
   });
 
   // Serve index.html for root

@@ -73,7 +73,7 @@ app = registerShareApiRoutes(app);
 app = registerRssRoutes(app);
 
 // Static files and SPA routing (must be last)
-app = registerStaticRoutes(app);
+app = registerStaticRoutes(app, import.meta.url);
 
 // Export app for Fresh build system
 export { app };
