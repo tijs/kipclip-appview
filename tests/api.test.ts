@@ -6,7 +6,7 @@
 // Load test environment before importing application code
 import "./test-setup.ts";
 
-import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
+import { assertEquals, assertStringIncludes } from "@std/assert";
 
 // Import the app and initialize OAuth for tests
 import { app } from "../main.ts";

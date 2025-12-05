@@ -19,7 +19,7 @@ bookmark lexicon.
 
 ## Architecture
 
-- **Frontend**: React + TypeScript + Tailwind CSS
+- **Frontend**: React 19 + TypeScript + Tailwind CSS
 - **Backend**: Fresh 2.x + AT Protocol OAuth on Deno Deploy
 - **Database**: Turso/libSQL for OAuth session storage
 - **Bookmark Storage**: User's PDS (not in appview database)
@@ -29,18 +29,22 @@ bookmark lexicon.
 
 ```text
 kipclip-appview/
-├── backend/
-│   ├── database/          # SQLite migrations
-│   ├── routes/            # API & static routes
-│   ├── services/          # URL enrichment
-│   └── index.ts           # Main Fresh app
+├── main.ts              # Fresh app entry point (all routes)
+├── dev.ts               # Development server
+├── lib/                 # Backend utilities
+│   ├── db.ts            # Database client
+│   ├── oauth-config.ts  # OAuth configuration
+│   ├── enrichment.ts    # URL metadata extraction
+│   └── ...
 ├── frontend/
-│   ├── components/        # React components
-│   ├── index.html         # Bootstrap
-│   ├── index.tsx          # React entry
-│   └── style.css          # Custom styles
-└── shared/
-    └── types.ts           # Shared TypeScript types
+│   ├── components/      # React components
+│   ├── index.html       # Entry HTML
+│   ├── index.tsx        # React entry
+│   └── style.css        # Custom styles
+├── shared/
+│   ├── types.ts         # Shared TypeScript types
+│   └── utils.ts         # Shared utilities
+└── tests/               # Test files
 ```
 
 ## Setup
@@ -56,10 +60,10 @@ kipclip-appview/
 Configure these in the Deno Deploy dashboard:
 
 ```bash
-BASE_URL=https://kipclip.com
-COOKIE_SECRET=your-random-secret-string-at-least-32-chars
+COOKIE_SECRET=your-random-secret-string-at-least-32-chars  # Required
 TURSO_DATABASE_URL=libsql://your-db.turso.io
 TURSO_AUTH_TOKEN=your-turso-auth-token
+BASE_URL=https://kipclip.com  # Optional, derived from request if not set
 ```
 
 The `COOKIE_SECRET` is required for encrypting OAuth session cookies.
@@ -104,19 +108,35 @@ For implementation details, see the
 - [@tijs/atproto-oauth](https://jsr.io/@tijs/atproto-oauth) - OAuth
   orchestration
 - [@tijs/atproto-storage](https://jsr.io/@tijs/atproto-storage) - SQLite session
-  storage
-- [@tijs/atproto-sessions](https://jsr.io/@tijs/atproto-sessions) - Cookie/token
-  management
+  storage with Turso adapter
 
 ## API Endpoints
 
+### Bookmarks
+
 - `GET /api/bookmarks` - List user's bookmarks from PDS
 - `POST /api/bookmarks` - Add new bookmark with URL enrichment
+- `PATCH /api/bookmarks/:rkey` - Update bookmark (tags, title, etc.)
 - `DELETE /api/bookmarks/:rkey` - Delete a bookmark
-- `/api/auth/session` - Check current session
-- `/api/auth/logout` - Logout
+
+### Tags
+
+- `GET /api/tags` - List user's tags
+- `POST /api/tags` - Create a new tag
+- `PUT /api/tags/:rkey` - Update tag (renames across all bookmarks)
+- `DELETE /api/tags/:rkey` - Delete tag (removes from all bookmarks)
+
+### Auth
+
+- `GET /api/auth/session` - Check current session
+- `POST /api/auth/logout` - Logout
 - `/login` - OAuth login flow
 - `/oauth/callback` - OAuth callback
+
+### Sharing
+
+- `GET /api/share/:did/:encodedTags` - Get shared bookmarks (public)
+- `GET /share/:did/:encodedTags/rss` - RSS feed for shared bookmarks
 
 ## Bookmark Schema
 
@@ -137,8 +157,7 @@ metadata.
 
 - Keep code files under 500 lines
 - Write testable code with dependency injection
-- Test files go next to code: `service.ts` → `service.test.ts`
-- Follow SOLID principles
+- Tests are in `tests/` directory
 - Use TypeScript for all code
 
 ## License

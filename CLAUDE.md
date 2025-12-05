@@ -15,47 +15,28 @@ the community bookmark lexicon.
 deno task dev           # Run development server with hot reload
 deno task build         # Build for production
 deno task preview       # Run production server locally
-deno task test          # Run tests
+deno task test          # Run all tests
 deno task check         # Type check
 deno task quality       # Format check and lint
 deno fmt                # Format code
 deno lint               # Lint code
+
+# Run a single test by name
+deno test --allow-all tests/ --filter "test name pattern"
 ```
 
 ## Architecture
 
-- **Frontend**: React SPA with Tailwind CSS, served as static files
+- **Frontend**: React 19 SPA with Tailwind CSS, bundled via esbuild
 - **Backend**: Fresh 2.x HTTP server on Deno Deploy
 - **Database**: Turso/libSQL (only for OAuth sessions, not bookmarks)
 - **Bookmark Storage**: User's PDS via AT Protocol
 - **Static Assets**: Bunny CDN (`cdn.kipclip.com`)
 
-### Project Structure
+### AT Protocol Collections
 
-```
-kipclip-appview/
-├── main.ts              # Main Fresh app entry point (all routes)
-├── dev.ts               # Development server with hot reload
-├── lib/                 # Shared utilities
-│   ├── db.ts           # Database client (Turso/libSQL)
-│   ├── migrations.ts   # Database migrations
-│   ├── oauth-config.ts # OAuth instance configuration
-│   ├── session.ts      # Session extraction with error logging
-│   ├── sentry.ts       # Error tracking
-│   ├── enrichment.ts   # URL metadata extraction
-│   └── file-server.ts  # Static file serving with TS transpilation
-├── frontend/            # React SPA
-│   ├── index.html      # Entry HTML
-│   ├── index.tsx       # React entry point
-│   ├── style.css       # Styles
-│   └── components/     # React components
-├── shared/              # Shared types and utilities
-│   ├── types.ts        # TypeScript types
-│   └── utils.ts        # Shared utilities
-└── tests/               # Test files
-    ├── test-setup.ts   # Test environment setup
-    └── api.test.ts     # API tests
-```
+- `community.lexicon.bookmarks.bookmark` - User bookmarks (stored on user's PDS)
+- `com.kipclip.tag` - User-defined tags (stored on user's PDS)
 
 ### Fresh Framework
 
@@ -78,44 +59,42 @@ export default app.handler();
 Key patterns:
 
 - `ctx.req` for the Request object
-- `ctx.params.id` for route parameters
+- `ctx.params.rkey` for route parameters
 - `Response.json()` for JSON responses
 - Export `app.handler()` as default for Deno Deploy
 
 ### OAuth Stack
 
-Uses framework-agnostic OAuth libraries:
+Uses framework-agnostic OAuth libraries from jsr:
 
 - `@tijs/atproto-oauth` - OAuth orchestration and route handlers
 - `@tijs/atproto-storage` - SQLite session storage with Turso adapter
-- `@tijs/atproto-sessions` - Cookie/token management
 
-OAuth routes:
-
-```typescript
-app = app.get("/login", (ctx) => oauth.handleLogin(ctx.req));
-app = app.get("/oauth/callback", (ctx) => oauth.handleCallback(ctx.req));
-```
+OAuth is lazily initialized from the first request to derive BASE_URL
+automatically on Deno Deploy.
 
 ## Deno Deploy
 
 - Entry point: `main.ts`
-- Exports `app.handler()` as default
-- Environment variables: `BASE_URL`, `COOKIE_SECRET`, `TURSO_DATABASE_URL`,
-  `TURSO_AUTH_TOKEN`, `SENTRY_DSN`
+- Environment variables: `COOKIE_SECRET` (required), `BASE_URL` (optional),
+  `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `SENTRY_DSN`
 
 ## Testing
 
-Tests are in the `tests/` directory. The test database uses a mock client to
-avoid actual connections.
+Tests use the app handler directly. Mock environment variables are set in
+`tests/test-setup.ts`. Tests must initialize OAuth before running:
 
-```bash
-deno task test
+```typescript
+import { app } from "../main.ts";
+import { initOAuth } from "../lib/oauth-config.ts";
+
+initOAuth("https://kipclip.com");
+const handler = app.handler();
 ```
 
 ## Code Style
 
 - TypeScript for all code
-- JSX pragma required for React: `/** @jsxImportSource https://esm.sh/react */`
+- JSX configured in `deno.json` (no pragma needed in files)
 - Import from `jsr:` for Deno packages, `https://esm.sh/` for npm packages
 - Keep files under 500 lines

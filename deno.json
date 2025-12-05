@@ -2,7 +2,19 @@
   "$schema": "https://raw.githubusercontent.com/denoland/deno/348900b8b79f4a434cab4c74b3bc8d4d2fa8ee74/cli/schemas/config-file.v1.json",
   "lock": false,
   "imports": {
-    "fresh": "jsr:@fresh/core@^2.2.0",
+    "@fresh/core": "jsr:@fresh/core@^2.2.0",
+    "@std/assert": "jsr:@std/assert@1",
+    "@std/dotenv": "jsr:@std/dotenv@0.225",
+    "@std/media-types": "jsr:@std/media-types@1",
+    "@std/path": "jsr:@std/path@1",
+    "@tijs/atproto-oauth": "jsr:@tijs/atproto-oauth@2.1.0",
+    "@tijs/atproto-sessions": "jsr:@tijs/atproto-sessions@2.1.0",
+    "@tijs/atproto-storage": "jsr:@tijs/atproto-storage@1.0.0",
+    "@libsql/client": "npm:@libsql/client@0.15.15",
+    "@libsql/client/web": "npm:@libsql/client@0.15.15/web",
+    "@sentry/deno": "npm:@sentry/deno@8",
+    "esbuild": "npm:esbuild",
+    "html-entities": "https://esm.sh/html-entities@2.5.2",
     "react": "https://esm.sh/react@19",
     "react-dom/client": "https://esm.sh/react-dom@19/client"
   },
@@ -22,8 +34,7 @@
   "lint": {
     "rules": {
       "exclude": [
-        "no-explicit-any",
-        "no-import-prefix"
+        "no-explicit-any"
       ]
     }
   },
@@ -44,7 +55,8 @@
     "unstable-sloppy-imports": true
   },
   "exclude": [
-    "**/_fresh/*"
+    "**/_fresh/*",
+    "static/"
   ],
   "tasks": {
     "build:frontend": "deno run -A scripts/build-frontend.ts",

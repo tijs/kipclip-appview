@@ -1,5 +1,5 @@
 /** @jsxImportSource https://esm.sh/react@19 */
-import { useEffect, useRef, useState } from "https://esm.sh/react@19";
+import { useEffect, useRef, useState } from "react";
 
 interface UserMenuProps {
   handle: string;

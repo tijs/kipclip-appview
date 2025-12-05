@@ -3,7 +3,7 @@
  * Captures errors and sends them to Sentry for monitoring.
  */
 
-import * as Sentry from "npm:@sentry/deno@8";
+import * as Sentry from "@sentry/deno";
 
 const SENTRY_DSN = Deno.env.get("SENTRY_DSN");
 const isProduction = Deno.env.get("ENVIRONMENT") !== "DEVELOPMENT";

@@ -3,8 +3,8 @@
  * Supports lazy initialization to derive BASE_URL from incoming requests.
  */
 
-import { createATProtoOAuth } from "jsr:@tijs/atproto-oauth@2.1.0";
-import { sqliteAdapter, SQLiteStorage } from "jsr:@tijs/atproto-storage@1.0.0";
+import { createATProtoOAuth } from "@tijs/atproto-oauth";
+import { sqliteAdapter, SQLiteStorage } from "@tijs/atproto-storage";
 import { rawDb } from "./db.ts";
 
 // Cookie secret is always required

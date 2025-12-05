@@ -26,8 +26,8 @@ if (isTestDb) {
 } else {
   // Use native client for local file, web client for remote Turso
   const { createClient } = isLocal
-    ? await import("npm:@libsql/client@0.15.15")
-    : await import("npm:@libsql/client@0.15.15/web");
+    ? await import("@libsql/client")
+    : await import("@libsql/client/web");
 
   const client = createClient({
     url: dbUrl,

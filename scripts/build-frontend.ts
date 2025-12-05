@@ -3,7 +3,7 @@
  * Uses esbuild to bundle all frontend TypeScript/TSX into a single JavaScript file.
  */
 
-import * as esbuild from "npm:esbuild";
+import * as esbuild from "esbuild";
 
 const startTime = Date.now();
 

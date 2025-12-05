@@ -3,8 +3,8 @@
  * Uses @tijs/atproto-oauth for OAuth and session management.
  */
 
-import type { SessionInterface } from "jsr:@tijs/atproto-oauth@2.1.0";
-import { SessionManager } from "jsr:@tijs/atproto-sessions@2.1.0";
+import type { SessionInterface } from "@tijs/atproto-oauth";
+import { SessionManager } from "@tijs/atproto-sessions";
 import { captureError } from "./sentry.ts";
 import { getOAuth } from "./oauth-config.ts";
 

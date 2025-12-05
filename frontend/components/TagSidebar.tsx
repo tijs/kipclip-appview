@@ -1,5 +1,5 @@
 /** @jsxImportSource https://esm.sh/react@19 */
-import { useState } from "https://esm.sh/react@19";
+import { useState } from "react";
 import { AddTag } from "./AddTag.tsx";
 import { EditTag } from "./EditTag.tsx";
 import { useApp } from "../context/AppContext.tsx";

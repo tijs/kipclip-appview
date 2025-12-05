@@ -3,7 +3,7 @@
  * Uses programmatic routing for compatibility with existing code structure.
  */
 
-import { App, staticFiles } from "jsr:@fresh/core@^2.2.0";
+import { App, staticFiles } from "@fresh/core";
 import { initializeTables } from "./lib/db.ts";
 import { getBaseUrl, getOAuth, initOAuth } from "./lib/oauth-config.ts";
 import { captureError } from "./lib/sentry.ts";

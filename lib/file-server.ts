@@ -3,8 +3,8 @@
  * Frontend is now pre-built, so no runtime transpilation needed.
  */
 
-import { dirname, fromFileUrl, join } from "jsr:@std/path@1";
-import { contentType } from "jsr:@std/media-types@1";
+import { dirname, fromFileUrl, join } from "@std/path";
+import { contentType } from "@std/media-types";
 
 /**
  * Resolve a path relative to the project root.

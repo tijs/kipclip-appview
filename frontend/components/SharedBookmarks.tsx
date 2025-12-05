@@ -1,5 +1,5 @@
 /** @jsxImportSource https://esm.sh/react@19 */
-import { useEffect, useState } from "https://esm.sh/react@19";
+import { useEffect, useState } from "react";
 import type { EnrichedBookmark } from "../../shared/types.ts";
 
 interface SharedBookmarksProps {

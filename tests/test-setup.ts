@@ -4,7 +4,7 @@
  * Import this at the top of test files before importing application code.
  */
 
-import { load } from "jsr:@std/dotenv@0.225";
+import { load } from "@std/dotenv";
 
 // Try to load .env file (for local development)
 // Fall back to test defaults (for CI/unit tests)

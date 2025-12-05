@@ -1,5 +1,5 @@
 import type { UrlMetadata } from "../shared/types.ts";
-import { decode } from "https://esm.sh/html-entities@2.5.2";
+import { decode } from "html-entities";
 
 /**
  * Extracts metadata from a URL by fetching and parsing the HTML
