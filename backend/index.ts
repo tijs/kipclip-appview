@@ -1,6 +1,7 @@
 import { App } from "jsr:@fresh/core@^2.2.0";
 import { initializeTables } from "./database/db.ts";
 import { oauth } from "./oauth-config.ts";
+import { captureError } from "./utils/sentry.ts";
 import { registerStaticRoutes } from "./routes/static.ts";
 import { registerBookmarksRoutes } from "./routes/bookmarks.ts";
 import { registerTagsRoutes } from "./routes/tags.ts";
@@ -23,7 +24,7 @@ app = app.use(async (ctx) => {
   try {
     return await ctx.next();
   } catch (err) {
-    console.error("Application error:", err);
+    captureError(err, { url: ctx.req.url, method: ctx.req.method });
     throw err;
   }
 });

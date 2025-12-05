@@ -1,11 +1,11 @@
 /**
- * Session utilities with comprehensive error logging and email alerting.
+ * Session utilities with comprehensive error logging.
  * Uses @tijs/atproto-oauth for OAuth and session management.
  */
 
 import type { SessionInterface } from "jsr:@tijs/atproto-oauth@2.1.0";
 import { SessionManager } from "jsr:@tijs/atproto-sessions@2.1.0";
-import { email } from "https://esm.town/v/std/email";
+import { captureError } from "./sentry.ts";
 import { oauth } from "../oauth-config.ts";
 
 // Session configuration from environment
@@ -33,53 +33,21 @@ export interface SessionResult {
   };
 }
 
-// Rate limit email alerts to avoid spam (max 1 per hour per error type)
-const emailRateLimits = new Map<string, number>();
-const EMAIL_RATE_LIMIT_MS = 60 * 60 * 1000; // 1 hour
-
 /**
- * Send email alert for unexpected session errors.
- * Rate-limited to prevent spam.
+ * Report session error to Sentry for monitoring.
  */
-async function sendSessionErrorAlert(
+function reportSessionError(
   errorType: string,
   errorMessage: string,
   context: Record<string, unknown>,
-): Promise<void> {
-  const rateKey = `session_error:${errorType}`;
-  const lastSent = emailRateLimits.get(rateKey) || 0;
-  const now = Date.now();
-
-  if (now - lastSent < EMAIL_RATE_LIMIT_MS) {
-    console.log(
-      `[Session] Skipping email alert (rate limited): ${errorType}`,
-    );
-    return;
-  }
-
-  try {
-    emailRateLimits.set(rateKey, now);
-
-    await email({
-      subject: `[KipClip] Session Error: ${errorType}`,
-      text: `
-Session Error Alert
-===================
-Time: ${new Date().toISOString()}
-Type: ${errorType}
-Message: ${errorMessage}
-
-Context:
-${JSON.stringify(context, null, 2)}
-
-This email is rate-limited to once per hour per error type.
-      `,
-    });
-
-    console.log(`[Session] Sent email alert for: ${errorType}`);
-  } catch (emailError) {
-    console.error("[Session] Failed to send email alert:", emailError);
-  }
+): void {
+  const error = new Error(`Session Error: ${errorType} - ${errorMessage}`);
+  error.name = errorType;
+  captureError(error, {
+    errorType,
+    errorMessage,
+    ...context,
+  });
 }
 
 /**
@@ -143,11 +111,10 @@ export async function getSessionFromRequest(
         timestamp: new Date().toISOString(),
       });
 
-      // Alert on OAuth errors
-      await sendSessionErrorAlert(errorType, errorMessage, {
+      // Report OAuth errors to Sentry
+      reportSessionError(errorType, errorMessage, {
         did,
         url: request.url,
-        details: oauthError,
       });
 
       // Map specific error patterns
@@ -240,7 +207,7 @@ export async function getSessionFromRequest(
       stack: error instanceof Error ? error.stack : undefined,
     });
 
-    await sendSessionErrorAlert(errorType, errorMessage, {
+    reportSessionError(errorType, errorMessage, {
       url: request.url,
       stack: error instanceof Error ? error.stack : undefined,
     });

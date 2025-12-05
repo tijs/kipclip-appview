@@ -45,8 +45,8 @@
     "quality": "deno fmt && deno lint",
     "deploy": "deno task quality && vt push",
     "check": "deno check --allow-import backend/index.ts frontend/index.tsx",
-    "test": "deno test --allow-all",
-    "test:watch": "deno test --allow-all --watch",
+    "test": "COOKIE_SECRET=test-cookie-secret-32-characters-minimum deno test --allow-all",
+    "test:watch": "COOKIE_SECRET=test-cookie-secret-32-characters-minimum deno test --allow-all --watch",
     "fmt": "deno fmt",
     "lint": "deno lint"
   }
