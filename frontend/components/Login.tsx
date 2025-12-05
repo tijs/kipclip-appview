@@ -142,6 +142,7 @@ export function Login() {
                   disabled={loading}
                   autoFocus
                 />
+                {/* @ts-ignore - actor-typeahead is a custom element */}
               </actor-typeahead>
             </div>
 

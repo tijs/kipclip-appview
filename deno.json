@@ -9,9 +9,6 @@
     "strict": false,
     "jsx": "react-jsx",
     "jsxImportSource": "https://esm.sh/react",
-    "types": [
-      "https://www.val.town/types/valtown.d.ts"
-    ],
     "lib": [
       "dom",
       "dom.iterable",
@@ -45,8 +42,8 @@
     "quality": "deno fmt && deno lint",
     "deploy": "deno task quality && vt push",
     "check": "deno check --allow-import backend/index.ts frontend/index.tsx",
-    "test": "COOKIE_SECRET=test-cookie-secret-32-characters-minimum deno test --allow-all",
-    "test:watch": "COOKIE_SECRET=test-cookie-secret-32-characters-minimum deno test --allow-all --watch",
+    "test": "BASE_URL=http://localhost:8000 COOKIE_SECRET=test-cookie-secret-32-characters-minimum deno test --allow-all",
+    "test:watch": "BASE_URL=http://localhost:8000 COOKIE_SECRET=test-cookie-secret-32-characters-minimum deno test --allow-all --watch",
     "fmt": "deno fmt",
     "lint": "deno lint"
   }
