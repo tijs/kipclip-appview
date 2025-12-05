@@ -14,8 +14,8 @@ const client = createClient({
   authToken: Deno.env.get("TURSO_AUTH_TOKEN"),
 });
 
-// Wrap the client to match the ExecutableDriver interface expected by valTownAdapter
-// The libSQL client returns Row objects, but valTownAdapter expects { rows: unknown[][] }
+// Wrap the client to provide a consistent interface
+// The libSQL client returns Row objects, we convert to arrays for compatibility
 export const rawDb = {
   execute: async (
     query: { sql: string; args: unknown[] },

@@ -20,3 +20,8 @@ jobs:
         run: deno lint
       - name: Run tests
         run: deno task test
+        env:
+          # Use remote Turso client in CI (avoids local file creation)
+          # Tests use MemoryStorage, so no actual DB connection needed
+          TURSO_DATABASE_URL: libsql://test.turso.io
+          TURSO_AUTH_TOKEN: test-token
