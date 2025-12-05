@@ -40,9 +40,13 @@
     "unstable-worker-options": true,
     "unstable-sloppy-imports": true
   },
+  "exclude": [
+    "**/_fresh/*"
+  ],
   "tasks": {
-    "dev": "deno run -A dev.ts",
+    "dev": "deno run -A --watch=static/,routes/,lib/,frontend/,shared/ dev.ts",
     "build": "deno run -A dev.ts build",
+    "start": "deno serve -A _fresh/server.js",
     "preview": "deno run -A main.ts",
     "quality": "deno fmt --check && deno lint",
     "check": "deno check --allow-import main.ts",

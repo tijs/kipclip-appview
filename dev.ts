@@ -1,18 +1,17 @@
-#!/usr/bin/env -S deno run -A --watch=main.ts,lib/,frontend/,shared/
+#!/usr/bin/env -S deno run -A --watch=static/,routes/,lib/,frontend/,shared/
 /**
  * Development server for kipclip.
  * Uses Fresh with hot reload for development.
  */
 
-import { Builder } from "jsr:@fresh/core@^2.2.0/dev";
-import { app } from "./main.ts";
+import { Builder } from "fresh/dev";
 
 const builder = new Builder();
 
 if (Deno.args.includes("build")) {
   // Production build
-  await builder.build(app);
+  await builder.build();
 } else {
   // Development mode with hot reload
-  builder.listen(app);
+  await builder.listen(() => import("./main.ts"));
 }
