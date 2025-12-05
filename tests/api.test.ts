@@ -8,8 +8,15 @@ import "./test-setup.ts";
 
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 
-// Import the app handler
-import handler from "../main.ts";
+// Import the app and initialize OAuth for tests
+import { app } from "../main.ts";
+import { initOAuth } from "../lib/oauth-config.ts";
+
+// Initialize OAuth with test URL before running tests
+initOAuth("https://kipclip.com");
+
+// Create handler from app
+const handler = app.handler();
 
 Deno.test("GET /api/bookmarks - returns 401 when not authenticated", async () => {
   const req = new Request("https://kipclip.com/api/bookmarks");
@@ -79,6 +86,7 @@ Deno.test("GET /oauth-client-metadata.json - returns OAuth metadata", async () =
 
   const body = await res.json();
   assertEquals(body.client_name, "kipclip");
+  // Now dynamic - should match the BASE_URL used to init OAuth
   assertEquals(
     body.client_id,
     "https://kipclip.com/oauth-client-metadata.json",

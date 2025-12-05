@@ -5,7 +5,7 @@
 
 import { App, staticFiles } from "jsr:@fresh/core@^2.2.0";
 import { initializeTables } from "./lib/db.ts";
-import { oauth } from "./lib/oauth-config.ts";
+import { getBaseUrl, getOAuth, initOAuth } from "./lib/oauth-config.ts";
 import { captureError } from "./lib/sentry.ts";
 import { getClearSessionCookie, getSessionFromRequest } from "./lib/session.ts";
 import { extractUrlMetadata } from "./lib/enrichment.ts";
@@ -45,6 +45,12 @@ app = app.use(async (ctx) => {
   }
 });
 
+// Initialize OAuth on first request (derives BASE_URL from request if not set)
+app = app.use(async (ctx) => {
+  initOAuth(ctx.req.url);
+  return await ctx.next();
+});
+
 // Serve static files from /static directory
 app.use(staticFiles());
 
@@ -52,17 +58,18 @@ app.use(staticFiles());
 // OAuth routes
 // ============================================================================
 
-app = app.get("/login", (ctx) => oauth.handleLogin(ctx.req));
-app = app.get("/oauth/callback", (ctx) => oauth.handleCallback(ctx.req));
+app = app.get("/login", (ctx) => getOAuth().handleLogin(ctx.req));
+app = app.get("/oauth/callback", (ctx) => getOAuth().handleCallback(ctx.req));
 
-// Serve static OAuth client metadata
+// Serve dynamic OAuth client metadata (uses derived base URL)
 app = app.get("/oauth-client-metadata.json", () => {
+  const baseUrl = getBaseUrl();
   return new Response(
     JSON.stringify({
       client_name: "kipclip",
-      client_id: "https://kipclip.com/oauth-client-metadata.json",
-      client_uri: "https://kipclip.com",
-      redirect_uris: ["https://kipclip.com/oauth/callback"],
+      client_id: `${baseUrl}/oauth-client-metadata.json`,
+      client_uri: baseUrl,
+      redirect_uris: [`${baseUrl}/oauth/callback`],
       scope: "atproto transition:generic",
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
@@ -80,14 +87,14 @@ app = app.get("/oauth-client-metadata.json", () => {
   );
 });
 
-app = app.post("/api/auth/logout", (ctx) => oauth.handleLogout(ctx.req));
+app = app.post("/api/auth/logout", (ctx) => getOAuth().handleLogout(ctx.req));
 
 // ============================================================================
 // Auth session endpoints
 // ============================================================================
 
 app = app.get("/api/auth/session", async (ctx) => {
-  const result = await oauth.getSessionFromRequest(ctx.req);
+  const result = await getOAuth().getSessionFromRequest(ctx.req);
   if (!result.session) {
     return Response.json(
       { error: result.error?.message || "Not authenticated" },

@@ -50,8 +50,8 @@
     "preview": "deno run -A main.ts",
     "quality": "deno fmt --check && deno lint",
     "check": "deno check --allow-import main.ts",
-    "test": "TURSO_DATABASE_URL=libsql://test.turso.io TURSO_AUTH_TOKEN=test BASE_URL=http://localhost:8000 COOKIE_SECRET=test-cookie-secret-32-characters-minimum deno test --allow-all tests/",
-    "test:watch": "BASE_URL=http://localhost:8000 COOKIE_SECRET=test-cookie-secret-32-characters-minimum deno test --allow-all --watch",
+    "test": "TURSO_DATABASE_URL=libsql://test.turso.io TURSO_AUTH_TOKEN=test COOKIE_SECRET=test-cookie-secret-32-characters-minimum deno test --allow-all tests/",
+    "test:watch": "COOKIE_SECRET=test-cookie-secret-32-characters-minimum deno test --allow-all --watch",
     "fmt": "deno fmt",
     "lint": "deno lint"
   }
