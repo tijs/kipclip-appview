@@ -14,15 +14,16 @@
     "@libsql/client/web": "npm:@libsql/client@0.15.15/web",
     "@sentry/deno": "npm:@sentry/deno@8",
     "esbuild": "npm:esbuild",
-    "html-entities": "https://esm.sh/html-entities@2.5.2",
-    "react": "https://esm.sh/react@19",
-    "react-dom/client": "https://esm.sh/react-dom@19/client"
+    "html-entities": "npm:html-entities@2.5.2",
+    "react": "npm:react@19",
+    "react-dom": "npm:react-dom@19",
+    "react-dom/client": "npm:react-dom@19/client"
   },
   "compilerOptions": {
     "noImplicitAny": false,
     "strict": false,
     "jsx": "react-jsx",
-    "jsxImportSource": "https://esm.sh/react@19",
+    "jsxImportSource": "npm:react@19",
     "lib": [
       "dom",
       "dom.iterable",

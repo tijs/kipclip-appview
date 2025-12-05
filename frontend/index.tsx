@@ -1,4 +1,3 @@
-/** @jsxImportSource https://esm.sh/react@19 */
 import { createRoot } from "react-dom/client";
 import { App } from "./components/App.tsx";
 import { AppProvider } from "./context/AppContext.tsx";

@@ -1,4 +1,3 @@
-/** @jsxImportSource https://esm.sh/react@19 */
 import { useState } from "react";
 import { AddTag } from "./AddTag.tsx";
 import { EditTag } from "./EditTag.tsx";

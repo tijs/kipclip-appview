@@ -18,6 +18,11 @@ try {
     minify: true,
     sourcemap: true,
     target: ["es2020"],
+    // Map bare specifiers to esm.sh URLs (esbuild doesn't use Deno's import map)
+    alias: {
+      "react": "https://esm.sh/react@19",
+      "react-dom/client": "https://esm.sh/react-dom@19/client",
+    },
     // Log build info
     metafile: true,
   });

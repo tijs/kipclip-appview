@@ -1,4 +1,3 @@
-/** @jsxImportSource https://esm.sh/react@19 */
 import { useState } from "react";
 import type { EnrichedTag } from "../../shared/types.ts";
 

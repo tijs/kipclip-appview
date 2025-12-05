@@ -1,4 +1,3 @@
-/** @jsxImportSource https://esm.sh/react@19 */
 import { useEffect, useState } from "react";
 import { Login } from "./Login.tsx";
 import { BookmarkList } from "./BookmarkList.tsx";

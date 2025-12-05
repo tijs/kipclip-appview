@@ -1,4 +1,3 @@
-/** @jsxImportSource https://esm.sh/react@19 */
 import { useEffect, useRef, useState } from "react";
 import { AddBookmark } from "./AddBookmark.tsx";
 import { EditBookmark } from "./EditBookmark.tsx";

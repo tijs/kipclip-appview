@@ -1,4 +1,3 @@
-/** @jsxImportSource https://esm.sh/react@19 */
 import { useState } from "react";
 import type { EnrichedBookmark, EnrichedTag } from "../../shared/types.ts";
 

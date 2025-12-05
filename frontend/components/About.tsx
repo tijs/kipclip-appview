@@ -1,5 +1,3 @@
-/** @jsxImportSource https://esm.sh/react@19 */
-
 export function About() {
   return (
     <div className="min-h-screen bg-gray-50">
