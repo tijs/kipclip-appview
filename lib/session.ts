@@ -6,7 +6,7 @@
 import type { SessionInterface } from "jsr:@tijs/atproto-oauth@2.1.0";
 import { SessionManager } from "jsr:@tijs/atproto-sessions@2.1.0";
 import { captureError } from "./sentry.ts";
-import { oauth } from "../oauth-config.ts";
+import { oauth } from "./oauth-config.ts";
 
 // Session configuration from environment
 const COOKIE_SECRET = Deno.env.get("COOKIE_SECRET");

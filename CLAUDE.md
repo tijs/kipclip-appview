@@ -12,10 +12,12 @@ the community bookmark lexicon.
 ## Commands
 
 ```bash
+deno task dev           # Run development server with hot reload
+deno task build         # Build for production
+deno task preview       # Run production server locally
 deno task test          # Run tests
-deno task check         # Type check backend and frontend
-deno task quality       # Format and lint
-deno task deploy        # Quality checks (deploy via Deno Deploy dashboard)
+deno task check         # Type check
+deno task quality       # Format check and lint
 deno fmt                # Format code
 deno lint               # Lint code
 ```
@@ -28,29 +30,57 @@ deno lint               # Lint code
 - **Bookmark Storage**: User's PDS via AT Protocol
 - **Static Assets**: Bunny CDN (`cdn.kipclip.com`)
 
+### Project Structure
+
+```
+kipclip-appview/
+├── main.ts              # Main Fresh app entry point (all routes)
+├── dev.ts               # Development server with hot reload
+├── lib/                 # Shared utilities
+│   ├── db.ts           # Database client (Turso/libSQL)
+│   ├── migrations.ts   # Database migrations
+│   ├── oauth-config.ts # OAuth instance configuration
+│   ├── session.ts      # Session extraction with error logging
+│   ├── sentry.ts       # Error tracking
+│   ├── enrichment.ts   # URL metadata extraction
+│   └── file-server.ts  # Static file serving with TS transpilation
+├── frontend/            # React SPA
+│   ├── index.html      # Entry HTML
+│   ├── index.tsx       # React entry point
+│   ├── style.css       # Styles
+│   └── components/     # React components
+├── shared/              # Shared types and utilities
+│   ├── types.ts        # TypeScript types
+│   └── utils.ts        # Shared utilities
+└── tests/               # Test files
+    ├── test-setup.ts   # Test environment setup
+    └── api.test.ts     # API tests
+```
+
 ### Fresh Framework
 
-The app uses Fresh 2.x with programmatic routing (not file-based routes). Routes
-are registered via functions that take and return the app:
+The app uses Fresh 2.x with programmatic routing. All routes are defined in
+`main.ts`:
 
 ```typescript
 import { App } from "jsr:@fresh/core@^2.2.0";
 
-export function registerBookmarksRoutes(app: App<any>): App<any> {
-  app = app.get("/api/bookmarks", async (ctx) => {
-    // ctx.req is the Request, ctx.params has route params
-    return Response.json({ data });
-  });
-  return app;
-}
+let app = new App();
+
+app = app.get("/api/bookmarks", async (ctx) => {
+  // ctx.req is the Request, ctx.params has route params
+  return Response.json({ data });
+});
+
+export default app.handler();
 ```
 
-Key differences from Hono:
+Key patterns:
 
-- `ctx.req` instead of `c.req.raw`
-- `ctx.params.id` instead of `c.req.param("id")`
-- `Response.json()` instead of `c.json()`
-- Export `app.handler()` instead of `app.fetch`
+- `ctx.req` for the Request object
+- `ctx.params.id` for route parameters
+- `Response.json()` for JSON responses
+- Export `app.handler()` as default for Deno Deploy
 
 ### OAuth Stack
 
@@ -60,33 +90,28 @@ Uses framework-agnostic OAuth libraries:
 - `@tijs/atproto-storage` - SQLite session storage with Turso adapter
 - `@tijs/atproto-sessions` - Cookie/token management
 
-OAuth routes in `backend/index.ts`:
+OAuth routes:
 
 ```typescript
 app = app.get("/login", (ctx) => oauth.handleLogin(ctx.req));
 app = app.get("/oauth/callback", (ctx) => oauth.handleCallback(ctx.req));
 ```
 
-### Key Files
+## Deno Deploy
 
-- `backend/index.ts` - Main Fresh app, route registration
-- `backend/oauth-config.ts` - OAuth instance configuration
-- `backend/utils/session.ts` - Session extraction with error logging
-- `backend/routes/` - API route handlers (register function pattern)
-- `frontend/components/App.tsx` - Main React component
-
-## Deno Deploy Specifics
-
-- Use full JSR specifiers (`jsr:@fresh/core@^2.2.0`) for consistency
-- Export `app.handler()` as default export
-- Static files served via esbuild-based `file-server.ts`
-- Environment variables configured in Deno Deploy dashboard: `BASE_URL`,
-  `COOKIE_SECRET`, `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`
+- Entry point: `main.ts`
+- Exports `app.handler()` as default
+- Environment variables: `BASE_URL`, `COOKIE_SECRET`, `TURSO_DATABASE_URL`,
+  `TURSO_AUTH_TOKEN`, `SENTRY_DSN`
 
 ## Testing
 
-Tests use `MemoryStorage` from `@tijs/atproto-storage` for isolation. Place test
-files next to source: `service.ts` → `service.test.ts`.
+Tests are in the `tests/` directory. The test database uses a mock client to
+avoid actual connections.
+
+```bash
+deno task test
+```
 
 ## Code Style
 

@@ -9,7 +9,6 @@ import * as esbuild from "https://esm.sh/esbuild-wasm@0.24.0";
 
 /**
  * Read a file from the project relative to the given base URL.
- * Mimics Val.Town's readFile utility.
  *
  * @param path - Path to file (e.g., "/frontend/index.html")
  * @param baseUrl - import.meta.url of the calling module
@@ -20,7 +19,6 @@ export async function readFile(path: string, baseUrl: string): Promise<string> {
   const baseDir = dirname(new URL(baseUrl).pathname);
 
   // Find project root by looking for kipclip-appview directory
-  // The calling module is in backend/routes/ or backend/utils/, so we need to go up
   let projectRoot = baseDir;
   while (!projectRoot.endsWith("kipclip-appview") && projectRoot !== "/") {
     projectRoot = dirname(projectRoot);
@@ -41,7 +39,6 @@ export async function readFile(path: string, baseUrl: string): Promise<string> {
 
 /**
  * Serve a file from the project with appropriate content-type headers.
- * Mimics Val.Town's serveFile utility.
  *
  * For TypeScript/TSX files, transpiles them to JavaScript using esbuild.
  * This allows the frontend to work locally just like on Val.Town.

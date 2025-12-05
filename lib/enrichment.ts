@@ -1,4 +1,4 @@
-import type { UrlMetadata } from "../../shared/types.ts";
+import type { UrlMetadata } from "../shared/types.ts";
 import { decode } from "https://esm.sh/html-entities@2.5.2";
 
 /**

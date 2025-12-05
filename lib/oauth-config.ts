@@ -5,7 +5,7 @@
 
 import { createATProtoOAuth } from "jsr:@tijs/atproto-oauth@2.1.0";
 import { sqliteAdapter, SQLiteStorage } from "jsr:@tijs/atproto-storage@1.0.0";
-import { rawDb } from "./database/db.ts";
+import { rawDb } from "./db.ts";
 
 // Get base URL and cookie secret from environment
 const BASE_URL = Deno.env.get("BASE_URL");
