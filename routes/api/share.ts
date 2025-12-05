@@ -13,6 +13,49 @@ import type {
 } from "../../shared/types.ts";
 
 export function registerShareApiRoutes(app: App<any>): App<any> {
+  // Debug endpoint to test PLC resolution
+  app = app.get("/api/debug/plc/:did", async (ctx) => {
+    const did = ctx.params.did;
+    console.log(`[Debug] Testing PLC resolution for ${did}`);
+
+    try {
+      // Test raw fetch first
+      const plcUrl = `https://plc.directory/${did}`;
+      console.log(`[Debug] Fetching ${plcUrl}`);
+      const rawResponse = await fetch(plcUrl);
+      console.log(`[Debug] Raw fetch status: ${rawResponse.status}`);
+
+      if (!rawResponse.ok) {
+        return Response.json({
+          did,
+          rawFetchStatus: rawResponse.status,
+          rawFetchOk: false,
+        });
+      }
+
+      const rawDoc = await rawResponse.json();
+      console.log(`[Debug] Raw doc received, has service: ${!!rawDoc.service}`);
+
+      // Now test through resolver
+      const resolved = await resolveDid(did);
+      console.log(`[Debug] Resolved result: ${JSON.stringify(resolved)}`);
+
+      return Response.json({
+        did,
+        rawFetchOk: true,
+        rawDoc,
+        resolved,
+      });
+    } catch (error: any) {
+      console.error(`[Debug] Error:`, error);
+      return Response.json({
+        did,
+        error: error.message,
+        stack: error.stack,
+      }, { status: 500 });
+    }
+  });
+
   app = app.get("/api/share/:did/:encodedTags", async (ctx) => {
     try {
       const did = ctx.params.did;
