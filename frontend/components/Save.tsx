@@ -1,5 +1,5 @@
-/** @jsxImportSource https://esm.sh/react */
-import { useEffect, useState } from "https://esm.sh/react";
+/** @jsxImportSource https://esm.sh/react@19 */
+import { useEffect, useState } from "https://esm.sh/react@19";
 
 export function Save() {
   const [session, setSession] = useState<

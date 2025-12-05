@@ -1,5 +1,5 @@
-/** @jsxImportSource https://esm.sh/react */
-import { useEffect, useState } from "https://esm.sh/react";
+/** @jsxImportSource https://esm.sh/react@19 */
+import { useEffect, useState } from "https://esm.sh/react@19";
 import { Login } from "./Login.tsx";
 import { BookmarkList } from "./BookmarkList.tsx";
 import { UserMenu } from "./UserMenu.tsx";

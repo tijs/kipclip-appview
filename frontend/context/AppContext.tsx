@@ -1,10 +1,10 @@
-/** @jsxImportSource https://esm.sh/react */
+/** @jsxImportSource https://esm.sh/react@19 */
 import {
   createContext,
   type ReactNode,
   useContext,
   useState,
-} from "https://esm.sh/react";
+} from "https://esm.sh/react@19";
 import type {
   EnrichedBookmark,
   EnrichedTag,

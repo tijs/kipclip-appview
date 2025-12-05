@@ -2,13 +2,15 @@
   "$schema": "https://raw.githubusercontent.com/denoland/deno/348900b8b79f4a434cab4c74b3bc8d4d2fa8ee74/cli/schemas/config-file.v1.json",
   "lock": false,
   "imports": {
-    "fresh": "jsr:@fresh/core@^2.2.0"
+    "fresh": "jsr:@fresh/core@^2.2.0",
+    "react": "https://esm.sh/react@19",
+    "react-dom/client": "https://esm.sh/react-dom@19/client"
   },
   "compilerOptions": {
     "noImplicitAny": false,
     "strict": false,
     "jsx": "react-jsx",
-    "jsxImportSource": "https://esm.sh/react",
+    "jsxImportSource": "https://esm.sh/react@19",
     "lib": [
       "dom",
       "dom.iterable",
@@ -30,6 +32,7 @@
     "frontend/",
     "shared/",
     "tests/",
+    "scripts/",
     "main.ts",
     "dev.ts"
   ],
@@ -41,11 +44,14 @@
     "unstable-sloppy-imports": true
   },
   "exclude": [
-    "**/_fresh/*"
+    "**/_fresh/*",
+    "static/bundle.js",
+    "static/bundle.js.map"
   ],
   "tasks": {
-    "dev": "deno run -A --watch=static/,routes/,lib/,frontend/,shared/ dev.ts",
-    "build": "deno run -A dev.ts build",
+    "build:frontend": "deno run -A scripts/build-frontend.ts",
+    "dev": "deno task build:frontend && deno run -A --watch=static/,routes/,lib/,frontend/,shared/ dev.ts",
+    "build": "deno task build:frontend && deno run -A dev.ts build",
     "start": "deno serve -A _fresh/server.js",
     "preview": "deno run -A main.ts",
     "quality": "deno fmt --check && deno lint",

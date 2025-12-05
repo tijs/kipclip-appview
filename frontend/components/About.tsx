@@ -1,4 +1,4 @@
-/** @jsxImportSource https://esm.sh/react */
+/** @jsxImportSource https://esm.sh/react@19 */
 
 export function About() {
   return (

@@ -30,4 +30,8 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# Build output
 _fresh/
+static/bundle.js
+static/bundle.js.map
