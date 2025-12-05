@@ -3,7 +3,7 @@
  * Caches DID document lookups to reduce PLC directory requests.
  */
 
-import { getCached } from "./kv-cache.ts";
+import { getCached, invalidateCache } from "./kv-cache.ts";
 
 const PLC_DIRECTORY = "https://plc.directory";
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -18,61 +18,78 @@ export interface ResolvedDid {
 }
 
 /**
+ * Fetch DID document from PLC directory (no caching).
+ */
+async function fetchDidDoc(did: string): Promise<ResolvedDid | null> {
+  const response = await fetch(`${PLC_DIRECTORY}/${did}`);
+
+  if (!response.ok) {
+    if (response.status === 404) {
+      return null;
+    }
+    throw new Error(`PLC lookup failed: ${response.status}`);
+  }
+
+  const didDoc = await response.json();
+
+  // Find PDS service endpoint
+  const pdsService = didDoc.service?.find(
+    (s: { id: string; serviceEndpoint?: string }) => s.id === "#atproto_pds",
+  );
+
+  if (!pdsService?.serviceEndpoint) {
+    return null;
+  }
+
+  // Extract handle from alsoKnownAs
+  let handle = did;
+  if (didDoc.alsoKnownAs?.length > 0) {
+    const atUri = didDoc.alsoKnownAs.find((aka: string) =>
+      aka.startsWith("at://")
+    );
+    if (atUri) {
+      handle = atUri.replace("at://", "");
+    }
+  }
+
+  return {
+    did,
+    pdsUrl: pdsService.serviceEndpoint,
+    handle,
+  };
+}
+
+/**
  * Resolve a DID to its PDS URL and handle.
- * Results are cached for 1 hour to reduce PLC directory load.
- *
- * @param did - The DID to resolve (e.g., "did:plc:abc123")
- * @returns Resolved DID data or null if not found
+ * Results are cached for 1 hour. Cached nulls are automatically invalidated and re-fetched.
  */
 export async function resolveDid(did: string): Promise<ResolvedDid | null> {
   if (!did.startsWith("did:")) {
     return null;
   }
 
+  const cacheKey: Deno.KvKey = ["plc", did];
+
   try {
-    return await getCached<ResolvedDid | null>(
-      ["plc", did],
+    const result = await getCached<ResolvedDid | null>(
+      cacheKey,
       CACHE_TTL_MS,
-      async () => {
-        const response = await fetch(`${PLC_DIRECTORY}/${did}`);
-
-        if (!response.ok) {
-          if (response.status === 404) {
-            return null;
-          }
-          throw new Error(`PLC lookup failed: ${response.status}`);
-        }
-
-        const didDoc = await response.json();
-
-        // Find PDS service endpoint
-        const pdsService = didDoc.service?.find(
-          (s: { id: string; serviceEndpoint?: string }) =>
-            s.id === "#atproto_pds",
-        );
-
-        if (!pdsService?.serviceEndpoint) {
-          return null;
-        }
-
-        // Extract handle from alsoKnownAs
-        let handle = did;
-        if (didDoc.alsoKnownAs?.length > 0) {
-          const atUri = didDoc.alsoKnownAs.find((aka: string) =>
-            aka.startsWith("at://")
-          );
-          if (atUri) {
-            handle = atUri.replace("at://", "");
-          }
-        }
-
-        return {
-          did,
-          pdsUrl: pdsService.serviceEndpoint,
-          handle,
-        };
-      },
+      () => fetchDidDoc(did),
     );
+
+    // If we got a cached null, invalidate it and fetch fresh
+    if (result === null) {
+      await invalidateCache(cacheKey);
+      const fresh = await fetchDidDoc(did);
+      // Only cache successful results
+      if (fresh !== null) {
+        // Re-cache the good result
+        await getCached(cacheKey, CACHE_TTL_MS, () => Promise.resolve(fresh));
+      }
+      return fresh;
+    }
+
+    return result;
   } catch (error) {
     console.error(`Failed to resolve DID ${did}:`, error);
     return null;
