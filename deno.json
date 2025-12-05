@@ -44,9 +44,7 @@
     "unstable-sloppy-imports": true
   },
   "exclude": [
-    "**/_fresh/*",
-    "static/bundle.js",
-    "static/bundle.js.map"
+    "**/_fresh/*"
   ],
   "tasks": {
     "build:frontend": "deno run -A scripts/build-frontend.ts",
