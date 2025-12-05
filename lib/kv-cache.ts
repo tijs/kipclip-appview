@@ -41,29 +41,13 @@ export async function getCached<T>(
 
   // Try to get from cache
   const cached = await db.get<CacheEntry<T>>(key);
-  const keyStr = JSON.stringify(key);
-  console.log(
-    `[KV] getCached ${keyStr}: cached.value=${!!cached
-      .value}, expiresAt=${cached.value?.expiresAt}, now=${Date.now()}`,
-  );
 
   if (cached.value && cached.value.expiresAt > Date.now()) {
-    console.log(
-      `[KV] getCached ${keyStr}: returning cached value: ${
-        JSON.stringify(cached.value.value)?.slice(0, 100)
-      }`,
-    );
     return cached.value.value;
   }
 
   // Fetch fresh value
-  console.log(`[KV] getCached ${keyStr}: cache miss or expired, fetching...`);
   const value = await fetcher();
-  console.log(
-    `[KV] getCached ${keyStr}: fetched value: ${
-      JSON.stringify(value)?.slice(0, 100)
-    }`,
-  );
 
   // Store in cache with expiration
   const entry: CacheEntry<T> = {
@@ -72,7 +56,6 @@ export async function getCached<T>(
   };
 
   await db.set(key, entry);
-  console.log(`[KV] getCached ${keyStr}: stored in cache with TTL ${ttlMs}ms`);
 
   return value;
 }
@@ -82,7 +65,6 @@ export async function getCached<T>(
  */
 export async function invalidateCache(key: Deno.KvKey): Promise<void> {
   const db = await getKv();
-  console.log(`[KV] invalidateCache ${JSON.stringify(key)}`);
   await db.delete(key);
 }
 
