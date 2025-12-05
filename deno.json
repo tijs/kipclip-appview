@@ -39,7 +39,6 @@
   },
   "tasks": {
     "dev": "deno run --allow-all --watch backend/dev.ts",
-    "build": "echo 'No build step required - TypeScript transpiled at runtime'",
     "quality": "deno fmt && deno lint",
     "deploy": "deno task quality",
     "check": "deno check --allow-import backend/index.ts frontend/index.tsx",
