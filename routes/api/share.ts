@@ -36,15 +36,40 @@ export function registerShareApiRoutes(app: App<any>): App<any> {
       const rawDoc = await rawResponse.json();
       console.log(`[Debug] Raw doc received, has service: ${!!rawDoc.service}`);
 
+      // Parse it ourselves to test
+      const pdsService = rawDoc.service?.find(
+        (s: { id: string }) => s.id === "#atproto_pds",
+      );
+      let handle = did;
+      if (rawDoc.alsoKnownAs?.length > 0) {
+        const atUri = rawDoc.alsoKnownAs.find((aka: string) =>
+          aka.startsWith("at://")
+        );
+        if (atUri) {
+          handle = atUri.replace("at://", "");
+        }
+      }
+      const manualResolved = pdsService?.serviceEndpoint
+        ? { did, pdsUrl: pdsService.serviceEndpoint, handle }
+        : null;
+
       // Now test through resolver
-      const resolved = await resolveDid(did);
+      let resolved = null;
+      let resolverError = null;
+      try {
+        resolved = await resolveDid(did);
+      } catch (e: any) {
+        resolverError = e.message;
+      }
       console.log(`[Debug] Resolved result: ${JSON.stringify(resolved)}`);
 
       return Response.json({
         did,
         rawFetchOk: true,
         rawDoc,
+        manualResolved,
         resolved,
+        resolverError,
       });
     } catch (error: any) {
       console.error(`[Debug] Error:`, error);
