@@ -39,7 +39,7 @@
   },
   "tasks": {
     "dev": "deno run --allow-all --watch backend/dev.ts",
-    "build": "deno task quality && deno task test",
+    "build": "deno task quality && deno task test && mkdir -p _fresh",
     "quality": "deno fmt --check && deno lint",
     "check": "deno check --allow-import backend/index.ts frontend/index.tsx",
     "test": "TURSO_DATABASE_URL=libsql://test.turso.io TURSO_AUTH_TOKEN=test BASE_URL=http://localhost:8000 COOKIE_SECRET=test-cookie-secret-32-characters-minimum deno test --allow-all",
