@@ -30,3 +30,4 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+_fresh/
