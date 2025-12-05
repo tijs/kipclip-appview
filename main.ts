@@ -1377,8 +1377,5 @@ app = app.get("*", async (ctx) => {
   });
 });
 
-// Export handler for Deno Deploy
-export default app.handler();
-
-// Re-export app for dev.ts
+// Export app for Fresh build system
 export { app };
