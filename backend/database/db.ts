@@ -1,50 +1,36 @@
 // Database module using Turso/libSQL
 // Works on Deno Deploy and local development
 
-import { createTursoHttpClient, type TursoClient } from "./turso-http.ts";
-
 const dbUrl = Deno.env.get("TURSO_DATABASE_URL") || "file:.local/kipclip.db";
 const isLocal = dbUrl.startsWith("file:");
 
-let client: TursoClient;
+// Use native client for local file, web client for remote Turso
+const { createClient } = isLocal
+  ? await import("npm:@libsql/client@0.15.15")
+  : await import("npm:@libsql/client@0.15.15/web");
 
-if (isLocal) {
-  // Local development: use native libSQL client with file database
-  const { createClient } = await import("npm:@libsql/client@0.15.15");
-  const libsqlClient = createClient({ url: dbUrl });
-  // Wrap to match TursoClient interface
-  client = {
-    execute: async (query: { sql: string; args?: unknown[] }) => {
-      const result = await libsqlClient.execute({
-        sql: query.sql,
-        args: (query.args ?? []) as any,
-      });
-      const rows = result.rows.map((row) => Object.values(row));
-      return { rows };
-    },
-  };
-} else {
-  // Remote Turso: use our pure fetch-based HTTP client (no npm dependencies)
-  client = createTursoHttpClient({
-    url: dbUrl,
-    authToken: Deno.env.get("TURSO_AUTH_TOKEN"),
-  });
-}
+const client = createClient({
+  url: dbUrl,
+  authToken: Deno.env.get("TURSO_AUTH_TOKEN"),
+});
 
-// Export for use by valTownAdapter and other modules
+// Wrap the client to match the ExecutableDriver interface expected by valTownAdapter
+// The libSQL client returns Row objects, but valTownAdapter expects { rows: unknown[][] }
 export const rawDb = {
   execute: async (
     query: { sql: string; args: unknown[] },
   ): Promise<{ rows: unknown[][] }> => {
     const result = await client.execute({
       sql: query.sql,
-      args: query.args,
+      args: query.args as any,
     });
-    return { rows: result.rows as unknown[][] };
+    // Convert Row objects to arrays (Object.values)
+    const rows = result.rows.map((row) => Object.values(row));
+    return { rows };
   },
 };
 
-console.log(`✅ Using ${isLocal ? "local" : "Turso HTTP"} database`);
+console.log(`✅ Using ${isLocal ? "local" : "Turso"} database`);
 
 // Initialize tables using migrations
 export async function initializeTables() {
