@@ -3,9 +3,32 @@
  * Uses esbuild to transpile on-the-fly for local development and Deno Deploy.
  */
 
-import { dirname, join } from "jsr:@std/path@1";
+import { dirname, fromFileUrl, join } from "jsr:@std/path@1";
 import { contentType } from "jsr:@std/media-types@1";
 import * as esbuild from "https://esm.sh/esbuild-wasm@0.24.0";
+
+/**
+ * Resolve a path relative to the project root.
+ * Works on both local development (file://) and Deno Deploy (app://).
+ */
+function resolveProjectPath(path: string, baseUrl: string): string {
+  // Remove leading slash from path
+  const cleanPath = path.startsWith("/") ? path.slice(1) : path;
+
+  // Get the directory of the base URL (main.ts location)
+  const baseUrlObj = new URL(baseUrl);
+
+  if (baseUrlObj.protocol === "file:") {
+    // Local development - resolve from filesystem
+    const baseDir = dirname(fromFileUrl(baseUrl));
+    return join(baseDir, cleanPath);
+  } else {
+    // Deno Deploy (app://) - resolve relative to base
+    // import.meta.url is like "app:///main.ts", so dirname gives "app:///"
+    const basePath = dirname(baseUrlObj.pathname);
+    return join(basePath, cleanPath);
+  }
+}
 
 /**
  * Read a file from the project relative to the given base URL.
@@ -15,18 +38,7 @@ import * as esbuild from "https://esm.sh/esbuild-wasm@0.24.0";
  * @returns File contents as string
  */
 export async function readFile(path: string, baseUrl: string): Promise<string> {
-  // Get the directory of the calling module
-  const baseDir = dirname(new URL(baseUrl).pathname);
-
-  // Find project root by looking for kipclip-appview directory
-  let projectRoot = baseDir;
-  while (!projectRoot.endsWith("kipclip-appview") && projectRoot !== "/") {
-    projectRoot = dirname(projectRoot);
-  }
-
-  // Remove leading slash and resolve path
-  const cleanPath = path.startsWith("/") ? path.slice(1) : path;
-  const filePath = join(projectRoot, cleanPath);
+  const filePath = resolveProjectPath(path, baseUrl);
 
   try {
     const content = await Deno.readTextFile(filePath);
@@ -56,9 +68,7 @@ export async function serveFile(
 
     // For TypeScript/TSX/JSX files, transpile to JavaScript using esbuild
     if (ext === "tsx" || ext === "ts" || ext === "jsx") {
-      const projectRoot = getProjectRoot(baseUrl);
-      const cleanPath = path.startsWith("/") ? path.slice(1) : path;
-      const filePath = join(projectRoot, cleanPath);
+      const filePath = resolveProjectPath(path, baseUrl);
 
       try {
         const result = await esbuild.build({
@@ -100,14 +110,4 @@ export async function serveFile(
   } catch {
     return new Response("File not found", { status: 404 });
   }
-}
-
-// Helper function to get project root
-function getProjectRoot(baseUrl: string): string {
-  const baseDir = dirname(new URL(baseUrl).pathname);
-  let projectRoot = baseDir;
-  while (!projectRoot.endsWith("kipclip-appview") && projectRoot !== "/") {
-    projectRoot = dirname(projectRoot);
-  }
-  return projectRoot;
 }
