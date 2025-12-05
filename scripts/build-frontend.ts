@@ -91,6 +91,9 @@ try {
   const bundleFileName = `bundle.${contentHash}.js`;
   const bundlePath = `static/${bundleFileName}`;
 
+  // Ensure static directory exists
+  await Deno.mkdir("static", { recursive: true });
+
   // Write bundle with hashed filename
   await Deno.writeFile(bundlePath, bundleOutput.contents);
 
