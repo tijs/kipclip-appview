@@ -77,19 +77,42 @@ export async function resolveDid(did: string): Promise<ResolvedDid | null> {
 
   try {
     console.log(`[PLC] Resolving ${did}, checking cache...`);
-    const result = await getCached<ResolvedDid | null>(
-      cacheKey,
-      CACHE_TTL_MS,
-      () => fetchDidDoc(did),
-    );
+
+    // First, try to get from cache directly to see what's there
+    let result: ResolvedDid | null = null;
+    let cacheHit = false;
+
+    try {
+      result = await getCached<ResolvedDid | null>(
+        cacheKey,
+        CACHE_TTL_MS,
+        () => fetchDidDoc(did),
+      );
+      cacheHit = true;
+      console.log(
+        `[PLC] getCached returned: ${result ? JSON.stringify(result) : "null"}`,
+      );
+    } catch (cacheError) {
+      console.error(`[PLC] getCached threw error:`, cacheError);
+      // If cache fails, fall back to direct fetch
+      result = await fetchDidDoc(did);
+      console.log(
+        `[PLC] Direct fetch after cache error: ${
+          result ? JSON.stringify(result) : "null"
+        }`,
+      );
+    }
 
     // If we got a cached null, invalidate it and fetch fresh
-    if (result === null) {
+    if (result === null && cacheHit) {
       console.log(
         `[PLC] Got cached null for ${did}, invalidating and re-fetching`,
       );
       await invalidateCache(cacheKey);
       const fresh = await fetchDidDoc(did);
+      console.log(
+        `[PLC] Fresh fetch result: ${fresh ? JSON.stringify(fresh) : "null"}`,
+      );
       // Only cache successful results
       if (fresh !== null) {
         console.log(`[PLC] Fresh fetch succeeded for ${did}, caching result`);
@@ -101,7 +124,9 @@ export async function resolveDid(did: string): Promise<ResolvedDid | null> {
       return fresh;
     }
 
-    console.log(`[PLC] Resolved ${did} to ${result.handle}`);
+    if (result) {
+      console.log(`[PLC] Resolved ${did} to ${result.handle}`);
+    }
     return result;
   } catch (error) {
     console.error(`[PLC] Failed to resolve DID ${did}:`, error);
