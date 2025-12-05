@@ -111,5 +111,5 @@ app = registerRssRoutes(app);
 // Register static file serving and SPA routing (must be last)
 app = registerStaticRoutes(app);
 
-// Export handler for Val Town
+// Export handler for Deno Deploy
 export default app.handler();

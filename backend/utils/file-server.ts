@@ -1,14 +1,11 @@
 /**
  * Universal file server utilities with TypeScript/TSX transpilation.
- * Works both locally and on Val.Town - uses esbuild to transpile on-the-fly.
- *
- * This replaces Val.Town's std/utils with a version that handles TypeScript
- * transpilation consistently across all environments.
+ * Uses esbuild to transpile on-the-fly for local development and Deno Deploy.
  */
 
 import { dirname, join } from "jsr:@std/path@1";
 import { contentType } from "jsr:@std/media-types@1";
-import * as esbuild from "https://deno.land/x/esbuild@v0.20.1/mod.js";
+import * as esbuild from "https://esm.sh/esbuild-wasm@0.24.0";
 
 /**
  * Read a file from the project relative to the given base URL.

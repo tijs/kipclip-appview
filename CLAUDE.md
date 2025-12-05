@@ -15,7 +15,7 @@ the community bookmark lexicon.
 deno task test          # Run tests
 deno task check         # Type check backend and frontend
 deno task quality       # Format and lint
-deno task deploy        # Quality checks + deploy to Val Town
+deno task deploy        # Quality checks (deploy via Deno Deploy dashboard)
 deno fmt                # Format code
 deno lint               # Lint code
 ```
@@ -23,16 +23,15 @@ deno lint               # Lint code
 ## Architecture
 
 - **Frontend**: React SPA with Tailwind CSS, served as static files
-- **Backend**: Fresh 2.x HTTP server on Val Town
-- **Database**: Val Town SQLite (only for OAuth sessions, not bookmarks)
+- **Backend**: Fresh 2.x HTTP server on Deno Deploy
+- **Database**: Turso/libSQL (only for OAuth sessions, not bookmarks)
 - **Bookmark Storage**: User's PDS via AT Protocol
 - **Static Assets**: Bunny CDN (`cdn.kipclip.com`)
 
 ### Fresh Framework
 
-The app uses Fresh 2.x with programmatic routing (not file-based routes) for Val
-Town compatibility. Routes are registered via functions that take and return the
-app:
+The app uses Fresh 2.x with programmatic routing (not file-based routes). Routes
+are registered via functions that take and return the app:
 
 ```typescript
 import { App } from "jsr:@fresh/core@^2.2.0";
@@ -58,7 +57,7 @@ Key differences from Hono:
 Uses framework-agnostic OAuth libraries:
 
 - `@tijs/atproto-oauth` - OAuth orchestration and route handlers
-- `@tijs/atproto-storage` - SQLite session storage with Val Town adapter
+- `@tijs/atproto-storage` - SQLite session storage with Turso adapter
 - `@tijs/atproto-sessions` - Cookie/token management
 
 OAuth routes in `backend/index.ts`:
@@ -76,12 +75,13 @@ app = app.get("/oauth/callback", (ctx) => oauth.handleCallback(ctx.req));
 - `backend/routes/` - API route handlers (register function pattern)
 - `frontend/components/App.tsx` - Main React component
 
-## Val Town Specifics
+## Deno Deploy Specifics
 
-- Use full JSR specifiers (`jsr:@fresh/core@^2.2.0`) - import maps don't work
+- Use full JSR specifiers (`jsr:@fresh/core@^2.2.0`) for consistency
 - Export `app.handler()` as default export
-- Use `serveFile` from `https://esm.town/v/std/utils` for static files
-- Environment variables: `BASE_URL`, `COOKIE_SECRET`
+- Static files served via esbuild-based `file-server.ts`
+- Environment variables configured in Deno Deploy dashboard: `BASE_URL`,
+  `COOKIE_SECRET`, `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`
 
 ## Testing
 

@@ -40,7 +40,7 @@
   "tasks": {
     "dev": "deno run --allow-all --watch backend/dev.ts",
     "quality": "deno fmt && deno lint",
-    "deploy": "deno task quality && vt push",
+    "deploy": "deno task quality",
     "check": "deno check --allow-import backend/index.ts frontend/index.tsx",
     "test": "BASE_URL=http://localhost:8000 COOKIE_SECRET=test-cookie-secret-32-characters-minimum deno test --allow-all",
     "test:watch": "BASE_URL=http://localhost:8000 COOKIE_SECRET=test-cookie-secret-32-characters-minimum deno test --allow-all --watch",

@@ -1,31 +1,9 @@
 import type { App } from "jsr:@fresh/core@^2.2.0";
 import { decodeTagsFromUrl } from "../../shared/utils.ts";
+import { readFile, serveFile } from "../utils/file-server.ts";
 
 // Fresh App with any state type (we don't use Fresh's state management)
 type FreshApp = App<any>;
-
-// Detect runtime environment
-// Val Town: Use esm.town utilities (reads files via esm.town URLs)
-// Deno Deploy/Local: Use esbuild-based file server (reads from filesystem)
-const isValTown = Deno.env.get("VALTOWN") === "true" ||
-  import.meta.url.includes("esm.town");
-
-let readFile: (path: string, baseUrl: string) => Promise<string>;
-let serveFile: (path: string, baseUrl: string) => Promise<Response>;
-
-if (isValTown) {
-  // Val Town: Use Val Town's native utilities
-  const utils = await import("https://esm.town/v/std/utils@85-main/index.ts");
-  readFile = utils.readFile;
-  serveFile = utils.serveFile;
-  console.log("Using Val Town utilities");
-} else {
-  // Deno Deploy / Local: Use esbuild-based transpilation
-  const localUtils = await import("../utils/file-server.ts");
-  readFile = localUtils.readFile;
-  serveFile = localUtils.serveFile;
-  console.log("Using esbuild file server");
-}
 
 /**
  * Register static file routes on the Fresh app
