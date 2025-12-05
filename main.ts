@@ -10,7 +10,7 @@ import { captureError } from "./lib/sentry.ts";
 import { getClearSessionCookie, getSessionFromRequest } from "./lib/session.ts";
 import { extractUrlMetadata } from "./lib/enrichment.ts";
 import { decodeTagsFromUrl } from "./shared/utils.ts";
-import { readFile, serveFile } from "./lib/file-server.ts";
+import { getBundleFileName, readFile, serveFile } from "./lib/file-server.ts";
 import type {
   AddBookmarkRequest,
   AddBookmarkResponse,
@@ -31,6 +31,29 @@ import type {
 
 // Run database migrations on startup
 await initializeTables();
+
+// Cache the bundle filename at startup (lazy loaded on first request)
+let cachedBundleFileName: string | null = null;
+
+/**
+ * Get the HTML template with the correct hashed bundle filename injected.
+ */
+async function getHtmlWithBundle(): Promise<string> {
+  // Lazy load the bundle filename
+  if (!cachedBundleFileName) {
+    cachedBundleFileName = await getBundleFileName(import.meta.url);
+  }
+
+  let html = await readFile("/frontend/index.html", import.meta.url);
+
+  // Replace the bundle reference with the hashed version
+  html = html.replace(
+    /src="\/static\/bundle\.js"/,
+    `src="/static/${cachedBundleFileName}"`,
+  );
+
+  return html;
+}
 
 // Create the Fresh app
 let app = new App();
@@ -1279,7 +1302,7 @@ app = app.get("/.well-known/atproto/lexicons/*", (ctx) => {
 
 // Serve index.html for root
 app = app.get("/", async () => {
-  const html = await readFile("/frontend/index.html", import.meta.url);
+  const html = await getHtmlWithBundle();
   return new Response(html, {
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });
@@ -1315,7 +1338,7 @@ app = app.get("*", async (ctx) => {
           const data = await response.json();
           const { handle, bookmarks } = data;
 
-          let html = await readFile("/frontend/index.html", import.meta.url);
+          let html = await getHtmlWithBundle();
 
           const title = `${handle}'s Bookmarks Collection: ${tags.join(", ")}`;
           const description = bookmarks.length > 0
@@ -1384,7 +1407,7 @@ app = app.get("*", async (ctx) => {
   }
 
   // Default: serve base HTML for all other routes
-  const html = await readFile("/frontend/index.html", import.meta.url);
+  const html = await getHtmlWithBundle();
   return new Response(html, {
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });
