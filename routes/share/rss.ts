@@ -4,6 +4,7 @@
  */
 
 import type { App } from "@fresh/core";
+import { resolveDid } from "../../lib/plc-resolver.ts";
 import { BOOKMARK_COLLECTION } from "../../lib/route-utils.ts";
 import { decodeTagsFromUrl } from "../../shared/utils.ts";
 
@@ -31,18 +32,13 @@ export function registerRssRoutes(app: App<any>): App<any> {
         return new Response("Invalid tags", { status: 400 });
       }
 
-      const didDoc = await fetch(`https://plc.directory/${did}`).then((r) =>
-        r.json()
-      );
-      const pdsEndpoint = didDoc.service?.find(
-        (s: any) => s.type === "AtprotoPersonalDataServer",
-      )?.serviceEndpoint;
-
-      if (!pdsEndpoint) {
+      // Use cached PLC resolver
+      const resolved = await resolveDid(did);
+      if (!resolved) {
         return new Response("PDS not found", { status: 404 });
       }
 
-      const handle = didDoc.alsoKnownAs?.[0]?.replace("at://", "") || did;
+      const { pdsUrl: pdsEndpoint, handle } = resolved;
 
       const bookmarksResponse = await fetch(
         `${pdsEndpoint}/xrpc/com.atproto.repo.listRecords?` +

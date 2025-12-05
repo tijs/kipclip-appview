@@ -4,6 +4,7 @@
  */
 
 import type { App } from "@fresh/core";
+import { resolveDid } from "../../lib/plc-resolver.ts";
 import { BOOKMARK_COLLECTION } from "../../lib/route-utils.ts";
 import { decodeTagsFromUrl } from "../../shared/utils.ts";
 import type {
@@ -31,31 +32,13 @@ export function registerShareApiRoutes(app: App<any>): App<any> {
         return Response.json({ error: "Invalid DID format" }, { status: 400 });
       }
 
-      const didDocResponse = await fetch(`https://plc.directory/${did}`);
-      if (!didDocResponse.ok) {
+      // Use cached PLC resolver
+      const resolved = await resolveDid(did);
+      if (!resolved) {
         return Response.json({ error: "User not found" }, { status: 404 });
       }
 
-      const didDoc = await didDocResponse.json();
-      const pdsService = didDoc.service?.find((s: any) =>
-        s.id === "#atproto_pds"
-      );
-      if (!pdsService?.serviceEndpoint) {
-        return Response.json({ error: "User's PDS not found" }, {
-          status: 404,
-        });
-      }
-
-      const pdsUrl = pdsService.serviceEndpoint;
-      let handle = did;
-      if (didDoc.alsoKnownAs && didDoc.alsoKnownAs.length > 0) {
-        const atUri = didDoc.alsoKnownAs.find((aka: string) =>
-          aka.startsWith("at://")
-        );
-        if (atUri) {
-          handle = atUri.replace("at://", "");
-        }
-      }
+      const { pdsUrl, handle } = resolved;
 
       const params = new URLSearchParams({
         repo: did,

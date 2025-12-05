@@ -1,12 +1,36 @@
 import type { UrlMetadata } from "../shared/types.ts";
 import { decode } from "html-entities";
+import { getCached } from "./kv-cache.ts";
+
+const METADATA_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 /**
- * Extracts metadata from a URL by fetching and parsing the HTML
+ * Generate a cache key for URL metadata.
+ * Uses a hash of the URL to keep keys manageable.
  */
-export async function extractUrlMetadata(
+function getMetadataCacheKey(url: string): Deno.KvKey {
+  // Use URL directly as part of key (KV handles long keys)
+  return ["metadata", url];
+}
+
+/**
+ * Extracts metadata from a URL by fetching and parsing the HTML.
+ * Results are cached for 24 hours.
+ */
+export function extractUrlMetadata(
   url: string,
 ): Promise<UrlMetadata> {
+  return getCached<UrlMetadata>(
+    getMetadataCacheKey(url),
+    METADATA_CACHE_TTL_MS,
+    () => fetchUrlMetadata(url),
+  );
+}
+
+/**
+ * Actually fetch and parse URL metadata (called by cache on miss).
+ */
+async function fetchUrlMetadata(url: string): Promise<UrlMetadata> {
   try {
     // Validate URL
     const parsedUrl = new URL(url);
