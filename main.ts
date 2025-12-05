@@ -1247,6 +1247,12 @@ Sitemap: https://kipclip.com/sitemap.xml
   );
 });
 
+// Serve static files (frontend bundle)
+app = app.get("/static/*", (ctx) => {
+  const path = new URL(ctx.req.url).pathname;
+  return serveFile(path, import.meta.url);
+});
+
 // Serve frontend files
 app = app.get("/frontend/*", (ctx) => {
   const path = new URL(ctx.req.url).pathname;
