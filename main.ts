@@ -44,6 +44,34 @@ app = app.use(async (ctx) => {
   return await ctx.next();
 });
 
+// Security headers middleware
+app = app.use(async (ctx) => {
+  const response = await ctx.next();
+
+  // Prevent clickjacking
+  response.headers.set("X-Frame-Options", "DENY");
+
+  // Prevent MIME type sniffing
+  response.headers.set("X-Content-Type-Options", "nosniff");
+
+  // Control referrer information
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+
+  // HTTPS enforcement (1 year)
+  response.headers.set(
+    "Strict-Transport-Security",
+    "max-age=31536000; includeSubDomains",
+  );
+
+  // Restrict browser features
+  response.headers.set(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=()",
+  );
+
+  return response;
+});
+
 // Serve static files from /static directory (Fresh built-in)
 app.use(staticFiles());
 
@@ -54,7 +82,7 @@ app.use(staticFiles());
 // OAuth routes (login, callback, metadata)
 app = registerOAuthRoutes(app);
 
-// Auth API routes (session, logout, debug)
+// Auth API routes (session, logout)
 app = registerAuthRoutes(app);
 
 // Bookmark API routes

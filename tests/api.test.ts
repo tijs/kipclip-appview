@@ -105,5 +105,61 @@ Deno.test("RSS feed - RFC 822 date format", () => {
   assertStringIncludes(rfc822, "GMT");
 });
 
+// ============================================================================
+// Security Tests
+// ============================================================================
+
+Deno.test("GET /api/auth/debug - returns 404 (removed for security)", async () => {
+  const req = new Request("https://kipclip.com/api/auth/debug");
+  const res = await handler(req);
+
+  // Debug endpoint should be removed
+  assertEquals(res.status, 404);
+});
+
+Deno.test("Security headers - X-Frame-Options is set", async () => {
+  const req = new Request("https://kipclip.com/api/bookmarks");
+  const res = await handler(req);
+
+  assertEquals(res.headers.get("X-Frame-Options"), "DENY");
+});
+
+Deno.test("Security headers - X-Content-Type-Options is set", async () => {
+  const req = new Request("https://kipclip.com/api/bookmarks");
+  const res = await handler(req);
+
+  assertEquals(res.headers.get("X-Content-Type-Options"), "nosniff");
+});
+
+Deno.test("Security headers - Referrer-Policy is set", async () => {
+  const req = new Request("https://kipclip.com/api/bookmarks");
+  const res = await handler(req);
+
+  assertEquals(
+    res.headers.get("Referrer-Policy"),
+    "strict-origin-when-cross-origin",
+  );
+});
+
+Deno.test("Security headers - Strict-Transport-Security is set", async () => {
+  const req = new Request("https://kipclip.com/api/bookmarks");
+  const res = await handler(req);
+
+  assertEquals(
+    res.headers.get("Strict-Transport-Security"),
+    "max-age=31536000; includeSubDomains",
+  );
+});
+
+Deno.test("Security headers - Permissions-Policy is set", async () => {
+  const req = new Request("https://kipclip.com/api/bookmarks");
+  const res = await handler(req);
+
+  assertEquals(
+    res.headers.get("Permissions-Policy"),
+    "camera=(), microphone=(), geolocation=()",
+  );
+});
+
 // Note: Full integration tests with real PDS would go in a separate integration test file
 // These unit tests focus on the route handler logic and error handling

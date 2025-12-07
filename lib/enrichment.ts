@@ -1,6 +1,83 @@
 import type { UrlMetadata } from "../shared/types.ts";
 import { decode } from "html-entities";
 
+/** Maximum lengths for metadata fields */
+const MAX_TITLE_LENGTH = 200;
+const MAX_DESCRIPTION_LENGTH = 500;
+
+/**
+ * Check if a hostname points to a private/internal IP range.
+ * Blocks: localhost, private ranges, link-local, cloud metadata endpoints.
+ */
+function isPrivateUrl(url: URL): boolean {
+  const hostname = url.hostname.toLowerCase();
+
+  // Block localhost variants
+  if (
+    hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
+  ) {
+    return true;
+  }
+
+  // Block cloud metadata endpoints
+  if (
+    hostname === "169.254.169.254" || hostname === "metadata.google.internal"
+  ) {
+    return true;
+  }
+
+  // Check common private IP patterns in hostname
+  const privatePatterns = [
+    /^10\./, // 10.0.0.0/8
+    /^172\.(1[6-9]|2\d|3[01])\./, // 172.16.0.0/12
+    /^192\.168\./, // 192.168.0.0/16
+    /^127\./, // 127.0.0.0/8
+    /^169\.254\./, // Link-local
+    /^0\./, // 0.0.0.0/8
+    /^fd[0-9a-f]{2}:/i, // IPv6 ULA
+    /^fe80:/i, // IPv6 link-local
+  ];
+
+  return privatePatterns.some((pattern) => pattern.test(hostname));
+}
+
+/**
+ * Sanitize extracted text content.
+ * - Trim whitespace
+ * - Limit length
+ * - Remove control characters
+ * - Collapse multiple spaces
+ */
+function sanitizeText(text: string, maxLength: number): string {
+  // deno-lint-ignore no-control-regex
+  const controlCharsRegex = /[\x00-\x1F\x7F]/g;
+  return text
+    .trim()
+    .replace(controlCharsRegex, "") // Remove control characters
+    .replace(/\s+/g, " ") // Collapse whitespace
+    .slice(0, maxLength);
+}
+
+/**
+ * Validate favicon URL.
+ * Only allow http/https URLs, block javascript:, data:, etc.
+ */
+function sanitizeFaviconUrl(
+  faviconUrl: string,
+  baseUrl: URL,
+): string | undefined {
+  try {
+    const resolved = new URL(faviconUrl, baseUrl);
+    // Only allow http/https protocols
+    if (resolved.protocol === "http:" || resolved.protocol === "https:") {
+      return resolved.href;
+    }
+  } catch {
+    // Invalid URL
+  }
+  return undefined;
+}
+
 /**
  * Extracts metadata from a URL by fetching and parsing the HTML.
  */
@@ -17,6 +94,12 @@ async function fetchUrlMetadata(url: string): Promise<UrlMetadata> {
     const parsedUrl = new URL(url);
     if (!parsedUrl.protocol.startsWith("http")) {
       throw new Error("Only HTTP(S) URLs are supported");
+    }
+
+    // SSRF protection: block private/internal URLs
+    if (isPrivateUrl(parsedUrl)) {
+      console.warn(`[Enrichment] Blocked private URL: ${parsedUrl.hostname}`);
+      return { title: parsedUrl.hostname };
     }
 
     // Fetch the URL with a timeout
@@ -60,7 +143,7 @@ async function fetchUrlMetadata(url: string): Promise<UrlMetadata> {
 }
 
 /**
- * Parses HTML to extract metadata
+ * Parses HTML to extract metadata with sanitization.
  */
 function parseHtmlMetadata(html: string, url: URL): UrlMetadata {
   const metadata: UrlMetadata = {};
@@ -68,7 +151,7 @@ function parseHtmlMetadata(html: string, url: URL): UrlMetadata {
   // Extract title - try <title> tag first
   const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
   if (titleMatch) {
-    metadata.title = decode(titleMatch[1].trim());
+    metadata.title = sanitizeText(decode(titleMatch[1]), MAX_TITLE_LENGTH);
   }
 
   // Try og:title as fallback
@@ -77,7 +160,7 @@ function parseHtmlMetadata(html: string, url: URL): UrlMetadata {
       /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i,
     );
     if (ogTitleMatch) {
-      metadata.title = decode(ogTitleMatch[1].trim());
+      metadata.title = sanitizeText(decode(ogTitleMatch[1]), MAX_TITLE_LENGTH);
     }
   }
 
@@ -86,7 +169,10 @@ function parseHtmlMetadata(html: string, url: URL): UrlMetadata {
     /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i,
   );
   if (descMatch) {
-    metadata.description = decode(descMatch[1].trim());
+    metadata.description = sanitizeText(
+      decode(descMatch[1]),
+      MAX_DESCRIPTION_LENGTH,
+    );
   }
 
   // Try og:description as fallback
@@ -95,21 +181,22 @@ function parseHtmlMetadata(html: string, url: URL): UrlMetadata {
       /<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i,
     );
     if (ogDescMatch) {
-      metadata.description = decode(ogDescMatch[1].trim());
+      metadata.description = sanitizeText(
+        decode(ogDescMatch[1]),
+        MAX_DESCRIPTION_LENGTH,
+      );
     }
   }
 
-  // Extract favicon
+  // Extract and validate favicon URL
   const faviconMatch = html.match(
     /<link[^>]+rel=["'](?:icon|shortcut icon)["'][^>]+href=["']([^"']+)["']/i,
   );
   if (faviconMatch) {
-    const faviconUrl = faviconMatch[1];
-    // Resolve relative URLs
-    metadata.favicon = new URL(faviconUrl, url).href;
+    metadata.favicon = sanitizeFaviconUrl(faviconMatch[1], url);
   }
 
-  // Default to hostname/favicon.ico if no favicon found
+  // Default to hostname/favicon.ico if no valid favicon found
   if (!metadata.favicon) {
     metadata.favicon = new URL("/favicon.ico", url.origin).href;
   }

@@ -1,11 +1,10 @@
 /**
  * Auth API routes.
- * Handles session management and debugging.
+ * Handles session management.
  */
 
 import type { App } from "@fresh/core";
 import { getOAuth } from "../../lib/oauth-config.ts";
-import { getSessionFromRequest } from "../../lib/route-utils.ts";
 
 export function registerAuthRoutes(app: App<any>): App<any> {
   // Logout
@@ -28,37 +27,6 @@ export function registerAuthRoutes(app: App<any>): App<any> {
       response.headers.set("Set-Cookie", result.setCookieHeader);
     }
     return response;
-  });
-
-  // Debug endpoint
-  app = app.get("/api/auth/debug", async (ctx) => {
-    const request = ctx.req;
-    const cookies = request.headers.get("cookie") || "";
-    const hasSidCookie = cookies.includes("sid=");
-    const sidCookiePreview = cookies.match(/sid=([^;]+)/)?.[1]?.substring(
-      0,
-      30,
-    );
-
-    const { session, error } = await getSessionFromRequest(request);
-
-    return Response.json({
-      debug: {
-        timestamp: new Date().toISOString(),
-        url: request.url,
-        cookies: {
-          hasSidCookie,
-          sidCookiePreview: sidCookiePreview ? `${sidCookiePreview}...` : null,
-        },
-        session: session
-          ? {
-            did: session.did,
-            pdsUrl: session.pdsUrl,
-          }
-          : null,
-        error: error || null,
-      },
-    });
   });
 
   return app;
