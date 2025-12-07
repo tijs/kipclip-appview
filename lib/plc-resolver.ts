@@ -1,12 +1,9 @@
 /**
- * PLC Directory resolver with Deno KV caching.
- * Caches DID document lookups to reduce PLC directory requests.
+ * PLC Directory resolver.
+ * Resolves DID documents from the PLC directory.
  */
 
-import { getCached, invalidateCache } from "./kv-cache.ts";
-
 const PLC_DIRECTORY = "https://plc.directory";
-const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 /**
  * Resolved DID document data.
@@ -61,44 +58,14 @@ async function fetchDidDoc(did: string): Promise<ResolvedDid | null> {
 
 /**
  * Resolve a DID to its PDS URL and handle.
- * Results are cached for 1 hour. Cached nulls are automatically invalidated and re-fetched.
  */
 export async function resolveDid(did: string): Promise<ResolvedDid | null> {
   if (!did.startsWith("did:")) {
     return null;
   }
 
-  const cacheKey: Deno.KvKey = ["plc", did];
-
   try {
-    let result: ResolvedDid | null = null;
-    let cacheHit = false;
-
-    try {
-      result = await getCached<ResolvedDid | null>(
-        cacheKey,
-        CACHE_TTL_MS,
-        () => fetchDidDoc(did),
-      );
-      cacheHit = true;
-    } catch (cacheError) {
-      console.error(`[PLC] Cache error for ${did}:`, cacheError);
-      // If cache fails, fall back to direct fetch
-      result = await fetchDidDoc(did);
-    }
-
-    // If we got a cached null, invalidate it and fetch fresh
-    if (result === null && cacheHit) {
-      await invalidateCache(cacheKey);
-      const fresh = await fetchDidDoc(did);
-      // Only cache successful results
-      if (fresh !== null) {
-        await getCached(cacheKey, CACHE_TTL_MS, () => Promise.resolve(fresh));
-      }
-      return fresh;
-    }
-
-    return result;
+    return await fetchDidDoc(did);
   } catch (error) {
     console.error(`[PLC] Failed to resolve DID ${did}:`, error);
     return null;
