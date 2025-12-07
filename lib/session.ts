@@ -8,6 +8,22 @@ import { SessionManager } from "@tijs/atproto-sessions";
 import { captureError } from "./sentry.ts";
 import { getOAuth } from "./oauth-config.ts";
 
+// Test session provider override (set via setTestSessionProvider)
+let testSessionProvider:
+  | ((request: Request) => Promise<SessionResult>)
+  | null = null;
+
+/**
+ * Set a test session provider for testing authenticated routes.
+ * Call with null to restore default behavior.
+ * @internal Only for use in tests
+ */
+export function setTestSessionProvider(
+  provider: ((request: Request) => Promise<SessionResult>) | null,
+): void {
+  testSessionProvider = provider;
+}
+
 // Session configuration from environment
 const COOKIE_SECRET = Deno.env.get("COOKIE_SECRET");
 if (!COOKIE_SECRET) {
@@ -62,6 +78,11 @@ function reportSessionError(
 export async function getSessionFromRequest(
   request: Request,
 ): Promise<SessionResult> {
+  // Check for test session provider (testing only)
+  if (testSessionProvider) {
+    return testSessionProvider(request);
+  }
+
   try {
     // Step 1: Extract session data from cookie using atproto-sessions
     const cookieResult = await sessions.getSessionFromRequest(request);
