@@ -6,6 +6,7 @@
 import { createATProtoOAuth } from "@tijs/atproto-oauth";
 import { sqliteAdapter, SQLiteStorage } from "@tijs/atproto-storage";
 import { rawDb } from "./db.ts";
+import { OAUTH_SCOPES } from "./route-utils.ts";
 
 // Cookie secret is always required
 const COOKIE_SECRET = Deno.env.get("COOKIE_SECRET");
@@ -52,6 +53,7 @@ export function initOAuth(
     logoUri: "https://cdn.kipclip.com/images/kip-vignette.png",
     cookieSecret: COOKIE_SECRET,
     sessionTtl: 60 * 60 * 24 * 14, // 14 days in seconds (max for public clients per AT Protocol OAuth spec)
+    scope: OAUTH_SCOPES,
     storage: new SQLiteStorage(sqliteAdapter(rawDb), {
       tableName: "iron_session_storage", // Match existing table name
       logger: console,

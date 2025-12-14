@@ -5,6 +5,7 @@
 
 import type { App } from "@fresh/core";
 import { getBaseUrl, getOAuth } from "../lib/oauth-config.ts";
+import { OAUTH_SCOPES } from "../lib/route-utils.ts";
 
 export function registerOAuthRoutes(app: App<any>): App<any> {
   // Login redirect
@@ -22,7 +23,7 @@ export function registerOAuthRoutes(app: App<any>): App<any> {
         client_id: `${baseUrl}/oauth-client-metadata.json`,
         client_uri: baseUrl,
         redirect_uris: [`${baseUrl}/oauth/callback`],
-        scope: "atproto transition:generic",
+        scope: OAUTH_SCOPES,
         grant_types: ["authorization_code", "refresh_token"],
         response_types: ["code"],
         application_type: "web",

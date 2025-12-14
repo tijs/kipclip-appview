@@ -8,6 +8,18 @@ import { getClearSessionCookie, getSessionFromRequest } from "./session.ts";
 export const BOOKMARK_COLLECTION = "community.lexicon.bookmarks.bookmark";
 export const TAG_COLLECTION = "com.kipclip.tag";
 
+/** OAuth scopes - granular permissions for only the collections kipclip uses */
+export const OAUTH_SCOPES =
+  "atproto " +
+  "repo:community.lexicon.bookmarks.bookmark?action=create " +
+  "repo:community.lexicon.bookmarks.bookmark?action=read " +
+  "repo:community.lexicon.bookmarks.bookmark?action=update " +
+  "repo:community.lexicon.bookmarks.bookmark?action=delete " +
+  "repo:com.kipclip.tag?action=create " +
+  "repo:com.kipclip.tag?action=read " +
+  "repo:com.kipclip.tag?action=update " +
+  "repo:com.kipclip.tag?action=delete";
+
 /**
  * Set the session cookie header on a response if provided.
  */
