@@ -1,6 +1,6 @@
 /**
  * Initial data API route.
- * Fetches bookmarks and tags in a single request to avoid token refresh race conditions.
+ * Fetches bookmarks, tags, and settings in a single request to avoid token refresh race conditions.
  */
 
 import type { App } from "@fresh/core";
@@ -11,6 +11,7 @@ import {
   setSessionCookie,
   TAG_COLLECTION,
 } from "../../lib/route-utils.ts";
+import { getUserSettings } from "../../lib/settings.ts";
 import type {
   EnrichedBookmark,
   EnrichedTag,
@@ -39,7 +40,7 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
         limit: "100",
       });
 
-      const [bookmarksResponse, tagsResponse] = await Promise.all([
+      const [bookmarksResponse, tagsResponse, settings] = await Promise.all([
         oauthSession.makeRequest(
           "GET",
           `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${bookmarksParams}`,
@@ -48,6 +49,7 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
           "GET",
           `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${tagsParams}`,
         ),
+        getUserSettings(oauthSession.did),
       ]);
 
       let bookmarks: EnrichedBookmark[] = [];
@@ -76,7 +78,7 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
         }));
       }
 
-      const result: InitialDataResponse = { bookmarks, tags };
+      const result: InitialDataResponse = { bookmarks, tags, settings };
       return setSessionCookie(Response.json(result), setCookieHeader);
     } catch (error: any) {
       console.error("Error fetching initial data:", error);

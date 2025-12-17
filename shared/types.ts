@@ -108,8 +108,31 @@ export interface SharedBookmarksResponse {
   error?: string;
 }
 
+// User settings (stored in database)
+export interface UserSettings {
+  readingListTag: string;
+}
+
+// Settings API response
+export interface GetSettingsResponse {
+  settings: UserSettings;
+}
+
+// Settings API update request
+export interface UpdateSettingsRequest {
+  readingListTag?: string;
+}
+
+// Settings API update response
+export interface UpdateSettingsResponse {
+  success: boolean;
+  settings?: UserSettings;
+  error?: string;
+}
+
 // Combined initial data response (for optimized page load)
 export interface InitialDataResponse {
   bookmarks: EnrichedBookmark[];
   tags: EnrichedTag[];
+  settings: UserSettings;
 }

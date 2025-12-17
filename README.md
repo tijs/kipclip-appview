@@ -13,6 +13,8 @@ bookmark lexicon.
 - Save bookmarks to your personal data server (PDS)
 - Automatic URL enrichment (title extraction)
 - View and manage your bookmarks
+- Reading List: filter bookmarks by a configurable tag (default: "toread")
+- User settings stored in Turso database
 - Uses
   [community.lexicon.bookmarks.bookmark](https://github.com/lexicon-community/lexicon/blob/main/community/lexicon/bookmarks/bookmark.json)
   schema
@@ -132,6 +134,11 @@ For implementation details, see the
 - `POST /api/auth/logout` - Logout
 - `/login` - OAuth login flow
 - `/oauth/callback` - OAuth callback
+
+### Settings
+
+- `GET /api/settings` - Get user settings
+- `PATCH /api/settings` - Update user settings
 
 ### Sharing
 

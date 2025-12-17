@@ -8,13 +8,18 @@ import { About } from "./About.tsx";
 import { Save } from "./Save.tsx";
 import { FAQ } from "./FAQ.tsx";
 import { SharedBookmarks } from "./SharedBookmarks.tsx";
+import { Settings } from "./Settings.tsx";
+import { ReadingList } from "./ReadingList.tsx";
 import { useApp } from "../context/AppContext.tsx";
+
+type ViewType = "bookmarks" | "reading-list";
 
 export function App() {
   const { session, setSession, loadInitialData } = useApp();
   const [loading, setLoading] = useState(true);
   const [dataLoading, setDataLoading] = useState(false);
   const [currentPath, setCurrentPath] = useState(globalThis.location.pathname);
+  const [currentView, setCurrentView] = useState<ViewType>("bookmarks");
 
   useEffect(() => {
     checkSession();
@@ -106,6 +111,11 @@ export function App() {
     return <Login />;
   }
 
+  // Settings page - requires session and loaded data
+  if (currentPath === "/settings") {
+    return <Settings />;
+  }
+
   return (
     <div className="min-h-screen md:h-screen flex flex-col">
       <header className="bg-white shadow-sm flex-shrink-0">
@@ -122,17 +132,51 @@ export function App() {
             >
               kipclip
             </h1>
+            <nav className="flex items-center gap-1 ml-6">
+              <button
+                type="button"
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                  currentView === "bookmarks"
+                    ? "text-coral"
+                    : "text-gray-500 hover:bg-gray-100"
+                }`}
+                style={currentView === "bookmarks"
+                  ? { backgroundColor: "rgba(230, 100, 86, 0.1)" }
+                  : {}}
+                onClick={() => setCurrentView("bookmarks")}
+              >
+                Bookmarks
+              </button>
+              <button
+                type="button"
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                  currentView === "reading-list"
+                    ? "text-coral"
+                    : "text-gray-500 hover:bg-gray-100"
+                }`}
+                style={currentView === "reading-list"
+                  ? { backgroundColor: "rgba(230, 100, 86, 0.1)" }
+                  : {}}
+                onClick={() => setCurrentView("reading-list")}
+              >
+                Reading List
+              </button>
+            </nav>
           </div>
           <UserMenu handle={session.handle} onLogout={handleLogout} />
         </div>
       </header>
 
-      <div className="flex flex-col md:flex-row flex-1 md:overflow-hidden">
-        <TagSidebar />
-        <main className="flex-1 px-4 py-8 max-w-7xl mx-auto w-full md:overflow-y-auto">
-          <BookmarkList />
-        </main>
-      </div>
+      {currentView === "bookmarks"
+        ? (
+          <div className="flex flex-col md:flex-row flex-1 md:overflow-hidden">
+            <TagSidebar />
+            <main className="flex-1 px-4 py-8 max-w-7xl mx-auto w-full md:overflow-y-auto">
+              <BookmarkList />
+            </main>
+          </div>
+        )
+        : <ReadingList />}
     </div>
   );
 }

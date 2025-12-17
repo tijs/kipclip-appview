@@ -1,0 +1,243 @@
+import { useApp } from "../context/AppContext.tsx";
+import type { EnrichedBookmark } from "../../shared/types.ts";
+
+function ReadingListCard({ bookmark }: { bookmark: EnrichedBookmark }) {
+  // Extract domain from URL
+  const domain = (() => {
+    try {
+      return new URL(bookmark.subject).hostname.replace("www.", "");
+    } catch {
+      return bookmark.subject;
+    }
+  })();
+
+  // Format date
+  const formattedDate = (() => {
+    try {
+      return new Date(bookmark.createdAt).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    } catch {
+      return "";
+    }
+  })();
+
+  const handleClick = () => {
+    globalThis.open(bookmark.subject, "_blank", "noopener,noreferrer");
+  };
+
+  return (
+    <article
+      onClick={handleClick}
+      className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 cursor-pointer transition-shadow hover:shadow-md"
+    >
+      <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2">
+        {bookmark.title || domain}
+      </h3>
+      {bookmark.description && (
+        <p className="text-gray-600 text-sm mb-4 line-clamp-3">
+          {bookmark.description}
+        </p>
+      )}
+      <div className="flex items-center gap-2 text-sm text-gray-500">
+        {bookmark.favicon && (
+          <img
+            src={bookmark.favicon}
+            alt=""
+            className="w-4 h-4"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = "none";
+            }}
+          />
+        )}
+        <span>{domain}</span>
+        <span className="text-gray-300">|</span>
+        <span>{formattedDate}</span>
+      </div>
+    </article>
+  );
+}
+
+function ReadingListEmpty({ tagName }: { tagName: string }) {
+  return (
+    <div className="flex-1 flex items-center justify-center p-8">
+      <div className="text-center max-w-md">
+        <div className="text-6xl mb-4">📚</div>
+        <h3 className="text-xl font-semibold text-gray-800 mb-2">
+          No articles in your reading list
+        </h3>
+        <p className="text-gray-600 mb-4">
+          Bookmarks tagged with "{tagName}" will appear here. Add this tag to
+          any bookmark to save it for later reading.
+        </p>
+        <a
+          href="/settings"
+          className="inline-block px-4 py-2 text-sm font-medium rounded-lg transition-colors"
+          style={{
+            backgroundColor: "rgba(230, 100, 86, 0.1)",
+            color: "var(--coral)",
+          }}
+        >
+          Change tag in Settings
+        </a>
+      </div>
+    </div>
+  );
+}
+
+function ReadingListTagSidebar() {
+  const {
+    readingListTags,
+    readingListSelectedTags,
+    toggleReadingListTag,
+    clearReadingListFilters,
+    settings,
+  } = useApp();
+
+  if (readingListTags.length === 0) {
+    return null;
+  }
+
+  return (
+    <>
+      {/* Desktop sidebar */}
+      <aside className="hidden md:flex flex-col w-64 bg-white border-r border-gray-200 flex-shrink-0">
+        <div className="p-4 border-b border-gray-200">
+          <h2 className="text-sm font-semibold text-gray-700">Filter by Tag</h2>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="space-y-1">
+            {readingListTags.map((tag) => {
+              const isSelected = readingListSelectedTags.has(tag);
+              const isReadingListTag = tag === settings.readingListTag;
+              return (
+                <button
+                  type="button"
+                  key={tag}
+                  onClick={() => toggleReadingListTag(tag)}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${
+                    isSelected
+                      ? "bg-blue-50 text-blue-700"
+                      : "text-gray-700 hover:bg-gray-100"
+                  }`}
+                >
+                  {isSelected && (
+                    <svg
+                      className="w-4 h-4 flex-shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                  )}
+                  <span className="truncate">{tag}</span>
+                  {isReadingListTag && (
+                    <span className="ml-auto text-xs text-gray-400">
+                      primary
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        {readingListSelectedTags.size > 0 && (
+          <div className="p-4 border-t border-gray-200">
+            <button
+              type="button"
+              onClick={clearReadingListFilters}
+              className="w-full px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              Clear filters
+            </button>
+          </div>
+        )}
+      </aside>
+
+      {/* Mobile horizontal bar */}
+      <div className="md:hidden bg-white border-b border-gray-200 px-4 py-3 overflow-x-auto">
+        <div className="flex items-center gap-2">
+          {readingListTags.map((tag) => {
+            const isSelected = readingListSelectedTags.has(tag);
+            return (
+              <button
+                type="button"
+                key={tag}
+                onClick={() => toggleReadingListTag(tag)}
+                className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm transition-colors ${
+                  isSelected
+                    ? "bg-blue-100 text-blue-700"
+                    : "bg-gray-100 text-gray-700"
+                }`}
+              >
+                {tag}
+              </button>
+            );
+          })}
+          {readingListSelectedTags.size > 0 && (
+            <button
+              type="button"
+              onClick={clearReadingListFilters}
+              className="flex-shrink-0 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+export function ReadingList() {
+  const { filteredReadingList, readingListBookmarks, settings } = useApp();
+
+  // If there are no reading list bookmarks at all, show empty state
+  if (readingListBookmarks.length === 0) {
+    return (
+      <div className="flex flex-col md:flex-row flex-1 md:overflow-hidden">
+        <ReadingListEmpty tagName={settings.readingListTag} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col md:flex-row flex-1 md:overflow-hidden">
+      <ReadingListTagSidebar />
+      <main className="flex-1 px-4 py-8 md:overflow-y-auto">
+        <div className="max-w-3xl mx-auto">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold text-gray-800">
+              Reading List
+            </h2>
+            <span className="text-sm text-gray-500">
+              {filteredReadingList.length} article
+              {filteredReadingList.length !== 1 ? "s" : ""}
+            </span>
+          </div>
+          {filteredReadingList.length === 0
+            ? (
+              <div className="text-center py-12 text-gray-500">
+                No articles match the selected filters.
+              </div>
+            )
+            : (
+              <div className="space-y-4">
+                {filteredReadingList.map((bookmark) => (
+                  <ReadingListCard key={bookmark.uri} bookmark={bookmark} />
+                ))}
+              </div>
+            )}
+        </div>
+      </main>
+    </div>
+  );
+}

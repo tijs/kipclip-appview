@@ -1,17 +1,30 @@
-import { createContext, type ReactNode, useContext, useState } from "react";
+import {
+  createContext,
+  type ReactNode,
+  useContext,
+  useMemo,
+  useState,
+} from "react";
 import type {
   EnrichedBookmark,
   EnrichedTag,
   InitialDataResponse,
   SessionInfo,
+  UserSettings,
 } from "../../shared/types.ts";
-import { apiGet } from "../utils/api.ts";
+import { apiGet, apiPatch } from "../utils/api.ts";
+
+const DEFAULT_SETTINGS: UserSettings = {
+  readingListTag: "toread",
+};
 
 interface AppState {
   session: SessionInfo | null;
   bookmarks: EnrichedBookmark[];
   tags: EnrichedTag[];
   selectedTags: Set<string>;
+  settings: UserSettings;
+  readingListSelectedTags: Set<string>;
   loading: boolean;
 }
 
@@ -40,8 +53,18 @@ interface AppContextValue extends AppState {
   toggleTag: (tagValue: string) => void;
   clearFilters: () => void;
 
+  // Settings actions
+  updateSettings: (updates: Partial<UserSettings>) => Promise<void>;
+
+  // Reading list filter actions
+  toggleReadingListTag: (tagValue: string) => void;
+  clearReadingListFilters: () => void;
+
   // Computed values
   filteredBookmarks: EnrichedBookmark[];
+  readingListBookmarks: EnrichedBookmark[];
+  readingListTags: string[];
+  filteredReadingList: EnrichedBookmark[];
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -51,6 +74,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [bookmarks, setBookmarks] = useState<EnrichedBookmark[]>([]);
   const [tags, setTags] = useState<EnrichedTag[]>([]);
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
+  const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
+  const [readingListSelectedTags, setReadingListSelectedTags] = useState<
+    Set<string>
+  >(new Set());
   const [loading, _setLoading] = useState(true);
 
   // Bookmark actions
@@ -119,8 +146,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const data: InitialDataResponse = await response.json();
       setBookmarks(data.bookmarks);
       setTags(data.tags);
+      setSettings(data.settings);
     } catch (err) {
       console.error("Failed to load initial data:", err);
+      throw err;
+    }
+  }
+
+  // Settings actions
+  async function updateSettings(updates: Partial<UserSettings>) {
+    try {
+      const response = await apiPatch("/api/settings", updates);
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to update settings");
+      }
+      const data = await response.json();
+      if (data.settings) {
+        setSettings(data.settings);
+      }
+    } catch (err) {
+      console.error("Failed to update settings:", err);
       throw err;
     }
   }
@@ -142,6 +188,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSelectedTags(new Set());
   }
 
+  // Reading list filter actions
+  function toggleReadingListTag(tagValue: string) {
+    setReadingListSelectedTags((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(tagValue)) {
+        newSet.delete(tagValue);
+      } else {
+        newSet.add(tagValue);
+      }
+      return newSet;
+    });
+  }
+
+  function clearReadingListFilters() {
+    setReadingListSelectedTags(new Set());
+  }
+
   // Computed values
   const filteredBookmarks = selectedTags.size === 0
     ? bookmarks
@@ -149,12 +212,41 @@ export function AppProvider({ children }: { children: ReactNode }) {
       [...selectedTags].every((tag) => bookmark.tags?.includes(tag))
     );
 
+  // Reading list: bookmarks with the configured reading list tag
+  const readingListBookmarks = useMemo(
+    () => bookmarks.filter((b) => b.tags?.includes(settings.readingListTag)),
+    [bookmarks, settings.readingListTag],
+  );
+
+  // Tags that appear on reading list bookmarks
+  const readingListTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    readingListBookmarks.forEach((b) => b.tags?.forEach((t) => tagSet.add(t)));
+    // Sort to show reading list tag first, then alphabetically
+    const tagArray = Array.from(tagSet);
+    return tagArray.sort((a, b) => {
+      if (a === settings.readingListTag) return -1;
+      if (b === settings.readingListTag) return 1;
+      return a.localeCompare(b);
+    });
+  }, [readingListBookmarks, settings.readingListTag]);
+
+  // Filtered reading list based on additional tag selection
+  const filteredReadingList = useMemo(() => {
+    if (readingListSelectedTags.size === 0) return readingListBookmarks;
+    return readingListBookmarks.filter((b) =>
+      [...readingListSelectedTags].every((tag) => b.tags?.includes(tag))
+    );
+  }, [readingListBookmarks, readingListSelectedTags]);
+
   const value: AppContextValue = {
     // State
     session,
     bookmarks,
     tags,
     selectedTags,
+    settings,
+    readingListSelectedTags,
     loading,
 
     // Session actions
@@ -181,8 +273,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toggleTag,
     clearFilters,
 
+    // Settings actions
+    updateSettings,
+
+    // Reading list filter actions
+    toggleReadingListTag,
+    clearReadingListFilters,
+
     // Computed values
     filteredBookmarks,
+    readingListBookmarks,
+    readingListTags,
+    filteredReadingList,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

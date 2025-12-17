@@ -12,6 +12,7 @@ import { captureError } from "./lib/sentry.ts";
 import { registerAuthRoutes } from "./routes/api/auth.ts";
 import { registerBookmarkRoutes } from "./routes/api/bookmarks.ts";
 import { registerInitialDataRoutes } from "./routes/api/initial-data.ts";
+import { registerSettingsRoutes } from "./routes/api/settings.ts";
 import { registerShareApiRoutes } from "./routes/api/share.ts";
 import { registerTagRoutes } from "./routes/api/tags.ts";
 import { registerOAuthRoutes } from "./routes/oauth.ts";
@@ -91,8 +92,11 @@ app = registerBookmarkRoutes(app);
 // Tag API routes
 app = registerTagRoutes(app);
 
-// Initial data API route (combined bookmarks + tags)
+// Initial data API route (combined bookmarks + tags + settings)
 app = registerInitialDataRoutes(app);
+
+// Settings API routes
+app = registerSettingsRoutes(app);
 
 // Share API routes (public bookmark sharing)
 app = registerShareApiRoutes(app);

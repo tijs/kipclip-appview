@@ -21,7 +21,20 @@ const MIGRATIONS: Array<{
   description: string;
   sql: string;
 }> = [
-  // Future application-specific migrations will go here
+  {
+    version: "001",
+    description: "Create user_settings table",
+    sql: `
+      CREATE TABLE IF NOT EXISTS user_settings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        did TEXT NOT NULL UNIQUE,
+        reading_list_tag TEXT NOT NULL DEFAULT 'toread',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_user_settings_did ON user_settings(did)
+    `,
+  },
 ];
 
 export async function runMigrations() {
