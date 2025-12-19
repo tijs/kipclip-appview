@@ -127,12 +127,12 @@ export function App() {
               className="w-8 h-8"
             />
             <h1
-              className="text-2xl font-bold"
+              className="hidden md:block text-2xl font-bold"
               style={{ color: "var(--coral)" }}
             >
               kipclip
             </h1>
-            <nav className="flex items-center gap-1 ml-6">
+            <nav className="flex items-center gap-1 ml-2 md:ml-6">
               <button
                 type="button"
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
