@@ -252,8 +252,8 @@ export function Settings() {
                   </p>
                   {instapaperEnabled && (
                     <p className="text-sm text-green-700 mt-1">
-                      ✓ Instapaper connection verified - your articles will be sent
-                      automatically
+                      ✓ Instapaper connection verified - your articles will be
+                      sent automatically
                     </p>
                   )}
                 </div>
