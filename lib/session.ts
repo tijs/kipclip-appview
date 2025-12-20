@@ -24,19 +24,26 @@ export function setTestSessionProvider(
   testSessionProvider = provider;
 }
 
-// Session configuration from environment
-const COOKIE_SECRET = Deno.env.get("COOKIE_SECRET");
-if (!COOKIE_SECRET) {
-  throw new Error("COOKIE_SECRET environment variable is required");
-}
+// Session configuration from environment (lazy-loaded)
+let sessions: SessionManager | null = null;
 
-// Create session manager for cookie handling (framework-agnostic)
-const sessions = new SessionManager({
-  cookieSecret: COOKIE_SECRET,
-  cookieName: "sid",
-  sessionTtl: 60 * 60 * 24 * 14, // 14 days
-  logger: console,
-});
+function getSessionManager(): SessionManager {
+  if (!sessions) {
+    const COOKIE_SECRET = Deno.env.get("COOKIE_SECRET");
+    if (!COOKIE_SECRET) {
+      throw new Error("COOKIE_SECRET environment variable is required");
+    }
+
+    // Create session manager for cookie handling (framework-agnostic)
+    sessions = new SessionManager({
+      cookieSecret: COOKIE_SECRET,
+      cookieName: "sid",
+      sessionTtl: 60 * 60 * 24 * 14, // 14 days
+      logger: console,
+    });
+  }
+  return sessions;
+}
 
 export interface SessionResult {
   session: SessionInterface | null;
@@ -85,7 +92,9 @@ export async function getSessionFromRequest(
 
   try {
     // Step 1: Extract session data from cookie using atproto-sessions
-    const cookieResult = await sessions.getSessionFromRequest(request);
+    const cookieResult = await getSessionManager().getSessionFromRequest(
+      request,
+    );
 
     if (!cookieResult.data) {
       const errorType = cookieResult.error?.type || "NO_SESSION";
@@ -248,5 +257,5 @@ export async function getSessionFromRequest(
  * Get clear cookie header for session cleanup.
  */
 export function getClearSessionCookie(): string {
-  return sessions.getClearCookieHeader();
+  return getSessionManager().getClearCookieHeader();
 }

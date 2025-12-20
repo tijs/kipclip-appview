@@ -13,7 +13,7 @@ import { app } from "../main.ts";
 import { initOAuth } from "../lib/oauth-config.ts";
 
 // Initialize OAuth with test URL before running tests
-initOAuth("https://kipclip.com");
+initOAuth(new Request("https://kipclip.com"));
 
 // Create handler from app
 const handler = app.handler();

@@ -10,6 +10,9 @@ import {
   setSessionCookie,
 } from "../../lib/route-utils.ts";
 import { getUserSettings, updateUserSettings } from "../../lib/settings.ts";
+import { validateInstapaperCredentials } from "../../lib/instapaper.ts";
+import { decrypt } from "../../lib/encryption.ts";
+import { rawDb } from "../../lib/db.ts";
 import type {
   GetSettingsResponse,
   UpdateSettingsRequest,
@@ -46,7 +49,43 @@ export function registerSettingsRoutes(app: App<any>): App<any> {
         return createAuthErrorResponse(error);
       }
 
-      const body = (await ctx.req.json()) as UpdateSettingsRequest;
+      const body = (await ctx.req.json()) as UpdateSettingsRequest & {
+        instapaperPassword?: string;
+      };
+
+      // Validate Instapaper credentials if enabling or updating
+      if (
+        body.instapaperEnabled &&
+        (body.instapaperUsername || body.instapaperPassword)
+      ) {
+        // Need both username and password for validation
+        let username = body.instapaperUsername;
+        let password = body.instapaperPassword;
+
+        // If only one is provided, fetch the other from existing settings
+        if (!username || !password) {
+          const existingSettings = await getUserSettings(oauthSession.did);
+          username = username || existingSettings.instapaperUsername;
+          password = password ||
+            (await getInstapaperPassword(oauthSession.did));
+        }
+
+        if (username && password) {
+          const validation = await validateInstapaperCredentials({
+            username,
+            password,
+          });
+
+          if (!validation.valid) {
+            const result: UpdateSettingsResponse = {
+              success: false,
+              error: validation.error || "Invalid Instapaper credentials",
+            };
+            return Response.json(result, { status: 400 });
+          }
+        }
+      }
+
       const settings = await updateUserSettings(oauthSession.did, body);
       const result: UpdateSettingsResponse = { success: true, settings };
       return setSessionCookie(Response.json(result), setCookieHeader);
@@ -61,4 +100,27 @@ export function registerSettingsRoutes(app: App<any>): App<any> {
   });
 
   return app;
+}
+
+/**
+ * Helper function to get encrypted password for validation.
+ */
+async function getInstapaperPassword(
+  did: string,
+): Promise<string | undefined> {
+  const result = await rawDb.execute({
+    sql:
+      "SELECT instapaper_password_encrypted FROM user_settings WHERE did = ?",
+    args: [did],
+  });
+
+  if (result.rows?.[0]?.[0]) {
+    try {
+      return await decrypt(result.rows[0][0] as string);
+    } catch (error) {
+      console.error("Failed to decrypt Instapaper password:", error);
+    }
+  }
+
+  return undefined;
 }

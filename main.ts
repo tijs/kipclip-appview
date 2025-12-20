@@ -3,6 +3,15 @@
  * Orchestrates route registration and middleware setup.
  */
 
+// Load environment variables from .env file (local development)
+import { load } from "@std/dotenv";
+try {
+  await load({ export: true });
+  console.log("✅ Loaded .env file");
+} catch (error) {
+  console.warn("⚠️ Failed to load .env file:", error.message);
+}
+
 import { App, staticFiles } from "@fresh/core";
 import { initializeTables } from "./lib/db.ts";
 import { initOAuth } from "./lib/oauth-config.ts";
@@ -41,7 +50,7 @@ app = app.use(async (ctx) => {
 
 // Initialize OAuth on first request (derives BASE_URL from request if not set)
 app = app.use(async (ctx) => {
-  initOAuth(ctx.req.url);
+  initOAuth(ctx.req);
   return await ctx.next();
 });
 

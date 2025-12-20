@@ -35,6 +35,15 @@ const MIGRATIONS: Array<{
       CREATE INDEX IF NOT EXISTS idx_user_settings_did ON user_settings(did)
     `,
   },
+  {
+    version: "002",
+    description: "Add Instapaper integration fields to user_settings",
+    sql: `
+      ALTER TABLE user_settings ADD COLUMN instapaper_enabled INTEGER DEFAULT 0;
+      ALTER TABLE user_settings ADD COLUMN instapaper_username_encrypted TEXT;
+      ALTER TABLE user_settings ADD COLUMN instapaper_password_encrypted TEXT
+    `,
+  },
 ];
 
 export async function runMigrations() {

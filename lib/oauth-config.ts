@@ -8,12 +8,6 @@ import { sqliteAdapter, SQLiteStorage } from "@tijs/atproto-storage";
 import { rawDb } from "./db.ts";
 import { OAUTH_SCOPES } from "./route-utils.ts";
 
-// Cookie secret is always required
-const COOKIE_SECRET = Deno.env.get("COOKIE_SECRET");
-if (!COOKIE_SECRET) {
-  throw new Error("COOKIE_SECRET environment variable is required");
-}
-
 // OAuth instance and base URL - initialized lazily
 let oauth: ReturnType<typeof createATProtoOAuth> | null = null;
 let baseUrl: string | null = Deno.env.get("BASE_URL") || null;
@@ -29,19 +23,28 @@ export function getBaseUrl(): string {
 }
 
 /**
- * Initialize OAuth with the given request URL.
+ * Initialize OAuth with the given request.
  * If BASE_URL env var is set, uses that. Otherwise derives from request.
  * Safe to call multiple times - only initializes once.
  */
 export function initOAuth(
-  requestUrl: string,
+  request: Request,
 ): ReturnType<typeof createATProtoOAuth> {
   if (oauth) return oauth;
 
+  // Cookie secret is required
+  const COOKIE_SECRET = Deno.env.get("COOKIE_SECRET");
+  if (!COOKIE_SECRET) {
+    throw new Error("COOKIE_SECRET environment variable is required");
+  }
+
   // Derive base URL from request if not set in environment
   if (!baseUrl) {
-    const url = new URL(requestUrl);
-    baseUrl = `${url.protocol}//${url.host}`;
+    const url = new URL(request.url);
+    // Check for X-Forwarded-Proto header (set by ngrok and other proxies)
+    const forwardedProto = request.headers.get("X-Forwarded-Proto");
+    const protocol = forwardedProto || url.protocol.replace(":", "");
+    baseUrl = `${protocol}://${url.host}`;
     console.log(`Derived BASE_URL from request: ${baseUrl}`);
   }
 

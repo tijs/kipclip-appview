@@ -4,6 +4,13 @@ import { useApp } from "../context/AppContext.tsx";
 export function Settings() {
   const { settings, updateSettings } = useApp();
   const [readingListTag, setReadingListTag] = useState(settings.readingListTag);
+  const [instapaperEnabled, setInstapaperEnabled] = useState(
+    settings.instapaperEnabled,
+  );
+  const [instapaperUsername, setInstapaperUsername] = useState(
+    settings.instapaperUsername || "",
+  );
+  const [instapaperPassword, setInstapaperPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -11,7 +18,13 @@ export function Settings() {
   // Sync local state when settings from context change
   useEffect(() => {
     setReadingListTag(settings.readingListTag);
-  }, [settings.readingListTag]);
+    setInstapaperEnabled(settings.instapaperEnabled);
+    setInstapaperUsername(settings.instapaperUsername || "");
+  }, [
+    settings.readingListTag,
+    settings.instapaperEnabled,
+    settings.instapaperUsername,
+  ]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -20,8 +33,25 @@ export function Settings() {
     setSaving(true);
 
     try {
-      await updateSettings({ readingListTag: readingListTag.trim() });
+      const updates: any = {
+        readingListTag: readingListTag.trim(),
+        instapaperEnabled,
+      };
+
+      // Only send credentials if Instapaper is enabled
+      if (instapaperEnabled) {
+        // Always include username if enabled
+        updates.instapaperUsername = instapaperUsername.trim();
+
+        // Only include password if changed (not empty)
+        if (instapaperPassword.trim().length > 0) {
+          updates.instapaperPassword = instapaperPassword;
+        }
+      }
+
+      await updateSettings(updates);
       setSuccess(true);
+      setInstapaperPassword(""); // Clear password field after save
       setTimeout(() => setSuccess(false), 3000);
     } catch (err: any) {
       setError(err.message || "Failed to save settings");
@@ -30,7 +60,11 @@ export function Settings() {
     }
   }
 
-  const hasChanges = readingListTag.trim() !== settings.readingListTag;
+  const hasChanges = readingListTag.trim() !== settings.readingListTag ||
+    instapaperEnabled !== settings.instapaperEnabled ||
+    (instapaperEnabled &&
+      instapaperUsername.trim() !== (settings.instapaperUsername || "")) ||
+    instapaperPassword.trim().length > 0;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -103,30 +137,141 @@ export function Settings() {
                 </p>
               </div>
             </div>
+          </section>
 
-            {error && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-                {error}
+          {/* Instapaper Integration Section */}
+          <section className="bg-white rounded-lg shadow-md p-6 space-y-6">
+            <div>
+              <h3 className="text-xl font-bold text-gray-800 mb-4">
+                Instapaper Integration
+              </h3>
+              <p className="text-gray-600 mb-4">
+                Automatically send articles to Instapaper when you tag them with
+                your reading list tag ("{readingListTag || "toread"}").
+              </p>
+
+              {/* Enable toggle */}
+              <div className="flex items-center space-x-3 mb-4">
+                <input
+                  type="checkbox"
+                  id="instapaperEnabled"
+                  checked={instapaperEnabled}
+                  onChange={(e) => setInstapaperEnabled(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-coral focus:ring-coral"
+                />
+                <label
+                  htmlFor="instapaperEnabled"
+                  className="text-sm font-medium text-gray-700"
+                >
+                  Send articles to Instapaper
+                </label>
               </div>
-            )}
 
-            {success && (
-              <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
-                Settings saved successfully!
-              </div>
-            )}
+              {/* Credentials (shown when enabled) */}
+              {instapaperEnabled && (
+                <div className="space-y-4 pl-7">
+                  <div className="space-y-2">
+                    <label
+                      htmlFor="instapaperUsername"
+                      className="block text-sm font-medium text-gray-700"
+                    >
+                      Instapaper Email/Username
+                    </label>
+                    <input
+                      type="text"
+                      id="instapaperUsername"
+                      value={instapaperUsername}
+                      onChange={(e) => setInstapaperUsername(e.target.value)}
+                      placeholder="your@email.com"
+                      className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral/50 focus:border-coral"
+                      required={instapaperEnabled}
+                    />
+                  </div>
 
-            <div className="pt-4 border-t border-gray-200">
-              <button
-                type="submit"
-                disabled={saving || !hasChanges}
-                className="px-6 py-2 rounded-lg font-medium text-white transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{ backgroundColor: "var(--coral)" }}
-              >
-                {saving ? "Saving..." : "Save Settings"}
-              </button>
+                  <div className="space-y-2">
+                    <label
+                      htmlFor="instapaperPassword"
+                      className="block text-sm font-medium text-gray-700"
+                    >
+                      Instapaper Password
+                    </label>
+                    <input
+                      type="password"
+                      id="instapaperPassword"
+                      value={instapaperPassword}
+                      onChange={(e) => setInstapaperPassword(e.target.value)}
+                      placeholder={settings.instapaperUsername
+                        ? "Leave blank to keep current password"
+                        : "Enter password"}
+                      className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral/50 focus:border-coral"
+                      required={instapaperEnabled &&
+                        !settings.instapaperUsername}
+                    />
+                    <p className="text-xs text-gray-500">
+                      {settings.instapaperUsername
+                        ? "Leave blank to keep your current password"
+                        : "Your password is encrypted and stored securely"}
+                    </p>
+                  </div>
+
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-sm text-blue-800">
+                      When you tag a bookmark with "{readingListTag || "toread"}
+                      ", it will be automatically sent to your Instapaper
+                      account.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           </section>
+
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+              {error}
+            </div>
+          )}
+
+          {success && (
+            <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+              <div className="flex items-start gap-3">
+                <svg
+                  className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-green-800">
+                    Settings saved successfully!
+                  </p>
+                  {instapaperEnabled && (
+                    <p className="text-sm text-green-700 mt-1">
+                      ✓ Instapaper connection verified - your articles will be sent
+                      automatically
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Save Button */}
+          <div className="pt-4 border-t border-gray-200">
+            <button
+              type="submit"
+              disabled={saving || !hasChanges}
+              className="px-6 py-2 rounded-lg font-medium text-white transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ backgroundColor: "var(--coral)" }}
+            >
+              {saving ? "Saving..." : "Save Settings"}
+            </button>
+          </div>
         </form>
       </main>
     </div>

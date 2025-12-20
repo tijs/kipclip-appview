@@ -11,6 +11,10 @@ import {
   getSessionFromRequest,
   setSessionCookie,
 } from "../../lib/route-utils.ts";
+import { getUserSettings } from "../../lib/settings.ts";
+import { sendToInstapaper } from "../../lib/instapaper.ts";
+import { decrypt } from "../../lib/encryption.ts";
+import { rawDb } from "../../lib/db.ts";
 import type {
   AddBookmarkRequest,
   AddBookmarkResponse,
@@ -244,6 +248,23 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         favicon: record.$enriched?.favicon,
       };
 
+      // Check if should send to Instapaper
+      const settings = await getUserSettings(oauthSession.did);
+      const hasReadingListTag = record.tags.includes(settings.readingListTag);
+      const hadReadingListTag =
+        currentRecord.value.tags?.includes(settings.readingListTag) || false;
+      const isNewReadingListItem = hasReadingListTag && !hadReadingListTag;
+
+      if (settings.instapaperEnabled && isNewReadingListItem) {
+        sendToInstapaperAsync(
+          oauthSession.did,
+          record.subject,
+          record.$enriched?.title,
+        ).catch((error) =>
+          console.error("Failed to send bookmark to Instapaper:", error)
+        );
+      }
+
       const result: UpdateBookmarkTagsResponse = { success: true, bookmark };
       return setSessionCookie(Response.json(result), setCookieHeader);
     } catch (error: any) {
@@ -291,4 +312,60 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
   });
 
   return app;
+}
+
+/**
+ * Helper function to send bookmark to Instapaper asynchronously.
+ * Fetches credentials, decrypts them, and sends to Instapaper.
+ * Silent failure: logs errors but doesn't throw.
+ */
+async function sendToInstapaperAsync(
+  did: string,
+  url: string,
+  title?: string,
+): Promise<void> {
+  try {
+    // Fetch encrypted credentials
+    const result = await rawDb.execute({
+      sql: `SELECT instapaper_username_encrypted, instapaper_password_encrypted
+            FROM user_settings
+            WHERE did = ? AND instapaper_enabled = 1`,
+      args: [did],
+    });
+
+    if (!result.rows?.[0]) {
+      console.warn("Instapaper credentials not found for user:", did);
+      return;
+    }
+
+    const [encryptedUsername, encryptedPassword] = result.rows[0] as string[];
+
+    if (!encryptedUsername || !encryptedPassword) {
+      console.warn("Instapaper credentials incomplete for user:", did);
+      return;
+    }
+
+    // Decrypt credentials
+    const username = await decrypt(encryptedUsername);
+    const password = await decrypt(encryptedPassword);
+
+    // Send to Instapaper
+    const instapaperResult = await sendToInstapaper(
+      url,
+      { username, password },
+      title,
+    );
+
+    if (instapaperResult.success) {
+      console.log(`Successfully sent to Instapaper: ${url}`);
+    } else {
+      console.error(
+        `Failed to send to Instapaper: ${instapaperResult.error}`,
+        { url, did },
+      );
+    }
+  } catch (error) {
+    console.error("Error in sendToInstapaperAsync:", error);
+    throw error;
+  }
 }

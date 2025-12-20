@@ -16,6 +16,7 @@ import { apiGet, apiPatch } from "../utils/api.ts";
 
 const DEFAULT_SETTINGS: UserSettings = {
   readingListTag: "toread",
+  instapaperEnabled: false,
 };
 
 interface AppState {

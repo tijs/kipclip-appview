@@ -111,6 +111,8 @@ export interface SharedBookmarksResponse {
 // User settings (stored in database)
 export interface UserSettings {
   readingListTag: string;
+  instapaperEnabled: boolean;
+  instapaperUsername?: string; // Decrypted, only in memory (never includes password)
 }
 
 // Settings API response
@@ -121,6 +123,9 @@ export interface GetSettingsResponse {
 // Settings API update request
 export interface UpdateSettingsRequest {
   readingListTag?: string;
+  instapaperEnabled?: boolean;
+  instapaperUsername?: string;
+  instapaperPassword?: string; // Only when updating credentials
 }
 
 // Settings API update response

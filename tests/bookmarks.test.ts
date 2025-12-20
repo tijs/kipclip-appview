@@ -18,7 +18,7 @@ import {
 } from "./test-helpers.ts";
 
 // Initialize OAuth with test URL
-initOAuth("https://kipclip.com");
+initOAuth(new Request("https://kipclip.com"));
 const handler = app.handler();
 
 // Store original fetch
