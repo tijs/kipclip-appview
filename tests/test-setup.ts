@@ -22,6 +22,4 @@ if (!Deno.env.get("COOKIE_SECRET")) {
   );
 }
 
-if (!Deno.env.get("BASE_URL")) {
-  Deno.env.set("BASE_URL", "http://localhost:8000");
-}
+// Note: BASE_URL is not set here - tests use auto-detection from Request objects
