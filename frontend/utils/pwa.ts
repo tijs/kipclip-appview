@@ -36,7 +36,10 @@ export function isStandalonePwa(): boolean {
 export function openOAuthPopup(
   loginUrl: string,
 ): Promise<{ did: string; handle: string }> {
+  console.log("[PWA OAuth] openOAuthPopup called with:", loginUrl);
+
   return new Promise((resolve, reject) => {
+    console.log("[PWA OAuth] Inside promise, clearing previous result");
     // Clear any previous OAuth result
     localStorage.removeItem("pwa-oauth-result");
 
@@ -47,11 +50,14 @@ export function openOAuthPopup(
     const top = Math.max(0, (screen.height - height) / 2);
 
     // Open popup
+    console.log("[PWA OAuth] Opening popup window...");
     const popup = globalThis.open(
       loginUrl,
       "oauth-popup",
       `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=yes,status=no`,
     );
+
+    console.log("[PWA OAuth] Popup result:", popup ? "opened" : "blocked");
 
     if (!popup) {
       reject(
@@ -59,6 +65,8 @@ export function openOAuthPopup(
       );
       return;
     }
+
+    console.log("[PWA OAuth] Setting up event listeners and polling...");
 
     // Handle successful OAuth result
     function handleSuccess(data: { did: string; handle: string }) {
@@ -94,8 +102,17 @@ export function openOAuthPopup(
     // Poll localStorage frequently - the storage event doesn't always fire reliably
     // especially after OAuth redirects through external providers
     console.log("[PWA OAuth] Starting localStorage polling...");
+    let pollCount = 0;
     const pollLocalStorage = setInterval(() => {
+      pollCount++;
       const result = localStorage.getItem("pwa-oauth-result");
+      // Log every 5th poll (every 1 second) to show we're still running
+      if (pollCount % 5 === 0) {
+        console.log(
+          "[PWA OAuth] Poll #" + pollCount + ", localStorage result:",
+          result ? "FOUND" : "empty",
+        );
+      }
       if (result) {
         console.log("[PWA OAuth] Found result in localStorage:", result);
         try {
