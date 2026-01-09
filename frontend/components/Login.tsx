@@ -95,10 +95,14 @@ export function Login() {
 
       // PWA mode: use popup OAuth to avoid losing PWA context
       if (isStandalonePwa()) {
+        console.log("[PWA OAuth] Detected standalone PWA mode");
         loginUrl += "&pwa=true";
         try {
-          await openOAuthPopup(loginUrl);
+          console.log("[PWA OAuth] Opening popup for:", loginUrl);
+          const result = await openOAuthPopup(loginUrl);
+          console.log("[PWA OAuth] Popup returned success:", result);
           // Success - reload to pick up the new session cookie
+          console.log("[PWA OAuth] Reloading page...");
           globalThis.location.reload();
         } catch (popupError) {
           const message = popupError instanceof Error

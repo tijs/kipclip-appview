@@ -65,8 +65,10 @@ export function openOAuthPopup(
 
     // Handle successful OAuth result
     function handleSuccess(data: { did: string; handle: string }) {
+      console.log("[PWA OAuth] handleSuccess called with:", data);
       cleanup();
       localStorage.removeItem("pwa-oauth-result");
+      console.log("[PWA OAuth] Resolving promise and triggering reload...");
       resolve(data);
     }
 
@@ -94,17 +96,21 @@ export function openOAuthPopup(
 
     // Poll localStorage frequently - the storage event doesn't always fire reliably
     // especially after OAuth redirects through external providers
+    console.log("[PWA OAuth] Starting localStorage polling...");
     const pollLocalStorage = setInterval(() => {
       const result = localStorage.getItem("pwa-oauth-result");
       if (result) {
+        console.log("[PWA OAuth] Found result in localStorage:", result);
         try {
           const data = JSON.parse(result);
+          console.log("[PWA OAuth] Parsed data:", data);
           if (data?.type === "oauth-callback" && data.success) {
+            console.log("[PWA OAuth] Calling handleSuccess");
             handleSuccess({ did: data.did, handle: data.handle });
             return;
           }
-        } catch {
-          // Ignore parse errors
+        } catch (e) {
+          console.error("[PWA OAuth] Parse error:", e);
         }
       }
     }, 200);
