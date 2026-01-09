@@ -149,11 +149,25 @@ export function openOAuthPopup(
     console.log("[PWA OAuth] First poll executed");
 
     // Check if popup was closed
+    let checkCount = 0;
     const checkClosed = setInterval(() => {
-      if (popup.closed) {
+      checkCount++;
+      const isClosed = popup.closed;
+      // Log every check to debug
+      console.log(
+        "[PWA OAuth] Check #" + checkCount + ", popup.closed:",
+        isClosed,
+      );
+
+      if (isClosed) {
+        console.log("[PWA OAuth] Popup detected as closed, waiting 300ms...");
         // Give a brief moment for any final localStorage write
         setTimeout(() => {
           const result = localStorage.getItem("pwa-oauth-result");
+          console.log(
+            "[PWA OAuth] Final localStorage check:",
+            result ? "FOUND" : "empty",
+          );
           if (result) {
             try {
               const data = JSON.parse(result);
@@ -165,6 +179,7 @@ export function openOAuthPopup(
               // Ignore parse errors
             }
           }
+          console.log("[PWA OAuth] No result found, rejecting with cancelled");
           cleanup();
           reject(new Error("Login cancelled"));
         }, 300);
