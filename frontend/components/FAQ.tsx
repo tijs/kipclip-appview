@@ -217,11 +217,12 @@ export function FAQ() {
               Can I install kipclip as an app on my phone?
             </h3>
             <p className="text-gray-700">
-              Yes! kipclip works as a Progressive Web App (PWA) on both Android
-              and iOS. On Android, you can add it to your home screen and it
-              will appear in your share menu, letting you save bookmarks
-              directly from any app. On iOS, you can add it to your home screen
-              and use the iOS Shortcut to save from Safari. See the{" "}
+              Yes! You can add kipclip to your home screen on both Android and
+              iOS, and it will work like a native app. On Android, use "Add to
+              Home screen" or "Install app" in Chrome - kipclip will then appear
+              in your share menu, letting you save bookmarks directly from any
+              app. On iOS, use "Add to Home Screen" from Safari's share menu,
+              then use the iOS Shortcut to save bookmarks. See the{" "}
               <a href="/tools" className="underline hover:text-gray-800">
                 Tools page
               </a>{" "}
