@@ -103,31 +103,50 @@ export function openOAuthPopup(
     // especially after OAuth redirects through external providers
     console.log("[PWA OAuth] Starting localStorage polling...");
     let pollCount = 0;
-    const pollLocalStorage = setInterval(() => {
-      pollCount++;
-      const result = localStorage.getItem("pwa-oauth-result");
-      // Log every 5th poll (every 1 second) to show we're still running
-      if (pollCount % 5 === 0) {
-        console.log(
-          "[PWA OAuth] Poll #" + pollCount + ", localStorage result:",
-          result ? "FOUND" : "empty",
-        );
+
+    // Keep reference for cleanup
+    let pollingStopped = false;
+
+    function pollForResult() {
+      if (pollingStopped) {
+        console.log("[PWA OAuth] Polling stopped");
+        return;
       }
-      if (result) {
-        console.log("[PWA OAuth] Found result in localStorage:", result);
-        try {
+      try {
+        pollCount++;
+        const result = localStorage.getItem("pwa-oauth-result");
+        // Log every 5th poll (every 1 second) to show we're still running
+        if (pollCount % 5 === 0) {
+          console.log(
+            "[PWA OAuth] Poll #" + pollCount + ", localStorage result:",
+            result ? "FOUND" : "empty",
+          );
+        }
+        if (result) {
+          console.log("[PWA OAuth] Found result in localStorage:", result);
           const data = JSON.parse(result);
           console.log("[PWA OAuth] Parsed data:", data);
           if (data?.type === "oauth-callback" && data.success) {
             console.log("[PWA OAuth] Calling handleSuccess");
             handleSuccess({ did: data.did, handle: data.handle });
-            return;
+            return; // Stop polling
           }
-        } catch (e) {
-          console.error("[PWA OAuth] Parse error:", e);
+        }
+        // Schedule next poll
+        setTimeout(pollForResult, 200);
+      } catch (e) {
+        console.error("[PWA OAuth] Poll error:", e);
+        // Continue polling despite error
+        if (!pollingStopped) {
+          setTimeout(pollForResult, 200);
         }
       }
-    }, 200);
+    }
+
+    // Start polling immediately
+    console.log("[PWA OAuth] Starting first poll now...");
+    pollForResult();
+    console.log("[PWA OAuth] First poll executed");
 
     // Check if popup was closed
     const checkClosed = setInterval(() => {
@@ -154,9 +173,10 @@ export function openOAuthPopup(
     }, 500);
 
     function cleanup() {
+      console.log("[PWA OAuth] Cleanup called");
+      pollingStopped = true;
       globalThis.removeEventListener("message", handleMessage);
       globalThis.removeEventListener("storage", handleStorage);
-      clearInterval(pollLocalStorage);
       clearInterval(checkClosed);
     }
 
