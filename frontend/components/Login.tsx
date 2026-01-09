@@ -68,6 +68,9 @@ export function Login() {
     e.preventDefault();
     setError(null);
 
+    console.log("[Login] handleLogin called");
+    console.log("[Login] isStandalonePwa():", isStandalonePwa());
+
     // Read directly from input in case Web Component updated it without firing input event
     const currentHandle = inputRef.current?.value || handle;
 

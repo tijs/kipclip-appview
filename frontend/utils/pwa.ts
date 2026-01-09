@@ -7,25 +7,22 @@
  */
 export function isStandalonePwa(): boolean {
   // Check display-mode media query (works on Android Chrome)
-  if (
-    globalThis.matchMedia &&
-    globalThis.matchMedia("(display-mode: standalone)").matches
-  ) {
-    return true;
-  }
-
+  const displayModeStandalone = globalThis.matchMedia &&
+    globalThis.matchMedia("(display-mode: standalone)").matches;
   // Check iOS standalone mode
   // deno-lint-ignore no-explicit-any
-  if ((globalThis.navigator as any).standalone === true) {
-    return true;
-  }
-
+  const iosStandalone = (globalThis.navigator as any).standalone === true;
   // Check if launched from TWA (Trusted Web Activity on Android)
-  if (document.referrer.includes("android-app://")) {
-    return true;
-  }
+  const isTwa = document.referrer.includes("android-app://");
 
-  return false;
+  console.log("[PWA] Detection checks:", {
+    displayModeStandalone,
+    iosStandalone,
+    isTwa,
+    referrer: document.referrer,
+  });
+
+  return displayModeStandalone || iosStandalone || isTwa;
 }
 
 /**
