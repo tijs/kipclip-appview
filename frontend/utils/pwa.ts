@@ -148,51 +148,27 @@ export function openOAuthPopup(
     pollForResult();
     console.log("[PWA OAuth] First poll executed");
 
-    // Check if popup was closed
-    let checkCount = 0;
-    const checkClosed = setInterval(() => {
-      checkCount++;
-      const isClosed = popup.closed;
-      // Log every check to debug
-      console.log(
-        "[PWA OAuth] Check #" + checkCount + ", popup.closed:",
-        isClosed,
-      );
+    // Don't rely on popup.closed - it returns true when popup navigates cross-origin
+    // Instead, use a timeout. OAuth should complete within 5 minutes max.
+    const OAUTH_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+    const startTime = Date.now();
 
-      if (isClosed) {
-        console.log("[PWA OAuth] Popup detected as closed, waiting 300ms...");
-        // Give a brief moment for any final localStorage write
-        setTimeout(() => {
-          const result = localStorage.getItem("pwa-oauth-result");
-          console.log(
-            "[PWA OAuth] Final localStorage check:",
-            result ? "FOUND" : "empty",
-          );
-          if (result) {
-            try {
-              const data = JSON.parse(result);
-              if (data?.type === "oauth-callback" && data.success) {
-                handleSuccess({ did: data.did, handle: data.handle });
-                return;
-              }
-            } catch {
-              // Ignore parse errors
-            }
-          }
-          console.log("[PWA OAuth] No result found, rejecting with cancelled");
-          cleanup();
-          reject(new Error("Login cancelled"));
-        }, 300);
-        clearInterval(checkClosed); // Stop checking for closed
+    const checkTimeout = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      if (elapsed > OAUTH_TIMEOUT_MS) {
+        console.log("[PWA OAuth] Timeout reached after 5 minutes");
+        cleanup();
+        reject(new Error("Login timed out"));
+        clearInterval(checkTimeout);
       }
-    }, 500);
+    }, 10000); // Check every 10 seconds
 
     function cleanup() {
       console.log("[PWA OAuth] Cleanup called");
       pollingStopped = true;
       globalThis.removeEventListener("message", handleMessage);
       globalThis.removeEventListener("storage", handleStorage);
-      clearInterval(checkClosed);
+      clearInterval(checkTimeout);
     }
 
     globalThis.addEventListener("message", handleMessage);
