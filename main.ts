@@ -26,6 +26,7 @@ import { registerShareApiRoutes } from "./routes/api/share.ts";
 import { registerTagRoutes } from "./routes/api/tags.ts";
 import { registerOAuthRoutes } from "./routes/oauth.ts";
 import { registerRssRoutes } from "./routes/share/rss.ts";
+import { registerShareTargetRoutes } from "./routes/share-target.ts";
 import { registerStaticRoutes } from "./routes/static.ts";
 
 // Run database migrations on startup
@@ -112,6 +113,9 @@ app = registerShareApiRoutes(app);
 
 // RSS feed routes
 app = registerRssRoutes(app);
+
+// Share target routes (PWA share functionality)
+app = registerShareTargetRoutes(app);
 
 // Static files and SPA routing (must be last)
 app = registerStaticRoutes(app, import.meta.url);

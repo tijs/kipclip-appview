@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { isStandalonePwa, openOAuthPopup } from "../utils/pwa.ts";
 
 /**
  * Validate an AT Protocol handle format.
@@ -63,7 +64,7 @@ export function Login() {
     return () => input.removeEventListener("input", handleInput);
   }, []);
 
-  function handleLogin(e: React.FormEvent) {
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
@@ -92,7 +93,27 @@ export function Login() {
         loginUrl += `&redirect=${encodeURIComponent(redirect)}`;
       }
 
-      // Redirect to OAuth login
+      // PWA mode: use popup OAuth to avoid losing PWA context
+      if (isStandalonePwa()) {
+        loginUrl += "&pwa=true";
+        try {
+          await openOAuthPopup(loginUrl);
+          // Success - reload to pick up the new session cookie
+          globalThis.location.reload();
+        } catch (popupError) {
+          const message = popupError instanceof Error
+            ? popupError.message
+            : "Login failed";
+          // Don't show "cancelled" as an error
+          if (message !== "Login cancelled") {
+            setError(message);
+          }
+          setLoading(false);
+        }
+        return;
+      }
+
+      // Regular web mode: redirect to OAuth login
       globalThis.location.href = loginUrl;
     } catch (error) {
       console.error("Login failed:", error);

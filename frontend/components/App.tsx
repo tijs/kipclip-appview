@@ -24,6 +24,17 @@ export function App() {
   useEffect(() => {
     checkSession();
 
+    // Check for share target data in URL params and redirect to Save page
+    const params = new URLSearchParams(globalThis.location.search);
+    if (params.get("action") === "share") {
+      const sharedUrl = params.get("url");
+      if (sharedUrl) {
+        // Redirect to Save page with the shared URL
+        globalThis.location.href = `/save?url=${encodeURIComponent(sharedUrl)}`;
+        return;
+      }
+    }
+
     // Listen for popstate events to update route
     const handlePopState = () => {
       setCurrentPath(globalThis.location.pathname);
