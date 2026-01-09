@@ -92,30 +92,51 @@ export function openOAuthPopup(
       }
     }
 
-    // Check if popup was closed - also check localStorage on close
+    // Poll localStorage frequently - the storage event doesn't always fire reliably
+    // especially after OAuth redirects through external providers
+    const pollLocalStorage = setInterval(() => {
+      const result = localStorage.getItem("pwa-oauth-result");
+      if (result) {
+        try {
+          const data = JSON.parse(result);
+          if (data?.type === "oauth-callback" && data.success) {
+            handleSuccess({ did: data.did, handle: data.handle });
+            return;
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      }
+    }, 200);
+
+    // Check if popup was closed
     const checkClosed = setInterval(() => {
       if (popup.closed) {
-        // Check localStorage one more time before giving up
-        const result = localStorage.getItem("pwa-oauth-result");
-        if (result) {
-          try {
-            const data = JSON.parse(result);
-            if (data?.type === "oauth-callback" && data.success) {
-              handleSuccess({ did: data.did, handle: data.handle });
-              return;
+        // Give a brief moment for any final localStorage write
+        setTimeout(() => {
+          const result = localStorage.getItem("pwa-oauth-result");
+          if (result) {
+            try {
+              const data = JSON.parse(result);
+              if (data?.type === "oauth-callback" && data.success) {
+                handleSuccess({ did: data.did, handle: data.handle });
+                return;
+              }
+            } catch {
+              // Ignore parse errors
             }
-          } catch {
-            // Ignore parse errors
           }
-        }
-        cleanup();
-        reject(new Error("Login cancelled"));
+          cleanup();
+          reject(new Error("Login cancelled"));
+        }, 300);
+        clearInterval(checkClosed); // Stop checking for closed
       }
     }, 500);
 
     function cleanup() {
       globalThis.removeEventListener("message", handleMessage);
       globalThis.removeEventListener("storage", handleStorage);
+      clearInterval(pollLocalStorage);
       clearInterval(checkClosed);
     }
 
