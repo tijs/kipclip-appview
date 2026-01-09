@@ -36,3 +36,7 @@ _fresh/
 static/bundle.*.js
 static/bundle.*.js.map
 static/manifest.json
+
+# Beans issue tracking
+.beans/
+.beans.yml
