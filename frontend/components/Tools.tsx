@@ -265,6 +265,32 @@ export function Tools() {
 
             <div className="bg-gray-50 rounded-lg p-4">
               <h4 className="font-semibold text-gray-800 mb-2">
+                iOS (Add to Home Screen):
+              </h4>
+              <ol className="space-y-2 text-sm text-gray-700">
+                <li className="flex items-start gap-2">
+                  <span className="font-bold text-coral min-w-[20px]">1.</span>
+                  <span>Open kipclip.com in Safari</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="font-bold text-coral min-w-[20px]">2.</span>
+                  <span>
+                    Tap the Share button (square with arrow), then "Add to Home
+                    Screen"
+                  </span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="font-bold text-coral min-w-[20px]">3.</span>
+                  <span>
+                    kipclip opens as a standalone app - use the iOS Shortcut
+                    above to save bookmarks from Safari
+                  </span>
+                </li>
+              </ol>
+            </div>
+
+            <div className="bg-gray-50 rounded-lg p-4">
+              <h4 className="font-semibold text-gray-800 mb-2">
                 Android (Chrome):
               </h4>
               <ol className="space-y-2 text-sm text-gray-700">
@@ -275,14 +301,14 @@ export function Tools() {
                 <li className="flex items-start gap-2">
                   <span className="font-bold text-coral min-w-[20px]">2.</span>
                   <span>
-                    Tap the menu (⋮), then "Add to Home screen"
+                    Tap the menu (⋮), then "Add to Home screen" or "Install app"
                   </span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="font-bold text-coral min-w-[20px]">3.</span>
                   <span>
-                    When sharing URLs from other apps, kipclip will appear as a
-                    share target
+                    kipclip opens as a standalone app and appears in your share
+                    menu - share URLs directly from any app
                   </span>
                 </li>
               </ol>

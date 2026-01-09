@@ -211,6 +211,23 @@ export function FAQ() {
               Social PBC.
             </p>
           </div>
+
+          <div>
+            <h3 className="text-xl font-bold text-gray-800 mb-2">
+              Can I install kipclip as an app on my phone?
+            </h3>
+            <p className="text-gray-700">
+              Yes! kipclip works as a Progressive Web App (PWA) on both Android
+              and iOS. On Android, you can add it to your home screen and it
+              will appear in your share menu, letting you save bookmarks
+              directly from any app. On iOS, you can add it to your home screen
+              and use the iOS Shortcut to save from Safari. See the{" "}
+              <a href="/tools" className="underline hover:text-gray-800">
+                Tools page
+              </a>{" "}
+              for detailed installation instructions.
+            </p>
+          </div>
         </section>
 
         <section className="bg-white rounded-lg shadow-md p-6">
