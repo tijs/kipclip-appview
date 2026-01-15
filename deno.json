@@ -1,6 +1,5 @@
 {
   "$schema": "https://raw.githubusercontent.com/denoland/deno/348900b8b79f4a434cab4c74b3bc8d4d2fa8ee74/cli/schemas/config-file.v1.json",
-  "lock": false,
   "imports": {
     "@fresh/core": "jsr:@fresh/core@^2.2.0",
     "fresh/dev": "jsr:@fresh/core@^2.2.0/dev",
@@ -13,14 +12,14 @@
     "@tijs/atproto-oauth": "jsr:@tijs/atproto-oauth@2.5.1",
     "@tijs/atproto-sessions": "jsr:@tijs/atproto-sessions@2.1.0",
     "@tijs/atproto-storage": "jsr:@tijs/atproto-storage@1.0.0",
-    "@libsql/client": "npm:@libsql/client@0.15.15",
-    "@libsql/client/web": "npm:@libsql/client@0.15.15/web",
-    "@sentry/deno": "npm:@sentry/deno@8",
-    "esbuild": "npm:esbuild",
-    "html-entities": "npm:html-entities@2.5.2",
-    "react": "npm:react@19",
-    "react-dom": "npm:react-dom@19",
-    "react-dom/client": "npm:react-dom@19/client"
+    "@libsql/client": "npm:@libsql/client@0.17.0",
+    "@libsql/client/web": "npm:@libsql/client@0.17.0/web",
+    "@sentry/deno": "npm:@sentry/deno@10.34.0",
+    "esbuild": "npm:esbuild@0.27.2",
+    "html-entities": "npm:html-entities@2.6.0",
+    "react": "npm:react@19.2.3",
+    "react-dom": "npm:react-dom@19.2.3",
+    "react-dom/client": "npm:react-dom@19.2.3/client"
   },
   "compilerOptions": {
     "noImplicitAny": false,
