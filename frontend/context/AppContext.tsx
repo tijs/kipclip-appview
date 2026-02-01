@@ -242,14 +242,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
   }, [readingListBookmarks, readingListSelectedTags]);
 
-  // Track which bookmarks are being enriched to avoid duplicate requests
+  // Track which bookmarks are currently being enriched (in-flight requests)
   const enrichingRef = useRef<Set<string>>(new Set());
+  // Track failed enrichment attempts to limit retries (uri -> attempt count)
+  const failedAttemptsRef = useRef<Map<string, number>>(new Map());
+  const MAX_ENRICHMENT_RETRIES = 3;
 
   // Background re-enrichment for reading list bookmarks missing images
   useEffect(() => {
-    const bookmarksNeedingEnrichment = readingListBookmarks.filter(
-      (b) => !b.image && !enrichingRef.current.has(b.uri),
-    );
+    const bookmarksNeedingEnrichment = readingListBookmarks.filter((b) => {
+      if (b.image) return false; // Already has image
+      if (enrichingRef.current.has(b.uri)) return false; // Currently in progress
+      const attempts = failedAttemptsRef.current.get(b.uri) || 0;
+      return attempts < MAX_ENRICHMENT_RETRIES; // Skip if max retries exceeded
+    });
 
     if (bookmarksNeedingEnrichment.length === 0) return;
 
@@ -263,17 +269,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
         try {
           // Extract rkey from URI: at://did/collection/rkey
           const rkey = bookmark.uri.split("/").pop();
-          if (!rkey) continue;
+          if (!rkey) {
+            enrichingRef.current.delete(bookmark.uri);
+            continue;
+          }
 
           const response = await apiPost(`/api/bookmarks/${rkey}/enrich`);
           if (response.ok) {
             const data = await response.json();
             if (data.bookmark) {
               updateBookmark(data.bookmark);
+              // Clear failure tracking on success
+              failedAttemptsRef.current.delete(bookmark.uri);
             }
+          } else {
+            // Track failed attempt
+            const attempts = failedAttemptsRef.current.get(bookmark.uri) || 0;
+            failedAttemptsRef.current.set(bookmark.uri, attempts + 1);
           }
         } catch (err) {
           console.error("Failed to enrich bookmark:", err);
+          // Track failed attempt
+          const attempts = failedAttemptsRef.current.get(bookmark.uri) || 0;
+          failedAttemptsRef.current.set(bookmark.uri, attempts + 1);
+        } finally {
+          // Always remove from in-progress set
+          enrichingRef.current.delete(bookmark.uri);
         }
       }
     };
