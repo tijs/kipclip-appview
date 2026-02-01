@@ -92,6 +92,54 @@ initOAuth("https://kipclip.com");
 const handler = app.handler();
 ```
 
+## Local Development with ngrok
+
+To test OAuth flows locally (e.g., on a mobile device), you need ngrok to expose
+the local server with a public HTTPS URL. OAuth requires the BASE_URL to match
+the public URL.
+
+### Setup Steps
+
+1. **Start ngrok first** to get the public URL:
+
+   ```bash
+   ngrok http 8000
+   ```
+
+2. **Copy the ngrok URL** from the terminal (e.g.,
+   `https://abc123.ngrok-free.app`)
+
+3. **Start the dev server** with environment variables:
+
+   ```bash
+   COOKIE_SECRET="local-dev-cookie-secret-32-characters-min" \
+   BASE_URL="https://abc123.ngrok-free.app" \
+   deno task dev
+   ```
+
+4. **Access the app** via the ngrok URL (not localhost)
+
+### Why This Is Needed
+
+- Bluesky OAuth rejects `localhost` in redirect URIs (per RFC 8252)
+- The server derives its OAuth client ID and redirect URIs from BASE_URL
+- Without BASE_URL set, it defaults to the request host which may cause
+  mismatches
+
+### Quick One-Liner
+
+Start ngrok, get URL, then run:
+
+```bash
+# In terminal 1
+ngrok http 8000
+
+# In terminal 2 (replace URL with your ngrok URL)
+COOKIE_SECRET="local-dev-cookie-secret-32-characters-min" \
+BASE_URL="https://YOUR-NGROK-URL.ngrok-free.app" \
+deno task dev
+```
+
 ## Code Style
 
 - TypeScript for all code

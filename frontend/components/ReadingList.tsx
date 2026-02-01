@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useApp } from "../context/AppContext.tsx";
 import type { EnrichedBookmark } from "../../shared/types.ts";
 
@@ -213,7 +214,15 @@ function ReadingListTagSidebar() {
 }
 
 export function ReadingList() {
-  const { filteredReadingList, readingListBookmarks, settings } = useApp();
+  const {
+    filteredReadingList,
+    readingListBookmarks,
+    totalReadingList,
+    settings,
+    readingListSearchQuery,
+    setReadingListSearchQuery,
+  } = useApp();
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
 
   // If there are no reading list bookmarks at all, show empty state
   if (readingListBookmarks.length === 0) {
@@ -229,14 +238,97 @@ export function ReadingList() {
       <ReadingListTagSidebar />
       <main className="flex-1 px-4 py-8 md:overflow-y-auto">
         <div className="max-w-3xl mx-auto">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-gray-800">
-              Reading List
-            </h2>
-            <span className="text-sm text-gray-500">
-              {filteredReadingList.length} article
-              {filteredReadingList.length !== 1 ? "s" : ""}
-            </span>
+          {/* Desktop header with search */}
+          <div className="hidden md:block mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-bold text-gray-800">
+                Reading List
+              </h2>
+              <span className="text-sm text-gray-500">
+                {readingListSearchQuery.trim()
+                  ? `${filteredReadingList.length} of ${totalReadingList}`
+                  : filteredReadingList.length}{" "}
+                article{filteredReadingList.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+            <input
+              type="text"
+              placeholder="Search reading list..."
+              value={readingListSearchQuery}
+              onChange={(e) => setReadingListSearchQuery(e.target.value)}
+              className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-coral focus:border-transparent outline-none transition"
+            />
+          </div>
+
+          {/* Mobile header with expandable search */}
+          <div className="md:hidden mb-6">
+            {mobileSearchOpen
+              ? (
+                <div className="flex items-center gap-2 mb-2">
+                  <input
+                    type="text"
+                    placeholder="Search reading list..."
+                    value={readingListSearchQuery}
+                    onChange={(e) => setReadingListSearchQuery(e.target.value)}
+                    className="flex-1 px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-coral focus:border-transparent outline-none"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileSearchOpen(false);
+                      setReadingListSearchQuery("");
+                    }}
+                    className="p-2 text-gray-500 hover:text-gray-700"
+                  >
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              )
+              : (
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="text-2xl font-bold text-gray-800">
+                    Reading List
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setMobileSearchOpen(true)}
+                    className="p-2 text-gray-500 hover:text-gray-700"
+                  >
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              )}
+            <p className="text-sm text-gray-500">
+              {readingListSearchQuery.trim()
+                ? `${filteredReadingList.length} of ${totalReadingList}`
+                : filteredReadingList.length}{" "}
+              article{filteredReadingList.length !== 1 ? "s" : ""}
+            </p>
           </div>
           {filteredReadingList.length === 0
             ? (
