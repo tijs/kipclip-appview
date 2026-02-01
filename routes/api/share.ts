@@ -75,6 +75,7 @@ export function registerShareApiRoutes(app: App<any>): App<any> {
         title: record.value.$enriched?.title || record.value.title,
         description: record.value.$enriched?.description,
         favicon: record.value.$enriched?.favicon,
+        image: record.value.$enriched?.image,
       }));
 
       const filteredBookmarks = allBookmarks.filter((bookmark) =>

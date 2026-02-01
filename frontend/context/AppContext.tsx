@@ -2,7 +2,9 @@ import {
   createContext,
   type ReactNode,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type {
@@ -12,7 +14,7 @@ import type {
   SessionInfo,
   UserSettings,
 } from "../../shared/types.ts";
-import { apiGet, apiPatch } from "../utils/api.ts";
+import { apiGet, apiPatch, apiPost } from "../utils/api.ts";
 
 const DEFAULT_SETTINGS: UserSettings = {
   readingListTag: "toread",
@@ -239,6 +241,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
       [...readingListSelectedTags].every((tag) => b.tags?.includes(tag))
     );
   }, [readingListBookmarks, readingListSelectedTags]);
+
+  // Track which bookmarks are being enriched to avoid duplicate requests
+  const enrichingRef = useRef<Set<string>>(new Set());
+
+  // Background re-enrichment for reading list bookmarks missing images
+  useEffect(() => {
+    const bookmarksNeedingEnrichment = readingListBookmarks.filter(
+      (b) => !b.image && !enrichingRef.current.has(b.uri),
+    );
+
+    if (bookmarksNeedingEnrichment.length === 0) return;
+
+    // Rate-limit: enrich up to 3 bookmarks at a time with delay between batches
+    const enrichBatch = async () => {
+      const batch = bookmarksNeedingEnrichment.slice(0, 3);
+
+      for (const bookmark of batch) {
+        enrichingRef.current.add(bookmark.uri);
+
+        try {
+          // Extract rkey from URI: at://did/collection/rkey
+          const rkey = bookmark.uri.split("/").pop();
+          if (!rkey) continue;
+
+          const response = await apiPost(`/api/bookmarks/${rkey}/enrich`);
+          if (response.ok) {
+            const data = await response.json();
+            if (data.bookmark) {
+              updateBookmark(data.bookmark);
+            }
+          }
+        } catch (err) {
+          console.error("Failed to enrich bookmark:", err);
+        }
+      }
+    };
+
+    // Delay slightly to not block initial render
+    const timeoutId = setTimeout(enrichBatch, 1000);
+    return () => clearTimeout(timeoutId);
+  }, [readingListBookmarks]);
 
   const value: AppContextValue = {
     // State

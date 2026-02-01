@@ -68,6 +68,7 @@ export function registerRssRoutes(app: App<any>): App<any> {
           title: record.value.$enriched?.title,
           description: record.value.$enriched?.description,
           favicon: record.value.$enriched?.favicon,
+          image: record.value.$enriched?.image,
         }))
         .sort(
           (a: any, b: any) =>

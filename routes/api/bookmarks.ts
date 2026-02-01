@@ -59,6 +59,7 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         title: record.value.$enriched?.title || record.value.title,
         description: record.value.$enriched?.description,
         favicon: record.value.$enriched?.favicon,
+        image: record.value.$enriched?.image,
       }));
 
       const result: ListBookmarksResponse = { bookmarks };
@@ -109,6 +110,7 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
           title: metadata.title,
           description: metadata.description,
           favicon: metadata.favicon,
+          image: metadata.image,
         },
       };
 
@@ -140,6 +142,7 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         title: metadata.title,
         description: metadata.description,
         favicon: metadata.favicon,
+        image: metadata.image,
       };
 
       const result: AddBookmarkResponse = { success: true, bookmark };
@@ -246,6 +249,7 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         title: record.$enriched?.title,
         description: record.$enriched?.description,
         favicon: record.$enriched?.favicon,
+        image: record.$enriched?.image,
       };
 
       // Check if should send to Instapaper
@@ -269,6 +273,92 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
       return setSessionCookie(Response.json(result), setCookieHeader);
     } catch (error: any) {
       console.error("Error updating bookmark tags:", error);
+      return Response.json({ error: error.message }, { status: 500 });
+    }
+  });
+
+  // Re-enrich bookmark (refresh metadata from URL)
+  app = app.post("/api/bookmarks/:rkey/enrich", async (ctx) => {
+    try {
+      const { session: oauthSession, setCookieHeader, error } =
+        await getSessionFromRequest(ctx.req);
+      if (!oauthSession) {
+        return createAuthErrorResponse(error);
+      }
+
+      const rkey = ctx.params.rkey;
+
+      // Get current record
+      const getParams = new URLSearchParams({
+        repo: oauthSession.did,
+        collection: BOOKMARK_COLLECTION,
+        rkey,
+      });
+      const getResponse = await oauthSession.makeRequest(
+        "GET",
+        `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.getRecord?${getParams}`,
+      );
+
+      if (!getResponse.ok) {
+        const errorText = await getResponse.text();
+        throw new Error(`Failed to get record: ${errorText}`);
+      }
+
+      const currentRecord = await getResponse.json();
+      const url = currentRecord.value.subject;
+
+      // Re-fetch metadata
+      const metadata = await extractUrlMetadata(url);
+
+      // Update record with new enrichment data
+      const record = {
+        ...currentRecord.value,
+        $enriched: {
+          title: metadata.title,
+          description: metadata.description,
+          favicon: metadata.favicon,
+          image: metadata.image,
+        },
+      };
+
+      const response = await oauthSession.makeRequest(
+        "POST",
+        `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.putRecord`,
+        {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            repo: oauthSession.did,
+            collection: BOOKMARK_COLLECTION,
+            rkey,
+            record,
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to update record: ${errorText}`);
+      }
+
+      const data = await response.json();
+      const bookmark: EnrichedBookmark = {
+        uri: data.uri,
+        cid: data.cid,
+        subject: record.subject,
+        createdAt: record.createdAt,
+        tags: record.tags || [],
+        title: record.$enriched?.title,
+        description: record.$enriched?.description,
+        favicon: record.$enriched?.favicon,
+        image: record.$enriched?.image,
+      };
+
+      return setSessionCookie(
+        Response.json({ success: true, bookmark }),
+        setCookieHeader,
+      );
+    } catch (error: any) {
+      console.error("Error re-enriching bookmark:", error);
       return Response.json({ error: error.message }, { status: 500 });
     }
   });

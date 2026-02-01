@@ -12,8 +12,9 @@ export interface EnrichedBookmark extends BookmarkRecord {
   uri: string; // AT Protocol URI for this record
   cid: string; // Content ID
   title?: string; // Extracted page title
-  description?: string; // Extracted meta description (future)
-  favicon?: string; // Extracted favicon URL (future)
+  description?: string; // Extracted meta description
+  favicon?: string; // Extracted favicon URL
+  image?: string; // Preview image (og:image)
 }
 
 // API request/response types
@@ -36,6 +37,7 @@ export interface UrlMetadata {
   title?: string;
   description?: string;
   favicon?: string;
+  image?: string; // Preview image (og:image)
 }
 
 // Session info
