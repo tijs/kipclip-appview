@@ -10,7 +10,7 @@ import { OAUTH_SCOPES } from "./route-utils.ts";
 
 // OAuth instance and base URL - initialized lazily
 let oauth: ReturnType<typeof createATProtoOAuth> | null = null;
-let baseUrl: string | null = Deno.env.get("BASE_URL") || null;
+let baseUrl: string | null = null;
 
 /**
  * Get the base URL. Must be called after initOAuth().
@@ -38,14 +38,20 @@ export function initOAuth(
     throw new Error("COOKIE_SECRET environment variable is required");
   }
 
-  // Derive base URL from request if not set in environment
+  // Use BASE_URL from environment, or derive from request if not set
   if (!baseUrl) {
-    const url = new URL(request.url);
-    // Check for X-Forwarded-Proto header (set by ngrok and other proxies)
-    const forwardedProto = request.headers.get("X-Forwarded-Proto");
-    const protocol = forwardedProto || url.protocol.replace(":", "");
-    baseUrl = `${protocol}://${url.host}`;
-    console.log(`Derived BASE_URL from request: ${baseUrl}`);
+    const envBaseUrl = Deno.env.get("BASE_URL");
+    if (envBaseUrl) {
+      baseUrl = envBaseUrl;
+      console.log(`Using BASE_URL from environment: ${baseUrl}`);
+    } else {
+      const url = new URL(request.url);
+      // Check for X-Forwarded-Proto header (set by ngrok and other proxies)
+      const forwardedProto = request.headers.get("X-Forwarded-Proto");
+      const protocol = forwardedProto || url.protocol.replace(":", "");
+      baseUrl = `${protocol}://${url.host}`;
+      console.log(`Derived BASE_URL from request: ${baseUrl}`);
+    }
   }
 
   // Create OAuth integration with SQLiteStorage

@@ -31,30 +31,45 @@ function ReadingListCard({ bookmark }: { bookmark: EnrichedBookmark }) {
   return (
     <article
       onClick={handleClick}
-      className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 cursor-pointer transition-shadow hover:shadow-md"
+      className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden cursor-pointer transition-shadow hover:shadow-md"
     >
-      <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2">
-        {bookmark.title || domain}
-      </h3>
-      {bookmark.description && (
-        <p className="text-gray-600 text-sm mb-4 line-clamp-3">
-          {bookmark.description}
-        </p>
-      )}
-      <div className="flex items-center gap-2 text-sm text-gray-500">
-        {bookmark.favicon && (
+      {bookmark.image && (
+        <div className="aspect-[2/1] bg-gray-100 overflow-hidden">
           <img
-            src={bookmark.favicon}
+            src={bookmark.image}
             alt=""
-            className="w-4 h-4"
+            className="w-full h-full object-cover"
             onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
+              (e.target as HTMLImageElement).parentElement!.style.display =
+                "none";
             }}
           />
+        </div>
+      )}
+      <div className="p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2">
+          {bookmark.title || domain}
+        </h3>
+        {bookmark.description && (
+          <p className="text-gray-600 text-sm mb-4 line-clamp-3">
+            {bookmark.description}
+          </p>
         )}
-        <span>{domain}</span>
-        <span className="text-gray-300">|</span>
-        <span>{formattedDate}</span>
+        <div className="flex items-center gap-2 text-sm text-gray-500">
+          {bookmark.favicon && (
+            <img
+              src={bookmark.favicon}
+              alt=""
+              className="w-4 h-4"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = "none";
+              }}
+            />
+          )}
+          <span>{domain}</span>
+          <span className="text-gray-300">|</span>
+          <span>{formattedDate}</span>
+        </div>
       </div>
     </article>
   );
