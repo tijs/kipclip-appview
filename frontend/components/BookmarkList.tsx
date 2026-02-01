@@ -6,12 +6,15 @@ import { useApp } from "../context/AppContext.tsx";
 export function BookmarkList() {
   const {
     filteredBookmarks: bookmarks,
+    totalBookmarks,
     tags: availableTags,
     addBookmark,
     updateBookmark,
     deleteBookmark,
     loadBookmarks: loadBookmarksFromContext,
     loadTags,
+    bookmarkSearchQuery,
+    setBookmarkSearchQuery,
   } = useApp();
 
   // Data is pre-loaded by App.tsx via loadInitialData(), so no initial loading state
@@ -19,6 +22,7 @@ export function BookmarkList() {
   const [editingBookmark, setEditingBookmark] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragOverBookmark, setDragOverBookmark] = useState<string | null>(null);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
 
   // Pull-to-refresh state
   const [pullDistance, setPullDistance] = useState(0);
@@ -251,40 +255,111 @@ export function BookmarkList() {
 
       <div className="mb-6">
         {/* Desktop: side-by-side layout */}
-        <div className="hidden md:flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-gray-800">
-            Your Bookmarks
-            <span className="text-sm font-normal text-gray-500 ml-3">
-              {bookmarks.length}{" "}
-              {bookmarks.length === 1 ? "bookmark" : "bookmarks"}
-            </span>
-          </h2>
-          <button
-            type="button"
-            onClick={() => setShowAddModal(true)}
-            className="btn-primary"
-          >
-            + Add Bookmark
-          </button>
-        </div>
-
-        {/* Mobile: stacked layout */}
-        <div className="md:hidden">
-          <div className="flex items-center justify-between mb-2">
+        <div className="hidden md:block">
+          <div className="flex items-center justify-between mb-4">
             <h2 className="text-2xl font-bold text-gray-800">
               Your Bookmarks
+              <span className="text-sm font-normal text-gray-500 ml-3">
+                {bookmarkSearchQuery.trim()
+                  ? `${bookmarks.length} of ${totalBookmarks}`
+                  : bookmarks.length}{" "}
+                {bookmarks.length === 1 ? "bookmark" : "bookmarks"}
+              </span>
             </h2>
             <button
               type="button"
               onClick={() => setShowAddModal(true)}
-              className="px-3 py-2 text-sm rounded-md"
-              style={{ backgroundColor: "var(--coral)", color: "white" }}
+              className="btn-primary"
             >
-              + Add
+              + Add Bookmark
             </button>
           </div>
+          <input
+            type="text"
+            placeholder="Search bookmarks..."
+            value={bookmarkSearchQuery}
+            onChange={(e) => setBookmarkSearchQuery(e.target.value)}
+            className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-coral focus:border-transparent outline-none transition"
+          />
+        </div>
+
+        {/* Mobile: stacked layout with expandable search */}
+        <div className="md:hidden">
+          {mobileSearchOpen
+            ? (
+              <div className="flex items-center gap-2 mb-2">
+                <input
+                  type="text"
+                  placeholder="Search bookmarks..."
+                  value={bookmarkSearchQuery}
+                  onChange={(e) => setBookmarkSearchQuery(e.target.value)}
+                  className="flex-1 px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-coral focus:border-transparent outline-none"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileSearchOpen(false);
+                    setBookmarkSearchQuery("");
+                  }}
+                  className="p-2 text-gray-500 hover:text-gray-700"
+                >
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+            )
+            : (
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-2xl font-bold text-gray-800">
+                  Your Bookmarks
+                </h2>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMobileSearchOpen(true)}
+                    className="p-2 text-gray-500 hover:text-gray-700"
+                  >
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddModal(true)}
+                    className="px-3 py-2 text-sm rounded-md"
+                    style={{ backgroundColor: "var(--coral)", color: "white" }}
+                  >
+                    + Add
+                  </button>
+                </div>
+              </div>
+            )}
           <p className="text-sm text-gray-500">
-            {bookmarks.length}{" "}
+            {bookmarkSearchQuery.trim()
+              ? `${bookmarks.length} of ${totalBookmarks}`
+              : bookmarks.length}{" "}
             {bookmarks.length === 1 ? "bookmark" : "bookmarks"}
           </p>
         </div>

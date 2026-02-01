@@ -16,6 +16,18 @@ import type {
 } from "../../shared/types.ts";
 import { apiGet, apiPatch, apiPost } from "../utils/api.ts";
 
+// Search helper: case-insensitive match across searchable fields
+function matchesSearch(bookmark: EnrichedBookmark, query: string): boolean {
+  const q = query.toLowerCase();
+  return (
+    bookmark.title?.toLowerCase().includes(q) ||
+    bookmark.description?.toLowerCase().includes(q) ||
+    bookmark.subject.toLowerCase().includes(q) ||
+    bookmark.tags?.some((tag) => tag.toLowerCase().includes(q)) ||
+    false
+  );
+}
+
 const DEFAULT_SETTINGS: UserSettings = {
   readingListTag: "toread",
   instapaperEnabled: false,
@@ -29,6 +41,8 @@ interface AppState {
   settings: UserSettings;
   readingListSelectedTags: Set<string>;
   loading: boolean;
+  bookmarkSearchQuery: string;
+  readingListSearchQuery: string;
 }
 
 interface AppContextValue extends AppState {
@@ -63,7 +77,13 @@ interface AppContextValue extends AppState {
   toggleReadingListTag: (tagValue: string) => void;
   clearReadingListFilters: () => void;
 
+  // Search actions
+  setBookmarkSearchQuery: (query: string) => void;
+  setReadingListSearchQuery: (query: string) => void;
+
   // Computed values
+  totalBookmarks: number;
+  totalReadingList: number;
   filteredBookmarks: EnrichedBookmark[];
   readingListBookmarks: EnrichedBookmark[];
   readingListTags: string[];
@@ -82,6 +102,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     Set<string>
   >(new Set());
   const [loading, _setLoading] = useState(true);
+  const [bookmarkSearchQuery, setBookmarkSearchQuery] = useState("");
+  const [readingListSearchQuery, setReadingListSearchQuery] = useState("");
 
   // Bookmark actions
   async function loadBookmarks() {
@@ -209,11 +231,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   // Computed values
-  const filteredBookmarks = selectedTags.size === 0
-    ? bookmarks
-    : bookmarks.filter((bookmark) =>
-      [...selectedTags].every((tag) => bookmark.tags?.includes(tag))
-    );
+  const filteredBookmarks = useMemo(() => {
+    let result = bookmarks;
+
+    // Apply tag filter
+    if (selectedTags.size > 0) {
+      result = result.filter((bookmark) =>
+        [...selectedTags].every((tag) => bookmark.tags?.includes(tag))
+      );
+    }
+
+    // Apply search filter
+    if (bookmarkSearchQuery.trim()) {
+      result = result.filter((b) => matchesSearch(b, bookmarkSearchQuery));
+    }
+
+    return result;
+  }, [bookmarks, selectedTags, bookmarkSearchQuery]);
 
   // Reading list: bookmarks with the configured reading list tag
   const readingListBookmarks = useMemo(
@@ -234,13 +268,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, [readingListBookmarks, settings.readingListTag]);
 
-  // Filtered reading list based on additional tag selection
+  // Filtered reading list based on additional tag selection and search
   const filteredReadingList = useMemo(() => {
-    if (readingListSelectedTags.size === 0) return readingListBookmarks;
-    return readingListBookmarks.filter((b) =>
-      [...readingListSelectedTags].every((tag) => b.tags?.includes(tag))
-    );
-  }, [readingListBookmarks, readingListSelectedTags]);
+    let result = readingListBookmarks;
+
+    // Apply tag filter
+    if (readingListSelectedTags.size > 0) {
+      result = result.filter((b) =>
+        [...readingListSelectedTags].every((tag) => b.tags?.includes(tag))
+      );
+    }
+
+    // Apply search filter
+    if (readingListSearchQuery.trim()) {
+      result = result.filter((b) => matchesSearch(b, readingListSearchQuery));
+    }
+
+    return result;
+  }, [readingListBookmarks, readingListSelectedTags, readingListSearchQuery]);
 
   // Track which bookmarks are currently being enriched (in-flight requests)
   const enrichingRef = useRef<Set<string>>(new Set());
@@ -313,6 +358,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     settings,
     readingListSelectedTags,
     loading,
+    bookmarkSearchQuery,
+    readingListSearchQuery,
 
     // Session actions
     setSession,
@@ -345,7 +392,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toggleReadingListTag,
     clearReadingListFilters,
 
+    // Search actions
+    setBookmarkSearchQuery,
+    setReadingListSearchQuery,
+
     // Computed values
+    totalBookmarks: bookmarks.length,
+    totalReadingList: readingListBookmarks.length,
     filteredBookmarks,
     readingListBookmarks,
     readingListTags,
