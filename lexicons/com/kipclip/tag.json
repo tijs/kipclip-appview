@@ -5,6 +5,7 @@
   "defs": {
     "main": {
       "type": "record",
+      "description": "A user-defined tag for organizing bookmarks",
       "key": "tid",
       "record": {
         "type": "object",
@@ -16,7 +17,8 @@
             "description": "The tag text"
           },
           "createdAt": {
-            "type": "datetime",
+            "type": "string",
+            "format": "datetime",
             "description": "Timestamp when tag was created"
           }
         }
