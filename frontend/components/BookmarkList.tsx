@@ -23,6 +23,8 @@ export function BookmarkList() {
   const [error, setError] = useState<string | null>(null);
   const [dragOverBookmark, setDragOverBookmark] = useState<string | null>(null);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
+  const [activeOverlay, setActiveOverlay] = useState<string | null>(null);
 
   // Pull-to-refresh state
   const [pullDistance, setPullDistance] = useState(0);
@@ -205,6 +207,37 @@ export function BookmarkList() {
       }
     }
   }
+
+  function handleImageError(bookmarkUri: string) {
+    setImageErrors((prev) => new Set([...prev, bookmarkUri]));
+  }
+
+  // Click-outside handler to dismiss overlay
+  useEffect(() => {
+    if (!activeOverlay) return;
+
+    function handleClickOutside(e: MouseEvent) {
+      // If clicking outside any bookmark card, dismiss overlay
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-bookmark-card]")) {
+        setActiveOverlay(null);
+      }
+    }
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setActiveOverlay(null);
+      }
+    }
+
+    document.addEventListener("click", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("click", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [activeOverlay]);
 
   if (error) {
     return (
@@ -391,12 +424,28 @@ export function BookmarkList() {
             {bookmarks.map((bookmark) => (
               <div
                 key={bookmark.uri}
+                data-bookmark-card
                 className={`card hover:scale-[1.02] transition-all cursor-pointer group relative ${
                   dragOverBookmark === bookmark.uri
                     ? "border-2 border-blue-500 bg-blue-50"
                     : ""
                 }`}
-                onClick={() => setEditingBookmark(bookmark)}
+                onClick={() => {
+                  // Mobile: toggle overlay. Desktop: hover handles it
+                  if (
+                    globalThis.matchMedia &&
+                    globalThis.matchMedia("(max-width: 768px)").matches
+                  ) {
+                    setActiveOverlay(
+                      activeOverlay === bookmark.uri ? null : bookmark.uri,
+                    );
+                  } else {
+                    // Desktop fallback: show overlay on click too
+                    setActiveOverlay(
+                      activeOverlay === bookmark.uri ? null : bookmark.uri,
+                    );
+                  }
+                }}
                 onDragOver={(e) => {
                   e.preventDefault();
                   e.dataTransfer.dropEffect = "copy";
@@ -421,6 +470,19 @@ export function BookmarkList() {
                   }
                 }}
               >
+                {/* Preview Image Section */}
+                {bookmark.previewImage && !imageErrors.has(bookmark.uri) && (
+                  <div className="mb-3 -m-4 mt-0">
+                    <img
+                      src={bookmark.previewImage}
+                      alt={bookmark.title || "Bookmark preview"}
+                      loading="lazy"
+                      onError={() => handleImageError(bookmark.uri)}
+                      className="w-full h-48 object-cover rounded-t-lg"
+                    />
+                  </div>
+                )}
+
                 <div className="mb-3">
                   <h3 className="font-semibold text-gray-800 truncate mb-1">
                     {bookmark.title || new URL(bookmark.subject).hostname}
@@ -447,16 +509,34 @@ export function BookmarkList() {
                   </div>
                 )}
 
-                {/* Desktop: hover-reveal buttons (bottom-right) */}
-                <div className="hidden md:group-hover:flex absolute bottom-2 right-2 gap-1">
+                {/* Full-card action overlay */}
+                <div
+                  className={`absolute inset-0 bg-white/60 backdrop-blur-sm rounded-lg
+                              flex items-stretch transition-opacity duration-150
+                              ${
+                    activeOverlay === bookmark.uri
+                      ? "opacity-100"
+                      : "opacity-0 pointer-events-none"
+                  }
+                              md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto`}
+                  role="toolbar"
+                  aria-label="Bookmark actions"
+                >
+                  {/* Open button - left third */}
                   <button
                     type="button"
-                    onClick={(e) => handleVisit(e, bookmark.subject)}
-                    className="w-7 h-7 flex items-center justify-center text-gray-600 hover:text-gray-900 bg-white/90 hover:bg-white rounded-md transition-colors shadow-sm"
-                    title="Visit bookmark"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleVisit(e, bookmark.subject);
+                      setActiveOverlay(null);
+                    }}
+                    className="flex-1 flex flex-col items-center justify-center gap-2
+                               text-gray-700 hover:bg-blue-50/70 active:bg-blue-100/70
+                               transition-colors border-r border-gray-200/50 rounded-l-lg"
+                    aria-label="Open bookmark in new tab"
                   >
                     <svg
-                      className="w-4 h-4"
+                      className="w-8 h-8"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -468,59 +548,24 @@ export function BookmarkList() {
                         d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
                       />
                     </svg>
+                    <span className="text-sm font-medium">Open</span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={(e) => handleShare(e, bookmark)}
-                    className="w-7 h-7 flex items-center justify-center text-gray-600 hover:text-gray-900 bg-white/90 hover:bg-white rounded-md transition-colors shadow-sm"
-                    title="Share bookmark"
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
-                      />
-                    </svg>
-                  </button>
-                </div>
 
-                {/* Mobile: always-visible buttons (bottom-right) */}
-                <div className="flex md:hidden absolute bottom-2 right-2 gap-1">
+                  {/* Share button - middle third */}
                   <button
                     type="button"
-                    onClick={(e) => handleVisit(e, bookmark.subject)}
-                    className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-gray-900 bg-white/90 hover:bg-white rounded-md transition-colors shadow-sm"
-                    title="Visit bookmark"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleShare(e, bookmark);
+                      setActiveOverlay(null);
+                    }}
+                    className="flex-1 flex flex-col items-center justify-center gap-2
+                               text-gray-700 hover:bg-emerald-50/70 active:bg-emerald-100/70
+                               transition-colors border-r border-gray-200/50"
+                    aria-label="Share bookmark"
                   >
                     <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                      />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => handleShare(e, bookmark)}
-                    className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-gray-900 bg-white/90 hover:bg-white rounded-md transition-colors shadow-sm"
-                    title="Share bookmark"
-                  >
-                    <svg
-                      className="w-4 h-4"
+                      className="w-8 h-8"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -532,6 +577,36 @@ export function BookmarkList() {
                         d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
                       />
                     </svg>
+                    <span className="text-sm font-medium">Share</span>
+                  </button>
+
+                  {/* Edit button - right third */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingBookmark(bookmark);
+                      setActiveOverlay(null);
+                    }}
+                    className="flex-1 flex flex-col items-center justify-center gap-2
+                               text-gray-700 hover:bg-amber-50/70 active:bg-amber-100/70
+                               transition-colors rounded-r-lg"
+                    aria-label="Edit bookmark"
+                  >
+                    <svg
+                      className="w-8 h-8"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                      />
+                    </svg>
+                    <span className="text-sm font-medium">Edit</span>
                   </button>
                 </div>
               </div>
