@@ -151,7 +151,6 @@ export function Login() {
               >
                 Your Bluesky or AT Protocol handle
               </label>
-              {/* @ts-ignore - actor-typeahead is a custom element */}
               <actor-typeahead>
                 <input
                   ref={inputRef}
@@ -162,7 +161,6 @@ export function Login() {
                   disabled={loading}
                   autoFocus
                 />
-                {/* @ts-ignore - actor-typeahead is a custom element */}
               </actor-typeahead>
             </div>
 
