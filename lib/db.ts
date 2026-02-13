@@ -55,7 +55,7 @@ if (isTestDb) {
 
 export { rawDb };
 
-// Initialize tables using migrations
+// Initialize tables using migrations (with retry for transient Turso errors)
 export async function initializeTables() {
   // Skip migrations for test database
   if (isTestDb) {
@@ -63,5 +63,28 @@ export async function initializeTables() {
     return;
   }
   const { runMigrations } = await import("./migrations.ts");
-  await runMigrations();
+
+  const maxRetries = 3;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      await runMigrations();
+      return;
+    } catch (error) {
+      const isTransient = error instanceof Error &&
+        (error.message.includes("502") ||
+          error.message.includes("503") ||
+          error.message.includes("bad gateway") ||
+          error.message.includes("ECONNREFUSED"));
+
+      if (isTransient && attempt < maxRetries) {
+        const delay = attempt * 2000;
+        console.warn(
+          `⚠️ Migration attempt ${attempt}/${maxRetries} failed (transient), retrying in ${delay}ms...`,
+        );
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      throw error;
+    }
+  }
 }
