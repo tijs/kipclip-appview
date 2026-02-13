@@ -44,8 +44,14 @@ export function About() {
               servers — you own your data.
             </li>
             <li>
-              kipclip uses an open standard so other apps can read your
-              bookmarks too.
+              kipclip is built on{" "}
+              <a
+                href="/faq#how-the-technology-works"
+                className="underline hover:text-gray-800"
+              >
+                AT Protocol
+              </a>
+              , an open standard, so other apps can read your bookmarks too.
             </li>
             <li>
               The app is a lightweight web client. Your data lives with you.
