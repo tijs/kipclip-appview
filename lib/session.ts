@@ -133,22 +133,38 @@ export async function getSessionFromRequest(
         ? oauthError.message
         : String(oauthError);
 
-      console.error("[Session] Failed to restore OAuth session", {
-        did,
-        errorType,
-        errorMessage,
-        url: request.url,
-        timestamp: new Date().toISOString(),
-      });
+      // Map expected error patterns (no Sentry report needed)
+      if (errorMessage.includes("Session not found")) {
+        console.warn("[Session] Session not found in storage", {
+          did,
+          url: request.url,
+        });
+        return {
+          session: null,
+          error: {
+            type: "SESSION_EXPIRED",
+            message: "Your session has expired, please sign in again",
+            details: { errorMessage },
+          },
+        };
+      }
 
-      // Report OAuth errors to Sentry
-      reportSessionError(errorType, errorMessage, {
-        did,
-        url: request.url,
-      });
+      if (
+        errorMessage.includes("expired") || errorMessage.includes("Expired")
+      ) {
+        console.warn("[Session] Session expired", { did, url: request.url });
+        return {
+          session: null,
+          error: {
+            type: "SESSION_EXPIRED",
+            message: "Your session has expired",
+            details: { errorMessage },
+          },
+        };
+      }
 
-      // Map specific error patterns
       if (errorMessage.includes("Invalid handle")) {
+        console.warn("[Session] Invalid handle", { did, url: request.url });
         return {
           session: null,
           error: {
@@ -160,20 +176,8 @@ export async function getSessionFromRequest(
         };
       }
 
-      if (
-        errorMessage.includes("expired") || errorMessage.includes("Expired")
-      ) {
-        return {
-          session: null,
-          error: {
-            type: "SESSION_EXPIRED",
-            message: "Your session has expired",
-            details: { errorMessage },
-          },
-        };
-      }
-
       if (errorMessage.includes("refresh") || errorMessage.includes("token")) {
+        console.warn("[Session] Token error", { did, url: request.url });
         return {
           session: null,
           error: {
@@ -183,6 +187,20 @@ export async function getSessionFromRequest(
           },
         };
       }
+
+      // Unexpected OAuth error - report to Sentry
+      console.error("[Session] Failed to restore OAuth session", {
+        did,
+        errorType,
+        errorMessage,
+        url: request.url,
+        timestamp: new Date().toISOString(),
+      });
+
+      reportSessionError(errorType, errorMessage, {
+        did,
+        url: request.url,
+      });
 
       return {
         session: null,
