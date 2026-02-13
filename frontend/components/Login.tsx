@@ -149,7 +149,7 @@ export function Login() {
                 htmlFor="handle"
                 className="block text-sm font-medium text-gray-700 mb-2"
               >
-                Your Bluesky or AT Protocol handle
+                Your username
               </label>
               <actor-typeahead>
                 <input
@@ -190,14 +190,23 @@ export function Login() {
 
           <div className="mt-6 text-center text-sm text-gray-500 space-y-3">
             <p>
-              kipclip works with your Bluesky account or any AT Protocol handle.
-              Your bookmarks are saved to your own personal data server, so you
-              own and control your data.{" "}
+              Sign in with your Atmosphere username (like alice.bsky.social).
+              Your bookmarks are yours — stored in your own account, not on our
+              servers.{" "}
               <a
                 href="/faq"
                 className="underline hover:text-gray-700"
               >
                 Learn more
+              </a>
+            </p>
+            <p>
+              Don't have an account?{" "}
+              <a
+                href="/register"
+                className="underline hover:text-gray-700"
+              >
+                Create one for free
               </a>
             </p>
           </div>

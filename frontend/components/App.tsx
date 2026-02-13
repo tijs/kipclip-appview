@@ -7,6 +7,7 @@ import { Tools } from "./Tools.tsx";
 import { About } from "./About.tsx";
 import { Save } from "./Save.tsx";
 import { FAQ } from "./FAQ.tsx";
+import { Register } from "./Register.tsx";
 import { SharedBookmarks } from "./SharedBookmarks.tsx";
 import { Settings } from "./Settings.tsx";
 import { ReadingList } from "./ReadingList.tsx";
@@ -94,6 +95,10 @@ export function App() {
 
   if (currentPath === "/faq") {
     return <FAQ />;
+  }
+
+  if (currentPath === "/register") {
+    return <Register />;
   }
 
   if (currentPath === "/save") {

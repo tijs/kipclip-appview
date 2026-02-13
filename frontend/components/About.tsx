@@ -31,9 +31,8 @@ export function About() {
             About kipclip
           </h2>
           <p className="text-gray-700 text-lg">
-            kipclip is a simple, open bookmarks app for the AT Protocol. Save
-            links you care about, organize them with tags, and browse them from
-            any device.
+            kipclip is a free, open bookmark manager. Save links you care about,
+            organize them with tags, and access them from any device.
           </p>
         </section>
 
@@ -41,16 +40,15 @@ export function About() {
           <h3 className="text-xl font-bold text-gray-800">How it works</h3>
           <ul className="list-disc pl-5 text-gray-700 space-y-2">
             <li>
-              Your bookmarks are saved as AT Protocol records in your own PDS
-              (Personal Data Server) under your account.
+              Your bookmarks are stored in your own account, not on kipclip's
+              servers — you own your data.
             </li>
             <li>
-              kipclip uses a community lexicon (schema) so other AT Protocol
-              apps can read these records too.
+              kipclip uses an open standard so other apps can read your
+              bookmarks too.
             </li>
             <li>
-              The app UI is a lightweight web client; the data lives with you in
-              your PDS.
+              The app is a lightweight web client. Your data lives with you.
             </li>
           </ul>
         </section>
@@ -60,9 +58,8 @@ export function About() {
             Important note on privacy
           </h3>
           <p className="text-gray-700">
-            AT Protocol records are public by default. That means bookmarks you
-            save with kipclip are public and discoverable. Please don’t save
-            anything sensitive or private.
+            Bookmarks you save are public and can be discovered by others. Don't
+            save anything sensitive or private.
           </p>
         </section>
 
@@ -76,7 +73,7 @@ export function About() {
             >
               Frequently Asked Questions
             </a>{" "}
-            page to learn more about AT Protocol, login, data storage, and more.
+            page to learn more about how kipclip works.
           </p>
         </section>
 

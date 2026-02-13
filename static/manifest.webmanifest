@@ -1,7 +1,7 @@
 {
   "name": "kipclip",
   "short_name": "kipclip",
-  "description": "Bookmark manager for Bluesky and the AT Protocol. Save, organize, and share your bookmarks.",
+  "description": "Free bookmark manager. Save, organize, and share your bookmarks.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
