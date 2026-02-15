@@ -26,7 +26,7 @@
     "jsr:@std/path@^1.1.4": "1.1.4",
     "jsr:@std/semver@^1.0.6": "1.0.7",
     "jsr:@std/uuid@^1.0.9": "1.1.0",
-    "jsr:@tijs/atproto-oauth@2.8.0": "2.8.0",
+    "jsr:@tijs/atproto-oauth@2.9.0": "2.9.0",
     "jsr:@tijs/atproto-sessions@2.1.0": "2.1.0",
     "jsr:@tijs/atproto-storage@0.1.1": "0.1.1",
     "jsr:@tijs/atproto-storage@1.0.0": "1.0.0",
@@ -170,8 +170,8 @@
         "jsr:@std/bytes"
       ]
     },
-    "@tijs/atproto-oauth@2.8.0": {
-      "integrity": "f1696df2bcc730f2b6354e2cacba6df5bad7fa1bf43f5756650307fb6a16fc2e",
+    "@tijs/atproto-oauth@2.9.0": {
+      "integrity": "89f71b7c99960d595df38defedace9cbc0c56350a4771a4b2b7fe6cd505248a2",
       "dependencies": [
         "jsr:@tijs/atproto-sessions",
         "jsr:@tijs/atproto-storage@0.1.1",
@@ -793,7 +793,7 @@
       "jsr:@std/encoding@1",
       "jsr:@std/media-types@1",
       "jsr:@std/path@1",
-      "jsr:@tijs/atproto-oauth@2.8.0",
+      "jsr:@tijs/atproto-oauth@2.9.0",
       "jsr:@tijs/atproto-sessions@2.1.0",
       "jsr:@tijs/atproto-storage@1.0.0",
       "npm:@libsql/client@0.17.0",
