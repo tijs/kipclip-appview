@@ -26,11 +26,11 @@
     "jsr:@std/path@^1.1.4": "1.1.4",
     "jsr:@std/semver@^1.0.6": "1.0.7",
     "jsr:@std/uuid@^1.0.9": "1.1.0",
-    "jsr:@tijs/atproto-oauth@2.6.0": "2.6.0",
+    "jsr:@tijs/atproto-oauth@2.6.1": "2.6.1",
     "jsr:@tijs/atproto-sessions@2.1.0": "2.1.0",
     "jsr:@tijs/atproto-storage@0.1.1": "0.1.1",
     "jsr:@tijs/atproto-storage@1.0.0": "1.0.0",
-    "jsr:@tijs/oauth-client-deno@4.0.2": "4.0.2",
+    "jsr:@tijs/oauth-client-deno@4.1.0": "4.1.0",
     "npm:@atproto/syntax@0.3.0": "0.3.0",
     "npm:@atproto/syntax@0.4.0": "0.4.0",
     "npm:@libsql/client@0.17.0": "0.17.0",
@@ -158,8 +158,8 @@
         "jsr:@std/bytes"
       ]
     },
-    "@tijs/atproto-oauth@2.6.0": {
-      "integrity": "988ee918fb3bb6b0427a30c568d1f5a95fa9a68bd4fc5e2b67a95ced853accff",
+    "@tijs/atproto-oauth@2.6.1": {
+      "integrity": "51b3b12e71870d7515a25867f14863f3b6fbc2a0ec1c8a7ecb3f416824639196",
       "dependencies": [
         "jsr:@tijs/atproto-sessions",
         "jsr:@tijs/atproto-storage@0.1.1",
@@ -179,8 +179,8 @@
     "@tijs/atproto-storage@1.0.0": {
       "integrity": "a7f03f14ad4846fb9df19c90ac3cb007cfdc8a40df0e1b33314feaeaad439d2e"
     },
-    "@tijs/oauth-client-deno@4.0.2": {
-      "integrity": "759d7fa655642a87ccf46afddce84065ca3a49b4c0d387ae1f0b09b66a9f1d26",
+    "@tijs/oauth-client-deno@4.1.0": {
+      "integrity": "e9e4f7206e51b5717581c7502b067b90d4ff0376fee838fd3dea5ca65e7cd31e",
       "dependencies": [
         "jsr:@panva/jose",
         "npm:@atproto/syntax@0.4.0"
@@ -781,7 +781,7 @@
       "jsr:@std/encoding@1",
       "jsr:@std/media-types@1",
       "jsr:@std/path@1",
-      "jsr:@tijs/atproto-oauth@2.6.0",
+      "jsr:@tijs/atproto-oauth@2.6.1",
       "jsr:@tijs/atproto-sessions@2.1.0",
       "jsr:@tijs/atproto-storage@1.0.0",
       "npm:@libsql/client@0.17.0",
