@@ -74,7 +74,8 @@ export async function initializeTables() {
         (error.message.includes("502") ||
           error.message.includes("503") ||
           error.message.includes("bad gateway") ||
-          error.message.includes("ECONNREFUSED"));
+          error.message.includes("ECONNREFUSED") ||
+          error.message.includes("connection not opened"));
 
       if (isTransient && attempt < maxRetries) {
         const delay = attempt * 2000;
