@@ -9,7 +9,7 @@
     "@std/dotenv": "jsr:@std/dotenv@0.225",
     "@std/media-types": "jsr:@std/media-types@1",
     "@std/path": "jsr:@std/path@1",
-    "@tijs/atproto-oauth": "jsr:@tijs/atproto-oauth@2.7.1",
+    "@tijs/atproto-oauth": "jsr:@tijs/atproto-oauth@2.7.2",
     "@tijs/atproto-sessions": "jsr:@tijs/atproto-sessions@2.1.0",
     "@tijs/atproto-storage": "jsr:@tijs/atproto-storage@1.0.0",
     "@libsql/client": "npm:@libsql/client@0.17.0",

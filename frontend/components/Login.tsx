@@ -49,20 +49,6 @@ export function Login() {
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Show friendly message when redirected back from an issuer mismatch
-  useEffect(() => {
-    const params = new URLSearchParams(globalThis.location.search);
-    if (params.get("auth_error") === "issuer_mismatch") {
-      setError(
-        "Your account uses a different sign-in server than Bluesky. Please enter your handle above to connect.",
-      );
-      // Clean up the URL
-      const url = new URL(globalThis.location.href);
-      url.searchParams.delete("auth_error");
-      globalThis.history.replaceState({}, "", url.pathname + url.search);
-    }
-  }, []);
-
   // Sync handle state when the Web Component updates the input value
   useEffect(() => {
     const input = inputRef.current;
