@@ -110,18 +110,23 @@ export function Login() {
     const currentHandle = inputRef.current?.value || handle;
     if (!currentHandle.trim()) return;
 
-    const validation = validateHandle(currentHandle);
-    if (!validation.valid) {
-      setError(validation.error || "Invalid handle format");
-      return;
+    const trimmed = currentHandle.trim();
+
+    // Authorization server URLs are valid for initiating OAuth flows
+    if (!trimmed.startsWith("https://")) {
+      const validation = validateHandle(trimmed);
+      if (!validation.valid) {
+        setError(validation.error || "Invalid handle format");
+        return;
+      }
     }
 
-    await startOAuthFlow(currentHandle.trim());
+    await startOAuthFlow(trimmed);
   }
 
   function handleBlueskyConnect() {
     setError(null);
-    startOAuthFlow("bsky.social");
+    startOAuthFlow("https://bsky.social");
   }
 
   return (
@@ -194,14 +199,27 @@ export function Login() {
             </button>
           </form>
 
-          <p className="mt-4 text-sm text-gray-500">
-            Connect with your Atmosphere handle (like alice.bsky.social). Your
-            bookmarks are yours — stored in your own account, not on our
-            servers.{" "}
-            <a href="/faq" className="underline hover:text-gray-700">
-              Learn more
-            </a>
-          </p>
+          <details className="mt-4 text-sm text-gray-500">
+            <summary className="cursor-pointer font-medium text-gray-600 hover:text-gray-800">
+              What is an Atmosphere account?
+            </summary>
+            <div className="mt-2 space-y-2">
+              <p>
+                The Atmosphere is an open ecosystem of apps built on AT Protocol
+                — the same technology that powers Bluesky. When you create a
+                Bluesky account, you automatically get an Atmosphere account that
+                works across a growing number of apps, including kipclip.
+              </p>
+              <p>
+                Your bookmarks are yours — stored in your own account, not on
+                our servers. If kipclip ever goes away, your data stays with
+                you.{" "}
+                <a href="/faq" className="underline hover:text-gray-700">
+                  Learn more
+                </a>
+              </p>
+            </div>
+          </details>
 
           <a
             href="/create-account"
