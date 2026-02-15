@@ -114,11 +114,15 @@ export function CreateAccount() {
       <main className="max-w-lg mx-auto px-4 py-12">
         <div className="text-center mb-8">
           <h2 className="text-3xl font-bold text-gray-800 mb-3">
-            Create your free account
+            Create your free Atmosphere account
           </h2>
           <p className="text-gray-600">
-            Your account works across kipclip, Bluesky, and a growing number of
-            apps in the Atmosphere — an open ecosystem where you own your data.
+            kipclip is a bookmark manager built on the{" "}
+            <a href="/faq#how-the-technology-works" className="underline hover:text-gray-800">
+              Atmosphere
+            </a>
+            , an open ecosystem where you own your data. Your account works
+            across kipclip, Bluesky, and a growing number of apps.
           </p>
         </div>
 
