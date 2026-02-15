@@ -7,7 +7,7 @@ import { Tools } from "./Tools.tsx";
 import { About } from "./About.tsx";
 import { Save } from "./Save.tsx";
 import { FAQ } from "./FAQ.tsx";
-import { Register } from "./Register.tsx";
+import { CreateAccount } from "./CreateAccount.tsx";
 import { SharedBookmarks } from "./SharedBookmarks.tsx";
 import { Settings } from "./Settings.tsx";
 import { ReadingList } from "./ReadingList.tsx";
@@ -97,8 +97,13 @@ export function App() {
     return <FAQ />;
   }
 
+  if (currentPath === "/create-account") {
+    return <CreateAccount />;
+  }
+
   if (currentPath === "/register") {
-    return <Register />;
+    globalThis.location.href = "/create-account";
+    return null;
   }
 
   if (currentPath === "/save") {

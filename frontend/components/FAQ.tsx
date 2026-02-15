@@ -78,7 +78,7 @@ export function FAQ() {
                 </a>
                 . Your account works across kipclip and a growing number of apps
                 in the same ecosystem. Visit the{" "}
-                <a href="/register" className="underline hover:text-gray-800">
+                <a href="/create-account" className="underline hover:text-gray-800">
                   registration page
                 </a>{" "}
                 to get started.

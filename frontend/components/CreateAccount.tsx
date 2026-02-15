@@ -1,4 +1,4 @@
-export function Register() {
+export function CreateAccount() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow-sm">
@@ -134,7 +134,7 @@ export function Register() {
             href="/"
             className="inline-block btn-primary px-6 py-3"
           >
-            Sign in
+            Connect your account
           </a>
         </div>
       </main>
