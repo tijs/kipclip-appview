@@ -11,10 +11,10 @@
     "jsr:@std/dotenv@0.225": "0.225.6",
     "jsr:@std/encoding@1": "1.0.10",
     "jsr:@std/encoding@^1.0.10": "1.0.10",
-    "jsr:@std/fmt@^1.0.8": "1.0.8",
-    "jsr:@std/fs@^1.0.19": "1.0.21",
+    "jsr:@std/fmt@^1.0.8": "1.0.9",
+    "jsr:@std/fs@^1.0.19": "1.0.22",
     "jsr:@std/html@^1.0.5": "1.0.5",
-    "jsr:@std/http@^1.0.21": "1.0.23",
+    "jsr:@std/http@^1.0.21": "1.0.24",
     "jsr:@std/internal@^1.0.12": "1.0.12",
     "jsr:@std/json@^1.0.2": "1.0.2",
     "jsr:@std/jsonc@^1.0.2": "1.0.2",
@@ -26,11 +26,11 @@
     "jsr:@std/path@^1.1.4": "1.1.4",
     "jsr:@std/semver@^1.0.6": "1.0.7",
     "jsr:@std/uuid@^1.0.9": "1.1.0",
-    "jsr:@tijs/atproto-oauth@2.6.3": "2.6.3",
+    "jsr:@tijs/atproto-oauth@2.8.0": "2.8.0",
     "jsr:@tijs/atproto-sessions@2.1.0": "2.1.0",
     "jsr:@tijs/atproto-storage@0.1.1": "0.1.1",
     "jsr:@tijs/atproto-storage@1.0.0": "1.0.0",
-    "jsr:@tijs/oauth-client-deno@4.1.2": "4.1.2",
+    "jsr:@tijs/oauth-client-deno@5.1.0": "5.1.0",
     "npm:@atproto/syntax@0.3.0": "0.3.0",
     "npm:@atproto/syntax@0.4.0": "0.4.0",
     "npm:@libsql/client@0.17.0": "0.17.0",
@@ -113,8 +113,17 @@
     "@std/fmt@1.0.8": {
       "integrity": "71e1fc498787e4434d213647a6e43e794af4fd393ef8f52062246e06f7e372b7"
     },
+    "@std/fmt@1.0.9": {
+      "integrity": "2487343e8899fb2be5d0e3d35013e54477ada198854e52dd05ed0422eddcabe0"
+    },
     "@std/fs@1.0.21": {
       "integrity": "d720fe1056d78d43065a4d6e0eeb2b19f34adb8a0bc7caf3a4dbf1d4178252cd",
+      "dependencies": [
+        "jsr:@std/path@^1.1.4"
+      ]
+    },
+    "@std/fs@1.0.22": {
+      "integrity": "de0f277a58a867147a8a01bc1b181d0dfa80bfddba8c9cf2bacd6747bcec9308",
       "dependencies": [
         "jsr:@std/path@^1.1.4"
       ]
@@ -127,6 +136,9 @@
       "dependencies": [
         "jsr:@std/encoding@^1.0.10"
       ]
+    },
+    "@std/http@1.0.24": {
+      "integrity": "4dd59afd7cfd6e2e96e175b67a5a829b449ae55f08575721ec691e5d85d886d4"
     },
     "@std/internal@1.0.12": {
       "integrity": "972a634fd5bc34b242024402972cd5143eac68d8dffaca5eaa4dba30ce17b027"
@@ -158,8 +170,8 @@
         "jsr:@std/bytes"
       ]
     },
-    "@tijs/atproto-oauth@2.6.3": {
-      "integrity": "a661a14805c39356f7678113cb6395ccd9d5be584e1ea703b8a9ff55a0940430",
+    "@tijs/atproto-oauth@2.8.0": {
+      "integrity": "f1696df2bcc730f2b6354e2cacba6df5bad7fa1bf43f5756650307fb6a16fc2e",
       "dependencies": [
         "jsr:@tijs/atproto-sessions",
         "jsr:@tijs/atproto-storage@0.1.1",
@@ -179,8 +191,8 @@
     "@tijs/atproto-storage@1.0.0": {
       "integrity": "a7f03f14ad4846fb9df19c90ac3cb007cfdc8a40df0e1b33314feaeaad439d2e"
     },
-    "@tijs/oauth-client-deno@4.1.2": {
-      "integrity": "64b90fab3473d739e3b2eb6e13a03004b9b569f8042d1665be9d7fb3d402a17e",
+    "@tijs/oauth-client-deno@5.1.0": {
+      "integrity": "ab8b0a6a13030f4730452557dadb9d5b822e44924efcadaf4579befa1883cfa9",
       "dependencies": [
         "jsr:@panva/jose",
         "npm:@atproto/syntax@0.4.0"
@@ -781,7 +793,7 @@
       "jsr:@std/encoding@1",
       "jsr:@std/media-types@1",
       "jsr:@std/path@1",
-      "jsr:@tijs/atproto-oauth@2.6.3",
+      "jsr:@tijs/atproto-oauth@2.8.0",
       "jsr:@tijs/atproto-sessions@2.1.0",
       "jsr:@tijs/atproto-storage@1.0.0",
       "npm:@libsql/client@0.17.0",

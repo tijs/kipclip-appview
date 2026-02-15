@@ -18,10 +18,67 @@ function PdsOption({
     >
       <div className="flex items-center gap-4">
         {icon}
-        <div>
+        <div className="flex-1">
           <div className="font-semibold text-gray-800">{name}</div>
           <div className="text-sm text-gray-500">{description}</div>
         </div>
+        <svg
+          className="w-5 h-5 text-gray-400 flex-shrink-0"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          aria-hidden
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M9 5l7 7-7 7"
+          />
+        </svg>
+      </div>
+    </a>
+  );
+}
+
+function ExternalOption({
+  name,
+  description,
+  href,
+  icon,
+}: {
+  name: string;
+  description: string;
+  href: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="block bg-white rounded-lg shadow-md p-5 hover:shadow-lg transition border-2 border-transparent hover:border-gray-200"
+    >
+      <div className="flex items-center gap-4">
+        {icon}
+        <div className="flex-1">
+          <div className="font-semibold text-gray-800">{name}</div>
+          <div className="text-sm text-gray-500">{description}</div>
+        </div>
+        <svg
+          className="w-4 h-4 text-gray-400 flex-shrink-0"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          aria-hidden
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+          />
+        </svg>
       </div>
     </a>
   );
@@ -65,9 +122,9 @@ export function CreateAccount() {
           </p>
         </div>
 
-        <div className="space-y-4 mb-8">
-          <p className="text-sm font-medium text-gray-700 text-center">
-            Choose where to create your account:
+        <div className="space-y-4 mb-6">
+          <p className="text-sm font-medium text-gray-700">
+            Create and connect in one step:
           </p>
 
           <PdsOption
@@ -93,12 +150,68 @@ export function CreateAccount() {
           />
 
           <PdsOption
+            name="Tophhie"
+            description="Community PDS with privacy focus. UK-hosted."
+            pdsUrl="https://pds.tophhie.cloud"
+            icon={
+              <div className="w-12 h-12 rounded-full bg-purple-600 flex items-center justify-center flex-shrink-0">
+                <span className="text-white text-lg font-bold">T</span>
+              </div>
+            }
+          />
+
+          <PdsOption
             name="Margin"
-            description="Community PDS, open to everyone."
+            description="Community PDS, open to everyone. Finland-hosted."
             pdsUrl="https://margin.cafe"
             icon={
               <div className="w-12 h-12 rounded-full bg-amber-700 flex items-center justify-center flex-shrink-0">
                 <span className="text-white text-lg font-bold">M</span>
+              </div>
+            }
+          />
+        </div>
+
+        <div className="space-y-4 mb-8">
+          <p className="text-sm font-medium text-gray-700">
+            Or register on their site, then come back to sign in:
+          </p>
+
+          <ExternalOption
+            name="Blacksky"
+            description="Community-focused, open to everyone."
+            href="https://blacksky.community"
+            icon={
+              <div className="w-12 h-12 rounded-full bg-gray-800 flex items-center justify-center flex-shrink-0">
+                <svg
+                  className="w-6 h-6 text-white"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  aria-hidden
+                >
+                  <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+                </svg>
+              </div>
+            }
+          />
+
+          <ExternalOption
+            name="Eurosky"
+            description="European-hosted, run by a Dutch nonprofit."
+            href="https://www.eurosky.tech/register"
+            icon={
+              <div
+                className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: "#003399" }}
+              >
+                <svg
+                  className="w-6 h-6 text-yellow-400"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  aria-hidden
+                >
+                  <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+                </svg>
               </div>
             }
           />
@@ -110,9 +223,10 @@ export function CreateAccount() {
           </summary>
           <div className="mt-2 space-y-2">
             <p>
-              You'll be taken to your chosen server to create an account. Once
-              you're done, you'll be brought right back to kipclip, already
-              signed in.
+              The first group takes you to create an account and brings you
+              right back to kipclip, already signed in. The second group opens
+              their registration site — after signing up there, come back here
+              and sign in with your new handle.
             </p>
             <p>
               Your account isn't tied to kipclip — it works across all
