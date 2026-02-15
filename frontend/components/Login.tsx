@@ -206,9 +206,9 @@ export function Login() {
             <div className="mt-2 space-y-2">
               <p>
                 The Atmosphere is an open ecosystem of apps built on AT Protocol
-                — the same technology that powers Bluesky. When you create a
-                Bluesky account, you automatically get an Atmosphere account that
-                works across a growing number of apps, including kipclip.
+                — the same technology that powers Bluesky. When you create an
+                Atmosphere account, it works automatically across a growing
+                number of apps, including kipclip.
               </p>
               <p>
                 Your bookmarks are yours — stored in your own account, not on
