@@ -117,13 +117,16 @@ export function CreateAccount() {
             Create your free Atmosphere account
           </h2>
           <p className="text-gray-600">
-            kipclip is a bookmark manager built on the{" "}
-            <a href="/faq#how-the-technology-works" className="underline hover:text-gray-800">
-              Atmosphere
-            </a>
-            , an open ecosystem where you own your data. Your account works
-            across kipclip, Bluesky, and a growing number of apps.
+            kipclip is a bookmark manager built on the Atmosphere, an open
+            ecosystem where you own your data. Your account works across
+            kipclip, Bluesky, and a growing number of apps.
           </p>
+          <a
+            href="/faq#how-the-technology-works"
+            className="text-sm text-gray-500 hover:text-gray-700 underline"
+          >
+            Learn more about the Atmosphere
+          </a>
         </div>
 
         <div className="space-y-4 mb-6">
