@@ -76,6 +76,9 @@ automatically on Deno Deploy.
 ## Deno Deploy
 
 - Entry point: `main.ts`
+- Auto-deploys on push to `main` via Deno Deploy's GitHub integration
+- The GitHub test workflow (format, lint, tests) does NOT gate deployment —
+  always run `deno task quality && deno task test` before pushing to main
 - Environment variables: `COOKIE_SECRET` (required), `BASE_URL` (optional),
   `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `SENTRY_DSN`
 

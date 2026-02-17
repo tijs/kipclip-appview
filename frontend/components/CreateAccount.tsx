@@ -255,10 +255,10 @@ export function CreateAccount() {
           </summary>
           <div className="mt-2 space-y-2">
             <p>
-              Most options take you to create an account and bring you
-              right back to kipclip, already signed in. For the rest, you
-              register on their site and then come back here to sign in with
-              your new handle.
+              Most options take you to create an account and bring you right
+              back to kipclip, already signed in. For the rest, you register on
+              their site and then come back here to sign in with your new
+              handle.
             </p>
             <p>
               Your account isn't tied to kipclip — it works across all
