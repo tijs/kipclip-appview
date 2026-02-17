@@ -168,6 +168,28 @@ export function CreateAccount() {
           />
 
           <PdsOption
+            name="Selfhosted"
+            description="Community PDS, open to everyone. Germany-hosted."
+            pdsUrl="https://selfhosted.social"
+            icon={
+              <div className="w-12 h-12 rounded-full bg-teal-600 flex items-center justify-center flex-shrink-0">
+                <span className="text-white text-lg font-bold">S</span>
+              </div>
+            }
+          />
+
+          <PdsOption
+            name="Teal Town"
+            description="Community PDS, open to everyone. US-hosted."
+            pdsUrl="https://teal.town"
+            icon={
+              <div className="w-12 h-12 rounded-full bg-teal-500 flex items-center justify-center flex-shrink-0">
+                <span className="text-white text-lg font-bold">T</span>
+              </div>
+            }
+          />
+
+          <PdsOption
             name="Tophhie"
             description="Community PDS with privacy focus. UK-hosted."
             pdsUrl="https://pds.tophhie.cloud"
