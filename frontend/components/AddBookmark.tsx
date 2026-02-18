@@ -1,13 +1,22 @@
 import { useState } from "react";
-import type { EnrichedBookmark } from "../../shared/types.ts";
+import type { EnrichedBookmark, EnrichedTag } from "../../shared/types.ts";
+import { TagInput } from "./TagInput.tsx";
 
 interface AddBookmarkProps {
   onClose: () => void;
   onBookmarkAdded: (bookmark: EnrichedBookmark) => void;
+  availableTags: EnrichedTag[];
+  onTagsChanged?: () => void;
 }
 
-export function AddBookmark({ onClose, onBookmarkAdded }: AddBookmarkProps) {
+export function AddBookmark({
+  onClose,
+  onBookmarkAdded,
+  availableTags,
+  onTagsChanged,
+}: AddBookmarkProps) {
   const [url, setUrl] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,7 +33,7 @@ export function AddBookmark({ onClose, onBookmarkAdded }: AddBookmarkProps) {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ url: url.trim() }),
+        body: JSON.stringify({ url: url.trim(), tags }),
       });
 
       if (!response.ok) {
@@ -33,6 +42,9 @@ export function AddBookmark({ onClose, onBookmarkAdded }: AddBookmarkProps) {
       }
 
       const data = await response.json();
+      if (tags.length > 0 && onTagsChanged) {
+        onTagsChanged();
+      }
       onBookmarkAdded(data.bookmark);
     } catch (err: any) {
       setError(err.message);
@@ -73,6 +85,19 @@ export function AddBookmark({ onClose, onBookmarkAdded }: AddBookmarkProps) {
               disabled={loading}
               autoFocus
               required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Tags (optional)
+            </label>
+            <TagInput
+              tags={tags}
+              onTagsChange={setTags}
+              availableTags={availableTags}
+              disabled={loading}
+              compact
             />
           </div>
 

@@ -10,6 +10,7 @@ import {
   createAuthErrorResponse,
   getSessionFromRequest,
   setSessionCookie,
+  TAG_COLLECTION,
 } from "../../lib/route-utils.ts";
 import { getUserSettings } from "../../lib/settings.ts";
 import { sendToInstapaper } from "../../lib/instapaper.ts";
@@ -100,12 +101,31 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         return Response.json({ error: "Invalid URL format" }, { status: 400 });
       }
 
+      // Validate optional tags
+      let validatedTags: string[] = [];
+      if (body.tags !== undefined) {
+        if (!Array.isArray(body.tags)) {
+          return Response.json(
+            { error: "Tags must be an array" },
+            { status: 400 },
+          );
+        }
+        validatedTags = [
+          ...new Set(
+            body.tags
+              .filter((t): t is string => typeof t === "string")
+              .map((t) => t.trim())
+              .filter((t) => t.length > 0 && t.length <= 64),
+          ),
+        ];
+      }
+
       const metadata = await extractUrlMetadata(body.url);
 
       const record = {
         subject: body.url,
         createdAt: new Date().toISOString(),
-        tags: [],
+        tags: validatedTags,
         $enriched: {
           title: metadata.title,
           description: metadata.description,
@@ -138,12 +158,59 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         cid: data.cid,
         subject: body.url,
         createdAt: record.createdAt,
-        tags: [],
+        tags: validatedTags,
         title: metadata.title,
         description: metadata.description,
         favicon: metadata.favicon,
         image: metadata.image,
       };
+
+      // Create PDS tag records for new tags (non-blocking)
+      if (validatedTags.length > 0) {
+        // Fetch existing tag records to avoid duplicates
+        const tagParams = new URLSearchParams({
+          repo: oauthSession.did,
+          collection: TAG_COLLECTION,
+          limit: "100",
+        });
+        try {
+          const tagListRes = await oauthSession.makeRequest(
+            "GET",
+            `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${tagParams}`,
+          );
+          const existingTagValues = new Set<string>();
+          if (tagListRes.ok) {
+            const tagData = await tagListRes.json();
+            for (const rec of tagData.records || []) {
+              existingTagValues.add(rec.value?.value);
+            }
+          }
+          const newTags = validatedTags.filter((t) =>
+            !existingTagValues.has(t)
+          );
+          await Promise.all(newTags.map((tagValue) =>
+            oauthSession.makeRequest(
+              "POST",
+              `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.createRecord`,
+              {
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  repo: oauthSession.did,
+                  collection: TAG_COLLECTION,
+                  record: {
+                    value: tagValue,
+                    createdAt: new Date().toISOString(),
+                  },
+                }),
+              },
+            ).catch((err) =>
+              console.error(`Failed to create tag "${tagValue}":`, err)
+            )
+          ));
+        } catch (err) {
+          console.error("Failed to create tag records:", err);
+        }
+      }
 
       const result: AddBookmarkResponse = { success: true, bookmark };
       return setSessionCookie(Response.json(result), setCookieHeader);

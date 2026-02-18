@@ -347,6 +347,115 @@ Deno.test({
 });
 
 Deno.test({
+  name: "POST /api/bookmarks - creates bookmark with tags",
+  async fn() {
+    const pdsResponses = new Map<string, Response>();
+    pdsResponses.set("createRecord", createRecordResponse("abc123", "cid456"));
+    pdsResponses.set("listRecords", listRecordsResponse([]));
+
+    setTestSessionProvider(() =>
+      Promise.resolve(createMockSessionResult({ pdsResponses }))
+    );
+
+    mockGlobalFetch(
+      new Map([
+        [
+          "example.com",
+          createHtmlResponse({
+            title: "Example Page",
+            description: "A test page",
+          }),
+        ],
+      ]),
+    );
+
+    try {
+      const req = new Request("https://kipclip.com/api/bookmarks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: "https://example.com/page",
+          tags: ["work", "important"],
+        }),
+      });
+
+      const res = await handler(req);
+      assertEquals(res.status, 200);
+
+      const body = await res.json();
+      assertEquals(body.success, true);
+      assertExists(body.bookmark);
+      assertEquals(body.bookmark.tags, ["work", "important"]);
+    } finally {
+      setTestSessionProvider(null);
+      restoreFetch();
+    }
+  },
+});
+
+Deno.test({
+  name: "POST /api/bookmarks - creates bookmark without tags (backward compat)",
+  async fn() {
+    const pdsResponses = new Map<string, Response>();
+    pdsResponses.set("createRecord", createRecordResponse("abc123", "cid456"));
+
+    setTestSessionProvider(() =>
+      Promise.resolve(createMockSessionResult({ pdsResponses }))
+    );
+
+    mockGlobalFetch(
+      new Map([
+        ["example.com", createHtmlResponse({ title: "Test" })],
+      ]),
+    );
+
+    try {
+      const req = new Request("https://kipclip.com/api/bookmarks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: "https://example.com/page" }),
+      });
+
+      const res = await handler(req);
+      assertEquals(res.status, 200);
+
+      const body = await res.json();
+      assertEquals(body.success, true);
+      assertEquals(body.bookmark.tags, []);
+    } finally {
+      setTestSessionProvider(null);
+      restoreFetch();
+    }
+  },
+});
+
+Deno.test({
+  name: "POST /api/bookmarks - returns 400 for invalid tags type",
+  async fn() {
+    setTestSessionProvider(() => Promise.resolve(createMockSessionResult()));
+
+    try {
+      const req = new Request("https://kipclip.com/api/bookmarks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: "https://example.com/page",
+          tags: "not-an-array",
+        }),
+      });
+
+      const res = await handler(req);
+      assertEquals(res.status, 400);
+
+      const body = await res.json();
+      assertEquals(body.error, "Tags must be an array");
+    } finally {
+      setTestSessionProvider(null);
+    }
+  },
+});
+
+Deno.test({
   name: "POST /api/bookmarks - handles PDS error gracefully",
   async fn() {
     const pdsResponses = new Map<string, Response>();

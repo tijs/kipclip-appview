@@ -20,6 +20,7 @@ export interface EnrichedBookmark extends BookmarkRecord {
 // API request/response types
 export interface AddBookmarkRequest {
   url: string;
+  tags?: string[];
 }
 
 export interface AddBookmarkResponse {

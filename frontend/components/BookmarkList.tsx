@@ -618,6 +618,8 @@ export function BookmarkList() {
         <AddBookmark
           onClose={() => setShowAddModal(false)}
           onBookmarkAdded={handleBookmarkAdded}
+          availableTags={availableTags}
+          onTagsChanged={loadTags}
         />
       )}
 

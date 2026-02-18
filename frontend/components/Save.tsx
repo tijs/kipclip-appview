@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import type { EnrichedTag } from "../../shared/types.ts";
+import { TagInput } from "./TagInput.tsx";
 
 export function Save() {
   const [session, setSession] = useState<
@@ -9,6 +11,8 @@ export function Save() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [url, setUrl] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [availableTags, setAvailableTags] = useState<EnrichedTag[]>([]);
 
   useEffect(() => {
     // Get URL from query params
@@ -33,6 +37,19 @@ export function Save() {
           did: data.did,
           handle: data.handle,
         });
+
+        // Fetch available tags for autocomplete (non-fatal)
+        try {
+          const tagsRes = await fetch("/api/tags", {
+            credentials: "include",
+          });
+          if (tagsRes.ok) {
+            const tagsData = await tagsRes.json();
+            setAvailableTags(tagsData.tags || []);
+          }
+        } catch {
+          // Autocomplete won't work, but that's fine
+        }
       } else {
         // Session check failed - log for debugging
         console.warn("Session check failed:", {
@@ -69,7 +86,7 @@ export function Save() {
           "Content-Type": "application/json",
         },
         credentials: "include",
-        body: JSON.stringify({ url: url.trim() }),
+        body: JSON.stringify({ url: url.trim(), tags }),
       });
 
       // If session expired, redirect to login with current page
@@ -242,6 +259,19 @@ export function Save() {
               disabled={saving}
               autoFocus
               required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Tags (optional)
+            </label>
+            <TagInput
+              tags={tags}
+              onTagsChange={setTags}
+              availableTags={availableTags}
+              disabled={saving}
+              compact
             />
           </div>
 
