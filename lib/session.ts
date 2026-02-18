@@ -120,110 +120,22 @@ export async function getSessionFromRequest(
     }
 
     // Step 2: Get OAuth session using the DID from cookie
+    // getOAuthSession returns null for expired/corrupt/revoked sessions
+    // and only throws on transient NetworkError
     const did = cookieResult.data.did;
-    let oauthSession: SessionInterface | null;
-
-    try {
-      oauthSession = await getOAuth().sessions.getOAuthSession(did);
-    } catch (oauthError) {
-      const errorType = oauthError instanceof Error
-        ? oauthError.constructor.name
-        : "OAUTH_ERROR";
-      const errorMessage = oauthError instanceof Error
-        ? oauthError.message
-        : String(oauthError);
-
-      // Map expected error patterns (no Sentry report needed)
-      if (errorMessage.includes("Session not found")) {
-        console.warn("[Session] Session not found in storage", {
-          did,
-          url: request.url,
-        });
-        return {
-          session: null,
-          error: {
-            type: "SESSION_EXPIRED",
-            message: "Your session has expired, please sign in again",
-            details: { errorMessage },
-          },
-        };
-      }
-
-      if (
-        errorMessage.includes("expired") || errorMessage.includes("Expired")
-      ) {
-        console.warn("[Session] Session expired", { did, url: request.url });
-        return {
-          session: null,
-          error: {
-            type: "SESSION_EXPIRED",
-            message: "Your session has expired",
-            details: { errorMessage },
-          },
-        };
-      }
-
-      if (errorMessage.includes("Invalid handle")) {
-        console.warn("[Session] Invalid handle", { did, url: request.url });
-        return {
-          session: null,
-          error: {
-            type: "INVALID_HANDLE",
-            message:
-              "The handle in the session is invalid or cannot be resolved",
-            details: { errorMessage },
-          },
-        };
-      }
-
-      if (errorMessage.includes("refresh") || errorMessage.includes("token")) {
-        console.warn("[Session] Token error", { did, url: request.url });
-        return {
-          session: null,
-          error: {
-            type: "TOKEN_ERROR",
-            message: "Session token error",
-            details: { errorMessage },
-          },
-        };
-      }
-
-      // Unexpected OAuth error - report to Sentry
-      console.error("[Session] Failed to restore OAuth session", {
-        did,
-        errorType,
-        errorMessage,
-        url: request.url,
-        timestamp: new Date().toISOString(),
-      });
-
-      reportSessionError(errorType, errorMessage, {
-        did,
-        url: request.url,
-      });
-
-      return {
-        session: null,
-        error: {
-          type: errorType,
-          message: errorMessage,
-          details: oauthError,
-        },
-      };
-    }
+    const oauthSession = await getOAuth().sessions.getOAuthSession(did);
 
     if (!oauthSession) {
-      console.warn("[Session] OAuth session not found in storage", {
+      console.warn("[Session] OAuth session not available", {
         did,
         url: request.url,
-        timestamp: new Date().toISOString(),
       });
 
       return {
         session: null,
         error: {
           type: "SESSION_EXPIRED",
-          message: "OAuth session not found in storage",
+          message: "Your session has expired, please sign in again",
         },
       };
     }
