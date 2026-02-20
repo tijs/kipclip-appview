@@ -493,3 +493,186 @@ Deno.test({
     }
   },
 });
+
+// ============================================================================
+// Check Duplicates
+// ============================================================================
+
+Deno.test({
+  name: "POST /api/bookmarks/check-duplicates - finds duplicates by base URL",
+  async fn() {
+    const mockBookmarks = [
+      {
+        uri: "at://did:plc:test123/community.lexicon.bookmarks.bookmark/abc",
+        cid: "cid1",
+        value: {
+          subject: "https://example.com/article?utm_source=twitter",
+          createdAt: "2025-01-01T00:00:00.000Z",
+          tags: ["news"],
+          $enriched: { title: "Example Article" },
+        },
+      },
+      {
+        uri: "at://did:plc:test123/community.lexicon.bookmarks.bookmark/def",
+        cid: "cid2",
+        value: {
+          subject: "https://other.com/page",
+          createdAt: "2025-01-02T00:00:00.000Z",
+          tags: [],
+          $enriched: { title: "Other Page" },
+        },
+      },
+    ];
+
+    const pdsResponses = new Map<string, Response>();
+    pdsResponses.set("listRecords", listRecordsResponse(mockBookmarks));
+
+    setTestSessionProvider(() =>
+      Promise.resolve(createMockSessionResult({ pdsResponses }))
+    );
+
+    try {
+      const req = new Request(
+        "https://kipclip.com/api/bookmarks/check-duplicates",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: "https://example.com/article?ref=google",
+          }),
+        },
+      );
+
+      const res = await handler(req);
+      assertEquals(res.status, 200);
+
+      const body = await res.json();
+      assertEquals(body.duplicates.length, 1);
+      assertEquals(
+        body.duplicates[0].subject,
+        "https://example.com/article?utm_source=twitter",
+      );
+      assertEquals(body.duplicates[0].title, "Example Article");
+    } finally {
+      setTestSessionProvider(null);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "POST /api/bookmarks/check-duplicates - ignores query params when comparing",
+  async fn() {
+    const mockBookmarks = [
+      {
+        uri: "at://did:plc:test123/community.lexicon.bookmarks.bookmark/abc",
+        cid: "cid1",
+        value: {
+          subject: "https://example.com/page",
+          createdAt: "2025-01-01T00:00:00.000Z",
+          tags: [],
+          $enriched: { title: "Page" },
+        },
+      },
+    ];
+
+    const pdsResponses = new Map<string, Response>();
+    pdsResponses.set("listRecords", listRecordsResponse(mockBookmarks));
+
+    setTestSessionProvider(() =>
+      Promise.resolve(createMockSessionResult({ pdsResponses }))
+    );
+
+    try {
+      const req = new Request(
+        "https://kipclip.com/api/bookmarks/check-duplicates",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: "https://example.com/page?utm_source=google",
+          }),
+        },
+      );
+
+      const res = await handler(req);
+      assertEquals(res.status, 200);
+
+      const body = await res.json();
+      assertEquals(body.duplicates.length, 1);
+    } finally {
+      setTestSessionProvider(null);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "POST /api/bookmarks/check-duplicates - returns empty when no duplicates",
+  async fn() {
+    const mockBookmarks = [
+      {
+        uri: "at://did:plc:test123/community.lexicon.bookmarks.bookmark/abc",
+        cid: "cid1",
+        value: {
+          subject: "https://example.com/page1",
+          createdAt: "2025-01-01T00:00:00.000Z",
+          tags: [],
+          $enriched: { title: "Page One" },
+        },
+      },
+    ];
+
+    const pdsResponses = new Map<string, Response>();
+    pdsResponses.set("listRecords", listRecordsResponse(mockBookmarks));
+
+    setTestSessionProvider(() =>
+      Promise.resolve(createMockSessionResult({ pdsResponses }))
+    );
+
+    try {
+      const req = new Request(
+        "https://kipclip.com/api/bookmarks/check-duplicates",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: "https://different.com/page" }),
+        },
+      );
+
+      const res = await handler(req);
+      assertEquals(res.status, 200);
+
+      const body = await res.json();
+      assertEquals(body.duplicates, []);
+    } finally {
+      setTestSessionProvider(null);
+    }
+  },
+});
+
+Deno.test({
+  name: "POST /api/bookmarks/check-duplicates - returns empty for missing URL",
+  async fn() {
+    setTestSessionProvider(() => Promise.resolve(createMockSessionResult()));
+
+    try {
+      const req = new Request(
+        "https://kipclip.com/api/bookmarks/check-duplicates",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        },
+      );
+
+      const res = await handler(req);
+      assertEquals(res.status, 200);
+
+      const body = await res.json();
+      assertEquals(body.duplicates, []);
+    } finally {
+      setTestSessionProvider(null);
+    }
+  },
+});

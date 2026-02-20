@@ -19,11 +19,14 @@ import { rawDb } from "../../lib/db.ts";
 import type {
   AddBookmarkRequest,
   AddBookmarkResponse,
+  CheckDuplicatesRequest,
+  CheckDuplicatesResponse,
   EnrichedBookmark,
   ListBookmarksResponse,
   UpdateBookmarkTagsRequest,
   UpdateBookmarkTagsResponse,
 } from "../../shared/types.ts";
+import { getBaseUrl } from "../../shared/url-utils.ts";
 
 export function registerBookmarkRoutes(app: App<any>): App<any> {
   // List bookmarks
@@ -71,6 +74,73 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         return Response.json({ bookmarks: [] });
       }
       return Response.json({ error: error.message }, { status: 500 });
+    }
+  });
+
+  // Check for duplicate bookmarks by base URL
+  app = app.post("/api/bookmarks/check-duplicates", async (ctx) => {
+    try {
+      const { session: oauthSession, setCookieHeader, error } =
+        await getSessionFromRequest(ctx.req);
+      if (!oauthSession) {
+        return createAuthErrorResponse(error);
+      }
+
+      const body: CheckDuplicatesRequest = await ctx.req.json();
+      if (!body.url) {
+        return Response.json(
+          { duplicates: [] } satisfies CheckDuplicatesResponse,
+        );
+      }
+
+      const inputBase = getBaseUrl(body.url);
+      if (!inputBase) {
+        return Response.json(
+          { duplicates: [] } satisfies CheckDuplicatesResponse,
+        );
+      }
+
+      const params = new URLSearchParams({
+        repo: oauthSession.did,
+        collection: BOOKMARK_COLLECTION,
+        limit: "100",
+      });
+      const response = await oauthSession.makeRequest(
+        "GET",
+        `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${params}`,
+      );
+
+      if (!response.ok) {
+        return setSessionCookie(
+          Response.json(
+            { duplicates: [] } satisfies CheckDuplicatesResponse,
+          ),
+          setCookieHeader,
+        );
+      }
+
+      const data = await response.json();
+      const duplicates: EnrichedBookmark[] = data.records
+        .filter((record: any) => getBaseUrl(record.value.subject) === inputBase)
+        .map((record: any) => ({
+          uri: record.uri,
+          cid: record.cid,
+          subject: record.value.subject,
+          createdAt: record.value.createdAt,
+          tags: record.value.tags || [],
+          title: record.value.$enriched?.title || record.value.title,
+          description: record.value.$enriched?.description,
+          favicon: record.value.$enriched?.favicon,
+          image: record.value.$enriched?.image,
+        }));
+
+      const result: CheckDuplicatesResponse = { duplicates };
+      return setSessionCookie(Response.json(result), setCookieHeader);
+    } catch {
+      // Duplicate check is advisory — never block saving
+      return Response.json(
+        { duplicates: [] } satisfies CheckDuplicatesResponse,
+      );
     }
   });
 

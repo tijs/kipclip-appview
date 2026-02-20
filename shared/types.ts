@@ -138,6 +138,15 @@ export interface UpdateSettingsResponse {
   error?: string;
 }
 
+// Duplicate check API types
+export interface CheckDuplicatesRequest {
+  url: string;
+}
+
+export interface CheckDuplicatesResponse {
+  duplicates: EnrichedBookmark[];
+}
+
 // Combined initial data response (for optimized page load)
 export interface InitialDataResponse {
   bookmarks: EnrichedBookmark[];

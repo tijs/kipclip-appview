@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import type { EnrichedTag } from "../../shared/types.ts";
+import type {
+  CheckDuplicatesResponse,
+  EnrichedBookmark,
+  EnrichedTag,
+} from "../../shared/types.ts";
+import { DuplicateWarning } from "./DuplicateWarning.tsx";
 import { TagInput } from "./TagInput.tsx";
 
 export function Save() {
@@ -13,6 +18,7 @@ export function Save() {
   const [url, setUrl] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [availableTags, setAvailableTags] = useState<EnrichedTag[]>([]);
+  const [duplicates, setDuplicates] = useState<EnrichedBookmark[] | null>(null);
 
   useEffect(() => {
     // Get URL from query params
@@ -72,26 +78,40 @@ export function Save() {
     }
   }
 
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault();
-    if (!url.trim()) return;
+  async function checkDuplicates(
+    urlToCheck: string,
+  ): Promise<EnrichedBookmark[]> {
+    try {
+      const response = await fetch("/api/bookmarks/check-duplicates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ url: urlToCheck }),
+      });
+      if (response.ok) {
+        const data: CheckDuplicatesResponse = await response.json();
+        return data.duplicates;
+      }
+    } catch {
+      // Duplicate check is advisory — never block saving
+    }
+    return [];
+  }
 
+  async function saveBookmark() {
     setSaving(true);
     setError(null);
 
     try {
       const response = await fetch("/api/bookmarks", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ url: url.trim(), tags }),
       });
 
       // If session expired, redirect to login with current page
       if (response.status === 401) {
-        // Log error details for debugging
         try {
           const errorData = await response.json();
           console.warn("Authentication error during save:", errorData);
@@ -119,6 +139,31 @@ export function Save() {
       setError(err.message);
       setSaving(false);
     }
+  }
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!url.trim()) return;
+
+    setSaving(true);
+    setError(null);
+
+    const matches = await checkDuplicates(url.trim());
+    if (matches.length > 0) {
+      setDuplicates(matches);
+      setSaving(false);
+      return;
+    }
+
+    await saveBookmark();
+  }
+
+  function handleCancelDuplicate() {
+    setDuplicates(null);
+  }
+
+  async function handleSaveAnyway() {
+    await saveBookmark();
   }
 
   function handleClose() {
@@ -241,63 +286,72 @@ export function Save() {
           Signed in as <span className="font-medium">@{session.handle}</span>
         </div>
 
-        <form onSubmit={handleSave} className="space-y-4">
-          <div>
-            <label
-              htmlFor="url"
-              className="block text-sm font-medium text-gray-700 mb-2"
-            >
-              URL
-            </label>
-            <input
-              type="url"
-              id="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://example.com"
-              className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-coral focus:border-transparent outline-none transition"
-              disabled={saving}
-              autoFocus
-              required
+        {duplicates
+          ? (
+            <DuplicateWarning
+              duplicates={duplicates}
+              onCancel={handleCancelDuplicate}
+              onContinue={handleSaveAnyway}
+              loading={saving}
             />
-          </div>
+          )
+          : (
+            <form onSubmit={handleSave} className="space-y-4">
+              <div>
+                <label
+                  htmlFor="url"
+                  className="block text-sm font-medium text-gray-700 mb-2"
+                >
+                  URL
+                </label>
+                <input
+                  type="url"
+                  id="url"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="https://example.com"
+                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-coral focus:border-transparent outline-none transition"
+                  disabled={saving}
+                  autoFocus
+                  required
+                />
+              </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Tags (optional)
-            </label>
-            <TagInput
-              tags={tags}
-              onTagsChange={setTags}
-              availableTags={availableTags}
-              disabled={saving}
-              compact
-            />
-          </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Tags (optional)
+                </label>
+                <TagInput
+                  tags={tags}
+                  onTagsChange={setTags}
+                  availableTags={availableTags}
+                  disabled={saving}
+                  compact
+                />
+              </div>
 
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-              {error}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            className="w-full btn-primary py-3 disabled:opacity-50"
-            disabled={saving || !url.trim()}
-          >
-            {saving
-              ? (
-                <span className="flex items-center justify-center gap-2">
-                  <div className="spinner w-5 h-5 border-2"></div>
-                  Saving...
-                </span>
-              )
-              : (
-                "Save Bookmark"
+              {error && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                  {error}
+                </div>
               )}
-          </button>
-        </form>
+
+              <button
+                type="submit"
+                className="w-full btn-primary py-3 disabled:opacity-50"
+                disabled={saving || !url.trim()}
+              >
+                {saving
+                  ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <div className="spinner w-5 h-5 border-2"></div>
+                      Saving...
+                    </span>
+                  )
+                  : "Save Bookmark"}
+              </button>
+            </form>
+          )}
 
         <p className="text-xs text-gray-500 mt-4 text-center">
           The page title and description will be automatically fetched
