@@ -1,24 +1,31 @@
 /**
  * Bookmark API routes.
  * Handles CRUD operations for user bookmarks stored on their PDS.
+ * Enrichment metadata and notes are stored in annotation sidecar records.
  */
 
 import type { App } from "@fresh/core";
 import { extractUrlMetadata } from "../../lib/enrichment.ts";
 import {
+  extractRkey,
+  fetchAnnotationMap,
+  mapBookmarkRecord,
+  writeAnnotation,
+} from "../../lib/annotations.ts";
+import {
+  ANNOTATION_COLLECTION,
   BOOKMARK_COLLECTION,
   createAuthErrorResponse,
+  createNewTagRecords,
   getSessionFromRequest,
   setSessionCookie,
-  TAG_COLLECTION,
 } from "../../lib/route-utils.ts";
 import { getUserSettings } from "../../lib/settings.ts";
-import { sendToInstapaper } from "../../lib/instapaper.ts";
-import { decrypt } from "../../lib/encryption.ts";
-import { rawDb } from "../../lib/db.ts";
+import { sendToInstapaperAsync } from "../../lib/instapaper.ts";
 import type {
   AddBookmarkRequest,
   AddBookmarkResponse,
+  AnnotationRecord,
   CheckDuplicatesRequest,
   CheckDuplicatesResponse,
   EnrichedBookmark,
@@ -43,28 +50,28 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         collection: BOOKMARK_COLLECTION,
         limit: "100",
       });
-      const response = await oauthSession.makeRequest(
-        "GET",
-        `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${params}`,
-      );
 
-      if (!response.ok) {
-        const errorText = await response.text();
+      const [bookmarksResponse, annotationResult] = await Promise.all([
+        oauthSession.makeRequest(
+          "GET",
+          `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${params}`,
+        ),
+        fetchAnnotationMap(oauthSession),
+      ]);
+
+      if (!bookmarksResponse.ok) {
+        const errorText = await bookmarksResponse.text();
         throw new Error(`Failed to list records: ${errorText}`);
       }
 
-      const data = await response.json();
-      const bookmarks: EnrichedBookmark[] = data.records.map((record: any) => ({
-        uri: record.uri,
-        cid: record.cid,
-        subject: record.value.subject,
-        createdAt: record.value.createdAt,
-        tags: record.value.tags || [],
-        title: record.value.$enriched?.title || record.value.title,
-        description: record.value.$enriched?.description,
-        favicon: record.value.$enriched?.favicon,
-        image: record.value.$enriched?.image,
-      }));
+      const data = await bookmarksResponse.json();
+      const bookmarks: EnrichedBookmark[] = data.records.map(
+        (record: any) => {
+          const rkey = extractRkey(record.uri);
+          const annotation = rkey ? annotationResult.map.get(rkey) : undefined;
+          return mapBookmarkRecord(record, annotation);
+        },
+      );
 
       const result: ListBookmarksResponse = { bookmarks };
       return setSessionCookie(Response.json(result), setCookieHeader);
@@ -122,17 +129,7 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
       const data = await response.json();
       const duplicates: EnrichedBookmark[] = data.records
         .filter((record: any) => getBaseUrl(record.value.subject) === inputBase)
-        .map((record: any) => ({
-          uri: record.uri,
-          cid: record.cid,
-          subject: record.value.subject,
-          createdAt: record.value.createdAt,
-          tags: record.value.tags || [],
-          title: record.value.$enriched?.title || record.value.title,
-          description: record.value.$enriched?.description,
-          favicon: record.value.$enriched?.favicon,
-          image: record.value.$enriched?.image,
-        }));
+        .map((record: any) => mapBookmarkRecord(record));
 
       const result: CheckDuplicatesResponse = { duplicates };
       return setSessionCookie(Response.json(result), setCookieHeader);
@@ -158,9 +155,8 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         return Response.json({ error: "URL is required" }, { status: 400 });
       }
 
-      let url: URL;
       try {
-        url = new URL(body.url);
+        const url = new URL(body.url);
         if (!url.protocol.startsWith("http")) {
           return Response.json(
             { error: "Only HTTP(S) URLs are supported" },
@@ -191,18 +187,10 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
       }
 
       const metadata = await extractUrlMetadata(body.url);
+      const createdAt = new Date().toISOString();
 
-      const record = {
-        subject: body.url,
-        createdAt: new Date().toISOString(),
-        tags: validatedTags,
-        $enriched: {
-          title: metadata.title,
-          description: metadata.description,
-          favicon: metadata.favicon,
-          image: metadata.image,
-        },
-      };
+      // Write clean bookmark record (standard fields only)
+      const record = { subject: body.url, createdAt, tags: validatedTags };
 
       const response = await oauthSession.makeRequest(
         "POST",
@@ -223,11 +211,28 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
       }
 
       const data = await response.json();
+      const rkey = extractRkey(data.uri);
+
+      // Write annotation sidecar with same rkey (fire-and-forget on failure)
+      if (rkey) {
+        const annotation: AnnotationRecord = {
+          subject: data.uri,
+          title: metadata.title,
+          description: metadata.description,
+          favicon: metadata.favicon,
+          image: metadata.image,
+          createdAt,
+        };
+        writeAnnotation(oauthSession, rkey, annotation).catch((err) =>
+          console.error("Failed to create annotation:", err)
+        );
+      }
+
       const bookmark: EnrichedBookmark = {
         uri: data.uri,
         cid: data.cid,
         subject: body.url,
-        createdAt: record.createdAt,
+        createdAt,
         tags: validatedTags,
         title: metadata.title,
         description: metadata.description,
@@ -237,49 +242,9 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
 
       // Create PDS tag records for new tags (non-blocking)
       if (validatedTags.length > 0) {
-        // Fetch existing tag records to avoid duplicates
-        const tagParams = new URLSearchParams({
-          repo: oauthSession.did,
-          collection: TAG_COLLECTION,
-          limit: "100",
-        });
-        try {
-          const tagListRes = await oauthSession.makeRequest(
-            "GET",
-            `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${tagParams}`,
-          );
-          const existingTagValues = new Set<string>();
-          if (tagListRes.ok) {
-            const tagData = await tagListRes.json();
-            for (const rec of tagData.records || []) {
-              existingTagValues.add(rec.value?.value);
-            }
-          }
-          const newTags = validatedTags.filter((t) =>
-            !existingTagValues.has(t)
-          );
-          await Promise.all(newTags.map((tagValue) =>
-            oauthSession.makeRequest(
-              "POST",
-              `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.createRecord`,
-              {
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  repo: oauthSession.did,
-                  collection: TAG_COLLECTION,
-                  record: {
-                    value: tagValue,
-                    createdAt: new Date().toISOString(),
-                  },
-                }),
-              },
-            ).catch((err) =>
-              console.error(`Failed to create tag "${tagValue}":`, err)
-            )
-          ));
-        } catch (err) {
-          console.error("Failed to create tag records:", err);
-        }
+        createNewTagRecords(oauthSession, validatedTags).catch((err) =>
+          console.error("Failed to create tag records:", err)
+        );
       }
 
       const result: AddBookmarkResponse = { success: true, bookmark };
@@ -326,6 +291,7 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         }
       }
 
+      // Get existing bookmark record
       const getParams = new URLSearchParams({
         repo: oauthSession.did,
         collection: BOOKMARK_COLLECTION,
@@ -342,19 +308,14 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
       }
 
       const currentRecord = await getResponse.json();
+      const bookmarkUri = currentRecord.uri;
+      const subject = body.url || currentRecord.value.subject;
+
+      // Write clean bookmark record (standard fields only)
       const record = {
-        ...currentRecord.value,
-        subject: body.url || currentRecord.value.subject,
+        subject,
+        createdAt: currentRecord.value.createdAt,
         tags: body.tags,
-        $enriched: {
-          ...currentRecord.value.$enriched,
-          title: body.title !== undefined
-            ? body.title
-            : currentRecord.value.$enriched?.title,
-          description: body.description !== undefined
-            ? body.description
-            : currentRecord.value.$enriched?.description,
-        },
       };
 
       const response = await oauthSession.makeRequest(
@@ -377,16 +338,69 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
       }
 
       const data = await response.json();
+
+      // Resolve enrichment: prefer body values, then $enriched fallback
+      const existing = currentRecord.value.$enriched || {};
+      const title = body.title !== undefined ? body.title : existing.title;
+      const description = body.description !== undefined
+        ? body.description
+        : existing.description;
+
+      // Write annotation sidecar with enrichment + note
+      const annotation: AnnotationRecord = {
+        subject: bookmarkUri,
+        title,
+        description,
+        favicon: existing.favicon,
+        image: existing.image,
+        note: body.note,
+        createdAt: currentRecord.value.createdAt,
+      };
+
+      const annotationWritten = await writeAnnotation(
+        oauthSession,
+        rkey,
+        annotation,
+      );
+
+      // If annotation write failed (old scope), fall back to $enriched
+      if (!annotationWritten) {
+        console.warn("Annotation write failed, falling back to $enriched");
+        const fallback = {
+          ...record,
+          $enriched: {
+            title,
+            description,
+            favicon: existing.favicon,
+            image: existing.image,
+          },
+        };
+        await oauthSession.makeRequest(
+          "POST",
+          `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.putRecord`,
+          {
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              repo: oauthSession.did,
+              collection: BOOKMARK_COLLECTION,
+              rkey,
+              record: fallback,
+            }),
+          },
+        ).catch(() => {});
+      }
+
       const bookmark: EnrichedBookmark = {
         uri: data.uri,
         cid: data.cid,
-        subject: record.subject,
+        subject,
         createdAt: record.createdAt,
         tags: record.tags,
-        title: record.$enriched?.title,
-        description: record.$enriched?.description,
-        favicon: record.$enriched?.favicon,
-        image: record.$enriched?.image,
+        title,
+        description,
+        favicon: existing.favicon,
+        image: existing.image,
+        note: body.note,
       };
 
       // Check if should send to Instapaper
@@ -394,15 +408,12 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
       const hasReadingListTag = record.tags.includes(settings.readingListTag);
       const hadReadingListTag =
         currentRecord.value.tags?.includes(settings.readingListTag) || false;
-      const isNewReadingListItem = hasReadingListTag && !hadReadingListTag;
 
-      if (settings.instapaperEnabled && isNewReadingListItem) {
-        sendToInstapaperAsync(
-          oauthSession.did,
-          record.subject,
-          record.$enriched?.title,
-        ).catch((error) =>
-          console.error("Failed to send bookmark to Instapaper:", error)
+      if (
+        settings.instapaperEnabled && hasReadingListTag && !hadReadingListTag
+      ) {
+        sendToInstapaperAsync(oauthSession.did, subject, title).catch(
+          (err) => console.error("Failed to send bookmark to Instapaper:", err),
         );
       }
 
@@ -425,7 +436,6 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
 
       const rkey = ctx.params.rkey;
 
-      // Get current record
       const getParams = new URLSearchParams({
         repo: oauthSession.did,
         collection: BOOKMARK_COLLECTION,
@@ -442,52 +452,75 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
       }
 
       const currentRecord = await getResponse.json();
-      const url = currentRecord.value.subject;
+      const metadata = await extractUrlMetadata(currentRecord.value.subject);
 
-      // Re-fetch metadata
-      const metadata = await extractUrlMetadata(url);
+      // Preserve existing note from annotation
+      let existingNote: string | undefined;
+      try {
+        const annParams = new URLSearchParams({
+          repo: oauthSession.did,
+          collection: ANNOTATION_COLLECTION,
+          rkey,
+        });
+        const annRes = await oauthSession.makeRequest(
+          "GET",
+          `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.getRecord?${annParams}`,
+        );
+        if (annRes.ok) {
+          existingNote = (await annRes.json()).value?.note;
+        }
+      } catch { /* no annotation yet */ }
 
-      // Update record with new enrichment data
-      const record = {
-        ...currentRecord.value,
-        $enriched: {
-          title: metadata.title,
-          description: metadata.description,
-          favicon: metadata.favicon,
-          image: metadata.image,
-        },
+      // Write to annotation sidecar
+      const annotation: AnnotationRecord = {
+        subject: currentRecord.uri,
+        title: metadata.title,
+        description: metadata.description,
+        favicon: metadata.favicon,
+        image: metadata.image,
+        note: existingNote,
+        createdAt: currentRecord.value.createdAt,
       };
 
-      const response = await oauthSession.makeRequest(
-        "POST",
-        `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.putRecord`,
-        {
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            repo: oauthSession.did,
-            collection: BOOKMARK_COLLECTION,
-            rkey,
-            record,
-          }),
-        },
-      );
+      const ok = await writeAnnotation(oauthSession, rkey, annotation);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to update record: ${errorText}`);
+      // Fallback to $enriched on bookmark
+      if (!ok) {
+        const record = {
+          ...currentRecord.value,
+          $enriched: {
+            title: metadata.title,
+            description: metadata.description,
+            favicon: metadata.favicon,
+            image: metadata.image,
+          },
+        };
+        await oauthSession.makeRequest(
+          "POST",
+          `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.putRecord`,
+          {
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              repo: oauthSession.did,
+              collection: BOOKMARK_COLLECTION,
+              rkey,
+              record,
+            }),
+          },
+        );
       }
 
-      const data = await response.json();
       const bookmark: EnrichedBookmark = {
-        uri: data.uri,
-        cid: data.cid,
-        subject: record.subject,
-        createdAt: record.createdAt,
-        tags: record.tags || [],
-        title: record.$enriched?.title,
-        description: record.$enriched?.description,
-        favicon: record.$enriched?.favicon,
-        image: record.$enriched?.image,
+        uri: currentRecord.uri,
+        cid: currentRecord.cid,
+        subject: currentRecord.value.subject,
+        createdAt: currentRecord.value.createdAt,
+        tags: currentRecord.value.tags || [],
+        title: metadata.title,
+        description: metadata.description,
+        favicon: metadata.favicon,
+        image: metadata.image,
+        note: existingNote,
       };
 
       return setSessionCookie(
@@ -510,6 +543,7 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
       }
 
       const rkey = ctx.params.rkey;
+
       const response = await oauthSession.makeRequest(
         "POST",
         `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.deleteRecord`,
@@ -528,6 +562,20 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         throw new Error(`Failed to delete record: ${errorText}`);
       }
 
+      // Also delete annotation sidecar (fire-and-forget)
+      oauthSession.makeRequest(
+        "POST",
+        `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.deleteRecord`,
+        {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            repo: oauthSession.did,
+            collection: ANNOTATION_COLLECTION,
+            rkey,
+          }),
+        },
+      ).catch(() => {});
+
       return setSessionCookie(
         Response.json({ success: true }),
         setCookieHeader,
@@ -539,60 +587,4 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
   });
 
   return app;
-}
-
-/**
- * Helper function to send bookmark to Instapaper asynchronously.
- * Fetches credentials, decrypts them, and sends to Instapaper.
- * Silent failure: logs errors but doesn't throw.
- */
-async function sendToInstapaperAsync(
-  did: string,
-  url: string,
-  title?: string,
-): Promise<void> {
-  try {
-    // Fetch encrypted credentials
-    const result = await rawDb.execute({
-      sql: `SELECT instapaper_username_encrypted, instapaper_password_encrypted
-            FROM user_settings
-            WHERE did = ? AND instapaper_enabled = 1`,
-      args: [did],
-    });
-
-    if (!result.rows?.[0]) {
-      console.warn("Instapaper credentials not found for user:", did);
-      return;
-    }
-
-    const [encryptedUsername, encryptedPassword] = result.rows[0] as string[];
-
-    if (!encryptedUsername || !encryptedPassword) {
-      console.warn("Instapaper credentials incomplete for user:", did);
-      return;
-    }
-
-    // Decrypt credentials
-    const username = await decrypt(encryptedUsername);
-    const password = await decrypt(encryptedPassword);
-
-    // Send to Instapaper
-    const instapaperResult = await sendToInstapaper(
-      url,
-      { username, password },
-      title,
-    );
-
-    if (instapaperResult.success) {
-      console.log(`Successfully sent to Instapaper: ${url}`);
-    } else {
-      console.error(
-        `Failed to send to Instapaper: ${instapaperResult.error}`,
-        { url, did },
-      );
-    }
-  } catch (error) {
-    console.error("Error in sendToInstapaperAsync:", error);
-    throw error;
-  }
 }

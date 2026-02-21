@@ -107,6 +107,62 @@ export async function sendToInstapaper(
 }
 
 /**
+ * Send bookmark to Instapaper asynchronously using stored credentials.
+ * Fetches credentials from DB, decrypts them, and sends.
+ * Silent failure: logs errors but doesn't throw to caller.
+ */
+export async function sendToInstapaperAsync(
+  did: string,
+  url: string,
+  title?: string,
+): Promise<void> {
+  // Dynamic imports to avoid circular dependencies
+  const { rawDb } = await import("./db.ts");
+  const { decrypt } = await import("./encryption.ts");
+
+  try {
+    const result = await rawDb.execute({
+      sql: `SELECT instapaper_username_encrypted, instapaper_password_encrypted
+            FROM user_settings
+            WHERE did = ? AND instapaper_enabled = 1`,
+      args: [did],
+    });
+
+    if (!result.rows?.[0]) {
+      console.warn("Instapaper credentials not found for user:", did);
+      return;
+    }
+
+    const [encryptedUsername, encryptedPassword] = result.rows[0] as string[];
+    if (!encryptedUsername || !encryptedPassword) {
+      console.warn("Instapaper credentials incomplete for user:", did);
+      return;
+    }
+
+    const username = await decrypt(encryptedUsername);
+    const password = await decrypt(encryptedPassword);
+
+    const instapaperResult = await sendToInstapaper(
+      url,
+      { username, password },
+      title,
+    );
+
+    if (instapaperResult.success) {
+      console.log(`Successfully sent to Instapaper: ${url}`);
+    } else {
+      console.error(
+        `Failed to send to Instapaper: ${instapaperResult.error}`,
+        { url, did },
+      );
+    }
+  } catch (error) {
+    console.error("Error in sendToInstapaperAsync:", error);
+    throw error;
+  }
+}
+
+/**
  * Validate Instapaper credentials by attempting authentication.
  * Returns true if credentials are valid.
  */

@@ -1,10 +1,12 @@
 /**
  * Initial data API route.
- * Fetches bookmarks, tags, and settings in a single request to avoid token refresh race conditions.
+ * Fetches bookmarks, tags, annotations, and settings in a single request
+ * to avoid token refresh race conditions.
  */
 
 import type { App } from "@fresh/core";
 import {
+  ANNOTATION_COLLECTION,
   BOOKMARK_COLLECTION,
   createAuthErrorResponse,
   getSessionFromRequest,
@@ -12,7 +14,9 @@ import {
   TAG_COLLECTION,
 } from "../../lib/route-utils.ts";
 import { getUserSettings } from "../../lib/settings.ts";
+import { migrateAnnotations } from "../../lib/migration-annotations.ts";
 import type {
+  AnnotationRecord,
   EnrichedBookmark,
   EnrichedTag,
   InitialDataResponse,
@@ -40,32 +44,66 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
         limit: "100",
       });
 
-      const [bookmarksResponse, tagsResponse, settings] = await Promise.all([
-        oauthSession.makeRequest(
-          "GET",
-          `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${bookmarksParams}`,
-        ),
-        oauthSession.makeRequest(
-          "GET",
-          `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${tagsParams}`,
-        ),
-        getUserSettings(oauthSession.did),
-      ]);
+      const annotationsParams = new URLSearchParams({
+        repo: oauthSession.did,
+        collection: ANNOTATION_COLLECTION,
+        limit: "100",
+      });
+
+      const [bookmarksResponse, tagsResponse, annotationsResponse, settings] =
+        await Promise.all([
+          oauthSession.makeRequest(
+            "GET",
+            `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${bookmarksParams}`,
+          ),
+          oauthSession.makeRequest(
+            "GET",
+            `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${tagsParams}`,
+          ),
+          oauthSession.makeRequest(
+            "GET",
+            `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${annotationsParams}`,
+          ),
+          getUserSettings(oauthSession.did),
+        ]);
+
+      // Build annotation lookup map (rkey → annotation)
+      const annotationMap = new Map<string, AnnotationRecord>();
+      let annotationsOk = false;
+      if (annotationsResponse.ok) {
+        annotationsOk = true;
+        const annotationsData = await annotationsResponse.json();
+        for (const record of annotationsData.records || []) {
+          const rkey = record.uri.split("/").pop();
+          if (rkey) {
+            annotationMap.set(rkey, record.value as AnnotationRecord);
+          }
+        }
+      }
 
       let bookmarks: EnrichedBookmark[] = [];
+      let bookmarkRecords: any[] = [];
       if (bookmarksResponse.ok) {
         const bookmarksData = await bookmarksResponse.json();
-        bookmarks = bookmarksData.records.map((record: any) => ({
-          uri: record.uri,
-          cid: record.cid,
-          subject: record.value.subject,
-          createdAt: record.value.createdAt,
-          tags: record.value.tags || [],
-          title: record.value.$enriched?.title || record.value.title,
-          description: record.value.$enriched?.description,
-          favicon: record.value.$enriched?.favicon,
-          image: record.value.$enriched?.image,
-        }));
+        bookmarkRecords = bookmarksData.records || [];
+        bookmarks = bookmarkRecords.map((record: any) => {
+          const rkey = record.uri.split("/").pop();
+          const annotation = rkey ? annotationMap.get(rkey) : undefined;
+          return {
+            uri: record.uri,
+            cid: record.cid,
+            subject: record.value.subject,
+            createdAt: record.value.createdAt,
+            tags: record.value.tags || [],
+            title: annotation?.title || record.value.$enriched?.title ||
+              record.value.title,
+            description: annotation?.description ||
+              record.value.$enriched?.description,
+            favicon: annotation?.favicon || record.value.$enriched?.favicon,
+            image: annotation?.image || record.value.$enriched?.image,
+            note: annotation?.note,
+          };
+        });
       }
 
       let tags: EnrichedTag[] = [];
@@ -80,7 +118,20 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
       }
 
       const result: InitialDataResponse = { bookmarks, tags, settings };
-      return setSessionCookie(Response.json(result), setCookieHeader);
+      const response = setSessionCookie(
+        Response.json(result),
+        setCookieHeader,
+      );
+
+      // Trigger background migration (fire-and-forget)
+      if (annotationsOk && bookmarkRecords.length > 0) {
+        migrateAnnotations(oauthSession, bookmarkRecords, annotationMap)
+          .catch((err) =>
+            console.error("Background annotation migration error:", err)
+          );
+      }
+
+      return response;
     } catch (error: any) {
       console.error("Error fetching initial data:", error);
       return Response.json({ error: error.message }, { status: 500 });

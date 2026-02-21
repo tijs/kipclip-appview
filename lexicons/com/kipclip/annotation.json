@@ -1,0 +1,46 @@
+{
+  "lexicon": 1,
+  "id": "com.kipclip.annotation",
+  "description": "Kipclip-specific metadata and notes for a bookmark",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "Enrichment data and optional user note for a bookmark",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["subject", "createdAt"],
+        "properties": {
+          "subject": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT URI of the bookmark this annotates"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 10000,
+            "description": "User note for this bookmark"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "favicon": {
+            "type": "string",
+            "format": "uri"
+          },
+          "image": {
+            "type": "string",
+            "format": "uri"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

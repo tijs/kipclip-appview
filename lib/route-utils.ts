@@ -7,6 +7,7 @@ import { getClearSessionCookie, getSessionFromRequest } from "./session.ts";
 /** AT Protocol collection names */
 export const BOOKMARK_COLLECTION = "community.lexicon.bookmarks.bookmark";
 export const TAG_COLLECTION = "com.kipclip.tag";
+export const ANNOTATION_COLLECTION = "com.kipclip.annotation";
 
 /** OAuth scopes - granular permissions for only the collections kipclip uses */
 export const OAUTH_SCOPES = "atproto " +
@@ -17,7 +18,11 @@ export const OAUTH_SCOPES = "atproto " +
   "repo:com.kipclip.tag?action=create " +
   "repo:com.kipclip.tag?action=read " +
   "repo:com.kipclip.tag?action=update " +
-  "repo:com.kipclip.tag?action=delete";
+  "repo:com.kipclip.tag?action=delete " +
+  "repo:com.kipclip.annotation?action=create " +
+  "repo:com.kipclip.annotation?action=read " +
+  "repo:com.kipclip.annotation?action=update " +
+  "repo:com.kipclip.annotation?action=delete";
 
 /**
  * Set the session cookie header on a response if provided.
@@ -69,6 +74,48 @@ export async function requireAuth(request: Request): Promise<
     session: result.session,
     setCookieHeader: result.setCookieHeader,
   };
+}
+
+/**
+ * Create PDS tag records for tags that don't already exist.
+ */
+export async function createNewTagRecords(
+  oauthSession: any,
+  tags: string[],
+): Promise<void> {
+  const tagParams = new URLSearchParams({
+    repo: oauthSession.did,
+    collection: TAG_COLLECTION,
+    limit: "100",
+  });
+  const tagListRes = await oauthSession.makeRequest(
+    "GET",
+    `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${tagParams}`,
+  );
+  const existingTagValues = new Set<string>();
+  if (tagListRes.ok) {
+    const tagData = await tagListRes.json();
+    for (const rec of tagData.records || []) {
+      existingTagValues.add(rec.value?.value);
+    }
+  }
+  const newTags = tags.filter((t) => !existingTagValues.has(t));
+  await Promise.all(newTags.map((tagValue) =>
+    oauthSession.makeRequest(
+      "POST",
+      `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.createRecord`,
+      {
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          repo: oauthSession.did,
+          collection: TAG_COLLECTION,
+          record: { value: tagValue, createdAt: new Date().toISOString() },
+        }),
+      },
+    ).catch((err: any) =>
+      console.error(`Failed to create tag "${tagValue}":`, err)
+    )
+  ));
 }
 
 /** Re-export for convenience */

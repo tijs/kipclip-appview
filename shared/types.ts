@@ -15,6 +15,18 @@ export interface EnrichedBookmark extends BookmarkRecord {
   description?: string; // Extracted meta description
   favicon?: string; // Extracted favicon URL
   image?: string; // Preview image (og:image)
+  note?: string; // User note from annotation sidecar
+}
+
+// Kipclip annotation sidecar record (com.kipclip.annotation)
+export interface AnnotationRecord {
+  subject: string; // AT URI of the bookmark this annotates
+  note?: string; // User note
+  title?: string;
+  description?: string;
+  favicon?: string;
+  image?: string;
+  createdAt: string;
 }
 
 // API request/response types
@@ -95,6 +107,7 @@ export interface UpdateBookmarkTagsRequest {
   title?: string;
   url?: string;
   description?: string;
+  note?: string;
 }
 
 export interface UpdateBookmarkTagsResponse {

@@ -5,8 +5,12 @@
 
 import type { App } from "@fresh/core";
 import { resolveDid } from "../../lib/plc-resolver.ts";
-import { BOOKMARK_COLLECTION } from "../../lib/route-utils.ts";
+import {
+  ANNOTATION_COLLECTION,
+  BOOKMARK_COLLECTION,
+} from "../../lib/route-utils.ts";
 import { decodeTagsFromUrl } from "../../shared/utils.ts";
+import type { AnnotationRecord } from "../../shared/types.ts";
 
 function escapeXml(unsafe: string): string {
   return unsafe
@@ -40,17 +44,40 @@ export function registerRssRoutes(app: App<any>): App<any> {
 
       const { pdsUrl: pdsEndpoint, handle } = resolved;
 
-      const bookmarksResponse = await fetch(
-        `${pdsEndpoint}/xrpc/com.atproto.repo.listRecords?` +
-          new URLSearchParams({
-            repo: did,
-            collection: BOOKMARK_COLLECTION,
-            limit: "100",
-          }),
-      );
+      // Fetch bookmarks and annotations in parallel
+      const [bookmarksResponse, annotationsResponse] = await Promise.all([
+        fetch(
+          `${pdsEndpoint}/xrpc/com.atproto.repo.listRecords?` +
+            new URLSearchParams({
+              repo: did,
+              collection: BOOKMARK_COLLECTION,
+              limit: "100",
+            }),
+        ),
+        fetch(
+          `${pdsEndpoint}/xrpc/com.atproto.repo.listRecords?` +
+            new URLSearchParams({
+              repo: did,
+              collection: ANNOTATION_COLLECTION,
+              limit: "100",
+            }),
+        ).catch(() => null),
+      ]);
 
       if (!bookmarksResponse.ok) {
         return new Response("Failed to fetch bookmarks", { status: 500 });
+      }
+
+      // Build annotation lookup map
+      const annotationMap = new Map<string, AnnotationRecord>();
+      if (annotationsResponse?.ok) {
+        const annotationsData = await annotationsResponse.json();
+        for (const record of annotationsData.records || []) {
+          const rkey = record.uri.split("/").pop();
+          if (rkey) {
+            annotationMap.set(rkey, record.value as AnnotationRecord);
+          }
+        }
       }
 
       const bookmarksData = await bookmarksResponse.json();
@@ -59,17 +86,20 @@ export function registerRssRoutes(app: App<any>): App<any> {
           const recordTags = record.value?.tags || [];
           return tags.every((tag) => recordTags.includes(tag));
         })
-        .map((record: any) => ({
-          uri: record.uri,
-          cid: record.cid,
-          subject: record.value.subject,
-          createdAt: record.value.createdAt,
-          tags: record.value.tags || [],
-          title: record.value.$enriched?.title,
-          description: record.value.$enriched?.description,
-          favicon: record.value.$enriched?.favicon,
-          image: record.value.$enriched?.image,
-        }))
+        .map((record: any) => {
+          const rkey = record.uri.split("/").pop();
+          const annotation = rkey ? annotationMap.get(rkey) : undefined;
+          return {
+            uri: record.uri,
+            cid: record.cid,
+            subject: record.value.subject,
+            createdAt: record.value.createdAt,
+            tags: record.value.tags || [],
+            title: annotation?.title || record.value.$enriched?.title,
+            description: annotation?.description ||
+              record.value.$enriched?.description,
+          };
+        })
         .sort(
           (a: any, b: any) =>
             new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
