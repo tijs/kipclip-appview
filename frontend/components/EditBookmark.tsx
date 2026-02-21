@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { formatDate } from "../../shared/date-format.ts";
 import type { EnrichedBookmark, EnrichedTag } from "../../shared/types.ts";
 import { TagInput } from "./TagInput.tsx";
 
@@ -217,8 +218,7 @@ export function EditBookmark({
 
           {/* Created date */}
           <div className="text-xs text-gray-400 pt-2">
-            Created {new Date(bookmark.createdAt).toLocaleDateString()} at{" "}
-            {new Date(bookmark.createdAt).toLocaleTimeString()}
+            Created {formatDate(bookmark.createdAt)}
           </div>
 
           {error && (

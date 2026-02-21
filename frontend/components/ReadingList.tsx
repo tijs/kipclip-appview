@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useApp } from "../context/AppContext.tsx";
+import { formatDate } from "../../shared/date-format.ts";
 import type { EnrichedBookmark } from "../../shared/types.ts";
 
 function ReadingListCard({ bookmark }: { bookmark: EnrichedBookmark }) {
@@ -12,18 +13,7 @@ function ReadingListCard({ bookmark }: { bookmark: EnrichedBookmark }) {
     }
   })();
 
-  // Format date
-  const formattedDate = (() => {
-    try {
-      return new Date(bookmark.createdAt).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
-    } catch {
-      return "";
-    }
-  })();
+  const formattedDate = formatDate(bookmark.createdAt);
 
   const handleClick = () => {
     globalThis.open(bookmark.subject, "_blank", "noopener,noreferrer");

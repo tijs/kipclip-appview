@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { formatDate } from "../../shared/date-format.ts";
 import type { EnrichedBookmark } from "../../shared/types.ts";
 
 interface BookmarkDetailProps {
@@ -155,11 +156,7 @@ export function BookmarkDetail({
 
           {/* Date */}
           <div className="text-xs text-gray-400">
-            Saved {new Date(bookmark.createdAt).toLocaleDateString(undefined, {
-              year: "numeric",
-              month: "short",
-              day: "numeric",
-            })}
+            Saved {formatDate(bookmark.createdAt)}
           </div>
 
           {/* Action buttons */}

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AddTag } from "./AddTag.tsx";
 import { EditTag } from "./EditTag.tsx";
 import { useApp } from "../context/AppContext.tsx";
+import { formatDate } from "../../shared/date-format.ts";
 import { encodeTagsForUrl } from "../../shared/utils.ts";
 
 export function TagSidebar() {
@@ -94,7 +95,7 @@ export function TagSidebar() {
             ? "bg-blue-600 text-white hover:bg-blue-700"
             : "text-gray-700 hover:bg-gray-100"
         }`}
-        title={`Created ${new Date(tag.createdAt).toLocaleDateString()}`}
+        title={`Created ${formatDate(tag.createdAt)}`}
         onClick={() => {
           toggleTag(tag.value);
         }}

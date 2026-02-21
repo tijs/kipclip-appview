@@ -1,3 +1,4 @@
+import { formatDate } from "../../shared/date-format.ts";
 import type { EnrichedBookmark } from "../../shared/types.ts";
 
 type ViewMode = "cards" | "list";
@@ -117,7 +118,7 @@ function CardView(
       </div>
 
       <div className="flex items-center gap-2 text-xs text-gray-400">
-        <span>{new Date(bookmark.createdAt).toLocaleDateString()}</span>
+        <span>{formatDate(bookmark.createdAt)}</span>
         {bookmark.note && <NoteIcon />}
       </div>
 
@@ -184,7 +185,7 @@ function ListView({ bookmark }: { bookmark: EnrichedBookmark }) {
       )}
 
       <span className="text-xs text-gray-400 shrink-0 hidden sm:block">
-        {new Date(bookmark.createdAt).toLocaleDateString()}
+        {formatDate(bookmark.createdAt)}
       </span>
     </div>
   );

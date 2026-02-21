@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
 import { useApp } from "../context/AppContext.tsx";
+import {
+  DATE_FORMATS,
+  type DateFormatOption,
+  getDateFormat,
+  setDateFormat,
+} from "../../shared/date-format.ts";
 
 export function Settings() {
   const { settings, updateSettings } = useApp();
@@ -11,6 +17,9 @@ export function Settings() {
     settings.instapaperUsername || "",
   );
   const [instapaperPassword, setInstapaperPassword] = useState("");
+  const [dateFormat, setDateFormatState] = useState<DateFormatOption>(
+    getDateFormat,
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -100,6 +109,47 @@ export function Settings() {
           <p className="text-gray-700 text-lg">
             Customize how kipclip works for you.
           </p>
+        </section>
+
+        {/* Date Format — instant apply, no save button needed */}
+        <section className="bg-white rounded-lg shadow-md p-6 space-y-4">
+          <div>
+            <h3 className="text-xl font-bold text-gray-800 mb-1">
+              Date Format
+            </h3>
+            <p className="text-gray-600 text-sm mb-4">
+              Choose how dates are displayed throughout the app.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {DATE_FORMATS.map((fmt) => {
+                const isActive = fmt.id === dateFormat;
+                return (
+                  <button
+                    key={fmt.id}
+                    type="button"
+                    onClick={() => {
+                      setDateFormatState(fmt.id);
+                      setDateFormat(fmt.id);
+                    }}
+                    className={`px-4 py-2.5 rounded-lg text-sm font-medium transition border ${
+                      isActive
+                        ? "border-gray-800 bg-gray-800 text-white"
+                        : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <span className="block">{fmt.label}</span>
+                    <span
+                      className={`block text-xs mt-0.5 ${
+                        isActive ? "text-gray-300" : "text-gray-400"
+                      }`}
+                    >
+                      {fmt.format(new Date())}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </section>
 
         <form onSubmit={handleSubmit}>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { formatDate } from "../../shared/date-format.ts";
 import type { EnrichedBookmark } from "../../shared/types.ts";
 
 interface SharedBookmarksProps {
@@ -231,7 +232,7 @@ export function SharedBookmarks({ did, encodedTags }: SharedBookmarksProps) {
                   )}
 
                   <div className="text-xs text-gray-400">
-                    {new Date(bookmark.createdAt).toLocaleDateString()}
+                    {formatDate(bookmark.createdAt)}
                   </div>
 
                   {/* Desktop: hover-reveal buttons (bottom-right) */}

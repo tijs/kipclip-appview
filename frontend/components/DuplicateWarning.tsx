@@ -1,3 +1,4 @@
+import { formatDate } from "../../shared/date-format.ts";
 import type { EnrichedBookmark } from "../../shared/types.ts";
 
 interface DuplicateWarningProps {
@@ -57,7 +58,7 @@ export function DuplicateWarning({
                     </p>
                     <div className="flex items-center gap-2 mt-1 text-xs text-amber-500">
                       <span>
-                        {new Date(bookmark.createdAt).toLocaleDateString()}
+                        {formatDate(bookmark.createdAt)}
                       </span>
                       {bookmark.tags && bookmark.tags.length > 0 && (
                         <span>
