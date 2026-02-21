@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { AddBookmark } from "./AddBookmark.tsx";
+import {
+  BookmarkCard,
+  getStoredViewMode,
+  GridIcon,
+  ListIcon,
+  shareBookmark,
+  storeViewMode,
+  type ViewMode,
+} from "./BookmarkCard.tsx";
 import { BookmarkDetail } from "./BookmarkDetail.tsx";
 import { EditBookmark } from "./EditBookmark.tsx";
 import { useApp } from "../context/AppContext.tsx";
@@ -29,8 +38,14 @@ export function BookmarkList() {
   );
   const [error, setError] = useState<string | null>(null);
   const [dragOverBookmark, setDragOverBookmark] = useState<string | null>(null);
+  const [viewMode, setViewModeState] = useState<ViewMode>(getStoredViewMode);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
+
+  function setViewMode(mode: ViewMode) {
+    setViewModeState(mode);
+    storeViewMode(mode);
+  }
 
   // Pull-to-refresh state
   const [pullDistance, setPullDistance] = useState(0);
@@ -181,41 +196,6 @@ export function BookmarkList() {
     globalThis.open(bookmark.subject, "_blank", "noopener,noreferrer");
   }
 
-  async function handleShareBookmark(bookmark: EnrichedBookmark) {
-    const shareData = {
-      title: bookmark.title || new URL(bookmark.subject).hostname,
-      text: bookmark.description
-        ? `${
-          bookmark.title || new URL(bookmark.subject).hostname
-        }\n\n${bookmark.description}`
-        : bookmark.title || new URL(bookmark.subject).hostname,
-      url: bookmark.subject,
-    };
-
-    // Check if Web Share API is supported
-    if (navigator.share) {
-      try {
-        await navigator.share(shareData);
-      } catch (err: any) {
-        // User cancelled or share failed
-        if (err.name !== "AbortError") {
-          console.error("Share failed:", err);
-        }
-      }
-    } else {
-      // Fallback: copy to clipboard
-      try {
-        const textToCopy =
-          `${shareData.title}\n${shareData.text}\n${shareData.url}`;
-        await navigator.clipboard.writeText(textToCopy);
-        alert("Link copied to clipboard!");
-      } catch (err) {
-        console.error("Failed to copy:", err);
-        alert("Sharing not supported on this browser");
-      }
-    }
-  }
-
   function handleImageError(bookmarkUri: string) {
     setImageErrors((prev) => new Set([...prev, bookmarkUri]));
   }
@@ -288,13 +268,37 @@ export function BookmarkList() {
               + Add Bookmark
             </button>
           </div>
-          <input
-            type="text"
-            placeholder="Search bookmarks..."
-            value={bookmarkSearchQuery}
-            onChange={(e) => setBookmarkSearchQuery(e.target.value)}
-            className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-coral focus:border-transparent outline-none transition"
-          />
+          <div className="flex items-center gap-2">
+            <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setViewMode("cards")}
+                className={`p-2 ${
+                  viewMode === "cards" ? "bg-gray-100" : "hover:bg-gray-50"
+                }`}
+                aria-label="Card view"
+              >
+                <GridIcon active={viewMode === "cards"} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("list")}
+                className={`p-2 ${
+                  viewMode === "list" ? "bg-gray-100" : "hover:bg-gray-50"
+                }`}
+                aria-label="List view"
+              >
+                <ListIcon active={viewMode === "list"} />
+              </button>
+            </div>
+            <input
+              type="text"
+              placeholder="Search bookmarks..."
+              value={bookmarkSearchQuery}
+              onChange={(e) => setBookmarkSearchQuery(e.target.value)}
+              className="flex-1 px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-coral focus:border-transparent outline-none transition"
+            />
+          </div>
         </div>
 
         {/* Mobile: stacked layout with expandable search */}
@@ -339,7 +343,18 @@ export function BookmarkList() {
                 <h2 className="text-2xl font-bold text-gray-800">
                   Your Bookmarks
                 </h2>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setViewMode(viewMode === "cards" ? "list" : "cards")}
+                    className="p-2 text-gray-500 hover:text-gray-700"
+                    aria-label="Toggle view"
+                  >
+                    {viewMode === "cards"
+                      ? <ListIcon active={false} />
+                      : <GridIcon active={false} />}
+                  </button>
                   <button
                     type="button"
                     onClick={() => setMobileSearchOpen(true)}
@@ -401,16 +416,18 @@ export function BookmarkList() {
           </div>
         )
         : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div
+            className={viewMode === "cards"
+              ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+              : "flex flex-col gap-2"}
+          >
             {bookmarks.map((bookmark) => (
-              <div
+              <BookmarkCard
                 key={bookmark.uri}
-                data-bookmark-card
-                className={`card transition-all cursor-pointer relative ${
-                  dragOverBookmark === bookmark.uri
-                    ? "border-2 border-blue-500 bg-blue-50"
-                    : ""
-                }`}
+                bookmark={bookmark}
+                viewMode={viewMode}
+                isDragOver={dragOverBookmark === bookmark.uri}
+                imageError={imageErrors.has(bookmark.uri)}
                 onClick={() => setDetailBookmark(bookmark)}
                 onDragOver={(e) => {
                   e.preventDefault();
@@ -422,7 +439,6 @@ export function BookmarkList() {
                 }}
                 onDragLeave={(e) => {
                   e.preventDefault();
-                  // Only clear if we're leaving the card itself, not a child
                   if (e.currentTarget === e.target) {
                     setDragOverBookmark(null);
                   }
@@ -435,64 +451,8 @@ export function BookmarkList() {
                     handleDropTag(bookmark.uri, tagValue);
                   }
                 }}
-              >
-                {/* Preview Image Section */}
-                {bookmark.image && !imageErrors.has(bookmark.uri) && (
-                  <div className="mb-3 -m-4 mt-0">
-                    <img
-                      src={bookmark.image}
-                      alt={bookmark.title || "Bookmark preview"}
-                      loading="lazy"
-                      onError={() => handleImageError(bookmark.uri)}
-                      className="w-full h-48 object-cover rounded-t-lg"
-                    />
-                  </div>
-                )}
-
-                <div className="mb-3">
-                  <h3 className="font-semibold text-gray-800 truncate mb-1">
-                    {bookmark.title || new URL(bookmark.subject).hostname}
-                  </h3>
-                  <div className="text-sm text-gray-500 truncate">
-                    {bookmark.subject}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 text-xs text-gray-400">
-                  <span>
-                    {new Date(bookmark.createdAt).toLocaleDateString()}
-                  </span>
-                  {bookmark.note && (
-                    <svg
-                      className="w-3.5 h-3.5 text-amber-500"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                      aria-label="Has note"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                      />
-                    </svg>
-                  )}
-                </div>
-
-                {bookmark.tags && bookmark.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    {bookmark.tags.map((tag, i) => (
-                      <span
-                        key={i}
-                        className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-700"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
+                onImageError={() => handleImageError(bookmark.uri)}
+              />
             ))}
           </div>
         )}
@@ -511,7 +471,7 @@ export function BookmarkList() {
           bookmark={detailBookmark}
           onClose={() => setDetailBookmark(null)}
           onEdit={() => setEditingBookmark(detailBookmark)}
-          onShare={() => handleShareBookmark(detailBookmark)}
+          onShare={() => shareBookmark(detailBookmark)}
           onOpen={() => handleOpenBookmark(detailBookmark)}
         />
       )}
