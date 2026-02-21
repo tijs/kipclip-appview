@@ -318,27 +318,6 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         tags: body.tags,
       };
 
-      const response = await oauthSession.makeRequest(
-        "POST",
-        `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.putRecord`,
-        {
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            repo: oauthSession.did,
-            collection: BOOKMARK_COLLECTION,
-            rkey,
-            record,
-          }),
-        },
-      );
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to update record: ${errorText}`);
-      }
-
-      const data = await response.json();
-
       // Resolve enrichment: prefer body values, then $enriched fallback
       const existing = currentRecord.value.$enriched || {};
       const title = body.title !== undefined ? body.title : existing.title;
@@ -357,11 +336,31 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         createdAt: currentRecord.value.createdAt,
       };
 
-      const annotationWritten = await writeAnnotation(
-        oauthSession,
-        rkey,
-        annotation,
-      );
+      // Run bookmark write, annotation write, and settings fetch in parallel
+      const [putResult, annotationWritten, settings] = await Promise.all([
+        oauthSession.makeRequest(
+          "POST",
+          `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.putRecord`,
+          {
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              repo: oauthSession.did,
+              collection: BOOKMARK_COLLECTION,
+              rkey,
+              record,
+            }),
+          },
+        ),
+        writeAnnotation(oauthSession, rkey, annotation),
+        getUserSettings(oauthSession.did),
+      ]);
+
+      if (!putResult.ok) {
+        const errorText = await putResult.text();
+        throw new Error(`Failed to update record: ${errorText}`);
+      }
+
+      const data = await putResult.json();
 
       // If annotation write failed (old scope), fall back to $enriched
       if (!annotationWritten) {
@@ -403,8 +402,6 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         note: body.note,
       };
 
-      // Check if should send to Instapaper
-      const settings = await getUserSettings(oauthSession.did);
       const hasReadingListTag = record.tags.includes(settings.readingListTag);
       const hadReadingListTag =
         currentRecord.value.tags?.includes(settings.readingListTag) || false;

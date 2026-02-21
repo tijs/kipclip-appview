@@ -39,37 +39,33 @@ export function EditBookmark({
       const existingTagValues = new Set(availableTags.map((t) => t.value));
       const newTags = tags.filter((tag) => !existingTagValues.has(tag));
 
-      // Create tag records for new tags
-      for (const tagValue of newTags) {
-        try {
-          await fetch("/api/tags", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ value: tagValue }),
-          });
-        } catch (err) {
-          console.error(`Failed to create tag record for "${tagValue}":`, err);
-          // Continue even if tag creation fails
-        }
-      }
+      // Create tag records for new tags (parallel, non-blocking)
+      const tagPromises = newTags.map((tagValue) =>
+        fetch("/api/tags", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ value: tagValue }),
+        }).catch((err) =>
+          console.error(`Failed to create tag record for "${tagValue}":`, err)
+        )
+      );
 
-      // Update bookmark with all editable fields
+      // Start tag creation and bookmark update in parallel
       const rkey = bookmark.uri.split("/").pop();
-      const response = await fetch(`/api/bookmarks/${rkey}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          tags,
-          title,
-          url,
-          description,
-          note: note.trim() || undefined,
+      const [response] = await Promise.all([
+        fetch(`/api/bookmarks/${rkey}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tags,
+            title,
+            url,
+            description,
+            note: note.trim() || undefined,
+          }),
         }),
-      });
+        ...tagPromises,
+      ]);
 
       if (!response.ok) {
         throw new Error("Failed to update bookmark");
