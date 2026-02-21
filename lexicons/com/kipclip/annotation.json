@@ -22,10 +22,12 @@
             "description": "User note for this bookmark"
           },
           "title": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 1000
           },
           "description": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 10000
           },
           "favicon": {
             "type": "string",
