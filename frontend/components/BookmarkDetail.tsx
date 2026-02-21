@@ -100,7 +100,8 @@ export function BookmarkDetail({
             href={bookmark.subject}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-sm text-blue-600 hover:text-blue-800 hover:underline break-all block"
+            className="text-sm hover:underline break-all block"
+            style={{ color: "var(--coral)" }}
             onClick={(e) => e.stopPropagation()}
           >
             {bookmark.subject}
@@ -162,11 +163,12 @@ export function BookmarkDetail({
           </div>
 
           {/* Action buttons */}
-          <div className="flex gap-3 pt-2">
+          <div className="flex gap-2.5 pt-2">
             <button
               type="button"
               onClick={onOpen}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-blue-50 text-blue-700 font-medium hover:bg-blue-100 transition border border-blue-200"
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-white font-medium hover:opacity-90 transition"
+              style={{ backgroundColor: "var(--coral)" }}
             >
               <svg
                 className="w-4 h-4"
@@ -187,7 +189,7 @@ export function BookmarkDetail({
             <button
               type="button"
               onClick={onShare}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-50 text-emerald-700 font-medium hover:bg-emerald-100 transition border border-emerald-200"
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-gray-700 font-medium hover:bg-gray-100 transition border border-gray-200"
             >
               <svg
                 className="w-4 h-4"
@@ -208,7 +210,7 @@ export function BookmarkDetail({
             <button
               type="button"
               onClick={onEdit}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-amber-50 text-amber-700 font-medium hover:bg-amber-100 transition border border-amber-200"
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-gray-700 font-medium hover:bg-gray-100 transition border border-gray-200"
             >
               <svg
                 className="w-4 h-4"
