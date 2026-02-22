@@ -2,6 +2,12 @@
 
 All notable changes to kipclip are documented in this file.
 
+## [0.6.1] - 2026-02-22
+
+### Added
+
+- Wayback Machine link in bookmark detail view for archived/fallback access
+
 ## [0.6.0] - 2026-02-22
 
 ### Added
