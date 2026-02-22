@@ -16,8 +16,7 @@ All notable changes to kipclip are documented in this file.
 - Full-card action overlay for bookmark cards
 - Bluesky quick-connect on redesigned login page
 - OAuth-based account registration with prompt=create
-- Create account page with PDS provider options (Bluesky, Selfhosted, Teal
-  Town)
+- Create account page with PDS provider options (Bluesky, Selfhosted, Teal Town)
 - Dependabot and `deno audit` in CI and quality task
 
 ### Changed
