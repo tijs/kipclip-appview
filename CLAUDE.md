@@ -143,6 +143,26 @@ BASE_URL="https://YOUR-NGROK-URL.ngrok-free.app" \
 deno task dev
 ```
 
+## Releases
+
+The project uses semantic versioning (currently pre-1.0). Versions are tracked
+in `CHANGELOG.md` and as annotated git tags.
+
+To cut a new release:
+
+1. Update `CHANGELOG.md` — add a new section at the top with the version and
+   date, listing changes under Added/Changed/Fixed headings
+2. Commit the changelog update
+3. Tag the commit: `git tag -a v0.x.0 -m "v0.x.0 - Short description"`
+4. Push with tags: `git push origin main --tags`
+
+Guidelines:
+
+- Follow [Keep a Changelog](https://keepachangelog.com) format
+- Bump minor version (0.x.0) for new features or significant changes
+- Bump patch version (0.x.y) for bug fixes
+- Keep descriptions concise and user-facing (what changed, not how)
+
 ## Code Style
 
 - TypeScript for all code
