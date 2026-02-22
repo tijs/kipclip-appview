@@ -102,7 +102,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     Set<string>
   >(new Set());
   const [loading, _setLoading] = useState(true);
-  const [bookmarkSearchQuery, setBookmarkSearchQuery] = useState("");
+  const [bookmarkSearchQuery, setBookmarkSearchQuery] = useState(() => {
+    const params = new URLSearchParams(globalThis.location.search);
+    return params.get("q") || "";
+  });
   const [readingListSearchQuery, setReadingListSearchQuery] = useState("");
 
   // Bookmark actions

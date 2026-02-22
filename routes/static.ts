@@ -48,6 +48,26 @@ export function registerStaticRoutes(
 ): App<any> {
   // Store the base module URL for path resolution
   baseModuleUrl = moduleUrl;
+  // OpenSearch description (lets browsers add kipclip as a search engine)
+  app = app.get("/opensearch.xml", () => {
+    return new Response(
+      `<?xml version="1.0" encoding="UTF-8"?>
+<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/">
+  <ShortName>kipclip</ShortName>
+  <Description>Search your kipclip bookmarks</Description>
+  <InputEncoding>UTF-8</InputEncoding>
+  <Url type="text/html" template="https://kipclip.com/?q={searchTerms}" />
+  <Image width="16" height="16" type="image/x-icon">https://cdn.kipclip.com/favicons/favicon.ico</Image>
+</OpenSearchDescription>`,
+      {
+        headers: {
+          "Content-Type": "application/opensearchdescription+xml",
+          "Cache-Control": "public, max-age=86400",
+        },
+      },
+    );
+  });
+
   // robots.txt
   app = app.get("/robots.txt", () => {
     return new Response(

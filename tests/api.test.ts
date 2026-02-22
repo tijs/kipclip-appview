@@ -94,6 +94,21 @@ Deno.test("GET /oauth-client-metadata.json - returns OAuth metadata", async () =
   assertEquals(body.dpop_bound_access_tokens, true);
 });
 
+Deno.test("GET /opensearch.xml - returns OpenSearch description", async () => {
+  const req = new Request("https://kipclip.com/opensearch.xml");
+  const res = await handler(req);
+
+  assertEquals(res.status, 200);
+  assertEquals(
+    res.headers.get("Content-Type"),
+    "application/opensearchdescription+xml",
+  );
+
+  const body = await res.text();
+  assertStringIncludes(body, "<ShortName>kipclip</ShortName>");
+  assertStringIncludes(body, "https://kipclip.com/?q={searchTerms}");
+});
+
 Deno.test("RSS feed - RFC 822 date format", () => {
   // Test date formatting
   const testDate = "2025-11-01T12:00:00.000Z";
