@@ -92,6 +92,11 @@ function sanitizeFaviconUrl(
   return sanitizeUrl(faviconUrl, baseUrl);
 }
 
+/** Default favicon URL for a given origin (e.g. https://example.com/favicon.ico). */
+function defaultFavicon(url: URL): string {
+  return new URL("/favicon.ico", url.origin).href;
+}
+
 /**
  * Extracts metadata from a URL by fetching and parsing the HTML.
  */
@@ -113,7 +118,7 @@ async function fetchUrlMetadata(url: string): Promise<UrlMetadata> {
     // SSRF protection: block private/internal URLs
     if (isPrivateUrl(parsedUrl)) {
       console.warn(`[Enrichment] Blocked private URL: ${parsedUrl.hostname}`);
-      return { title: parsedUrl.hostname };
+      return { title: parsedUrl.hostname, favicon: defaultFavicon(parsedUrl) };
     }
 
     // Fetch the URL with a timeout
@@ -137,9 +142,9 @@ async function fetchUrlMetadata(url: string): Promise<UrlMetadata> {
     // Only process HTML content
     const contentType = response.headers.get("content-type") || "";
     if (!contentType.includes("text/html")) {
-      // For non-HTML content, just return the URL as title
       return {
         title: parsedUrl.hostname,
+        favicon: defaultFavicon(parsedUrl),
       };
     }
 
@@ -148,11 +153,12 @@ async function fetchUrlMetadata(url: string): Promise<UrlMetadata> {
     return parseHtmlMetadata(html, parsedUrl);
   } catch (error) {
     console.error(`Failed to extract metadata from ${url}:`, error);
-    // Return minimal metadata on error
-    const parsedUrl = new URL(url);
-    return {
-      title: parsedUrl.hostname,
-    };
+    try {
+      const parsedUrl = new URL(url);
+      return { title: parsedUrl.hostname, favicon: defaultFavicon(parsedUrl) };
+    } catch {
+      return { title: url };
+    }
   }
 }
 
@@ -218,7 +224,7 @@ function parseHtmlMetadata(html: string, url: URL): UrlMetadata {
 
   // Default to hostname/favicon.ico if no valid favicon found
   if (!metadata.favicon) {
-    metadata.favicon = new URL("/favicon.ico", url.origin).href;
+    metadata.favicon = defaultFavicon(url);
   }
 
   // Extract preview image - try og:image first
