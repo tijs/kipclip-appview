@@ -23,6 +23,7 @@ function matchesSearch(bookmark: EnrichedBookmark, query: string): boolean {
     bookmark.title?.toLowerCase().includes(q) ||
     bookmark.description?.toLowerCase().includes(q) ||
     bookmark.subject.toLowerCase().includes(q) ||
+    bookmark.note?.toLowerCase().includes(q) ||
     bookmark.tags?.some((tag) => tag.toLowerCase().includes(q)) ||
     false
   );
