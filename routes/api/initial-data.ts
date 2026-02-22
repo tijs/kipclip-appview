@@ -15,6 +15,7 @@ import {
 } from "../../lib/route-utils.ts";
 import { getUserSettings } from "../../lib/settings.ts";
 import { migrateAnnotations } from "../../lib/migration-annotations.ts";
+import { repairMissingFavicons } from "../../lib/repair-favicons.ts";
 import type {
   AnnotationRecord,
   EnrichedBookmark,
@@ -123,11 +124,16 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
         setCookieHeader,
       );
 
-      // Trigger background migration (fire-and-forget)
+      // Background tasks (fire-and-forget, run after response is sent)
+      // See BACKGROUND-TASKS.md for details on when these can be removed.
       if (annotationsOk && bookmarkRecords.length > 0) {
         migrateAnnotations(oauthSession, bookmarkRecords, annotationMap)
           .catch((err) =>
             console.error("Background annotation migration error:", err)
+          );
+        repairMissingFavicons(oauthSession, bookmarkRecords, annotationMap)
+          .catch((err) =>
+            console.error("Background favicon repair error:", err)
           );
       }
 
