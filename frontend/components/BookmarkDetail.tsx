@@ -154,9 +154,20 @@ export function BookmarkDetail({
             </div>
           )}
 
-          {/* Date */}
-          <div className="text-xs text-gray-400">
-            Saved {formatDate(bookmark.createdAt)}
+          {/* Date and archive link */}
+          <div className="text-xs text-gray-400 flex items-center gap-2">
+            <span>Saved {formatDate(bookmark.createdAt)}</span>
+            <span>·</span>
+            <a
+              href={`https://web.archive.org/web/${bookmark.subject}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:underline"
+              style={{ color: "var(--coral)" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              Archived version
+            </a>
           </div>
 
           {/* Action buttons */}
