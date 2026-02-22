@@ -291,16 +291,27 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         }
       }
 
-      // Get existing bookmark record
-      const getParams = new URLSearchParams({
+      // Fetch existing bookmark and annotation in parallel
+      const bookmarkParams = new URLSearchParams({
         repo: oauthSession.did,
         collection: BOOKMARK_COLLECTION,
         rkey,
       });
-      const getResponse = await oauthSession.makeRequest(
-        "GET",
-        `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.getRecord?${getParams}`,
-      );
+      const annParams = new URLSearchParams({
+        repo: oauthSession.did,
+        collection: ANNOTATION_COLLECTION,
+        rkey,
+      });
+      const [getResponse, annRes] = await Promise.all([
+        oauthSession.makeRequest(
+          "GET",
+          `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.getRecord?${bookmarkParams}`,
+        ),
+        oauthSession.makeRequest(
+          "GET",
+          `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.getRecord?${annParams}`,
+        ).catch(() => null),
+      ]);
 
       if (!getResponse.ok) {
         const errorText = await getResponse.text();
@@ -318,8 +329,21 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         tags: body.tags,
       };
 
-      // Resolve enrichment: prefer body values, then $enriched fallback
-      const existing = currentRecord.value.$enriched || {};
+      // Extract existing annotation data to preserve favicon/image
+      let existingAnnotation: Partial<AnnotationRecord> = {};
+      if (annRes?.ok) {
+        existingAnnotation = (await annRes.json()).value || {};
+      }
+
+      // Resolve enrichment: prefer body values, then annotation, then $enriched
+      const enriched = currentRecord.value.$enriched || {};
+      const existing = {
+        title: existingAnnotation.title || enriched.title,
+        description: existingAnnotation.description || enriched.description,
+        favicon: existingAnnotation.favicon || enriched.favicon,
+        image: existingAnnotation.image || enriched.image,
+        note: existingAnnotation.note,
+      };
       const title = body.title !== undefined ? body.title : existing.title;
       const description = body.description !== undefined
         ? body.description
