@@ -129,6 +129,33 @@ Deno.test("extractUrlMetadata - extracts favicon URL", async () => {
   assertEquals(metadata.favicon, "https://example.com/images/favicon.png");
 });
 
+Deno.test("extractUrlMetadata - extracts favicon from tag with data-base-href", async () => {
+  // GitHub uses data-base-href after href; greedy regex would match the wrong one
+  const html = `<!DOCTYPE html><html><head>
+    <title>GitHub Repo</title>
+    <link rel="icon" class="js-site-favicon" type="image/svg+xml" href="https://github.githubassets.com/favicons/favicon.svg" data-base-href="https://github.githubassets.com/favicons/favicon">
+  </head><body></body></html>`;
+  const mockFetcher = createMockFetcher(
+    new Map([[
+      "github.com",
+      new Response(html, {
+        status: 200,
+        headers: { "Content-Type": "text/html" },
+      }),
+    ]]),
+  );
+
+  const metadata = await extractUrlMetadataWithFetcher(
+    "https://github.com/example/repo",
+    mockFetcher,
+  );
+
+  assertEquals(
+    metadata.favicon,
+    "https://github.githubassets.com/favicons/favicon.svg",
+  );
+});
+
 Deno.test("extractUrlMetadata - defaults favicon to /favicon.ico", async () => {
   const mockFetcher = createMockFetcher(
     new Map([

@@ -215,8 +215,9 @@ function parseHtmlMetadata(html: string, url: URL): UrlMetadata {
   }
 
   // Extract and validate favicon URL
+  // Non-greedy [^>]+? to match the first href= (not data-base-href= etc.)
   const faviconMatch = html.match(
-    /<link[^>]+rel=["'](?:icon|shortcut icon)["'][^>]+href=["']([^"']+)["']/i,
+    /<link[^>]+rel=["'](?:icon|shortcut icon)["'][^>]+?href=["']([^"']+)["']/i,
   );
   if (faviconMatch) {
     metadata.favicon = sanitizeFaviconUrl(faviconMatch[1], url);
