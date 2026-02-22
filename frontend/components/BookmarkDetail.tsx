@@ -45,6 +45,13 @@ export function BookmarkDetail({
     hostname = bookmark.subject;
   }
 
+  // Format archive timestamp as YYYYMMDDhhmmss
+  const archiveTimestamp = new Date(bookmark.createdAt)
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace("T", "")
+    .replace(/\.\d{3}Z$/, "");
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-end md:items-center justify-center"
@@ -159,7 +166,7 @@ export function BookmarkDetail({
             <span>Saved {formatDate(bookmark.createdAt)}</span>
             <span>·</span>
             <a
-              href={`https://web.archive.org/web/${bookmark.subject}`}
+              href={`https://web.archive.org/web/${archiveTimestamp}/${bookmark.subject}`}
               target="_blank"
               rel="noopener noreferrer"
               className="hover:underline"
