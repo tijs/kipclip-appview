@@ -160,12 +160,33 @@ export function ImportBookmarks() {
           <span className="text-xs font-bold uppercase tracking-wide text-amber-700 bg-amber-200 rounded px-1.5 py-0.5 mt-0.5 shrink-0">
             Beta
           </span>
-          <p className="text-sm text-amber-800">
-            Import is free while in beta. This will become a{" "}
-            <a href="/support" className="underline hover:text-amber-900">
-              supporter
-            </a>-only feature in the future.
-          </p>
+          <div className="text-sm text-amber-800">
+            <p>
+              Import is free while in beta. This will become a{" "}
+              <a href="/support" className="underline hover:text-amber-900">
+                supporter
+              </a>-only feature in the future.
+            </p>
+            <p className="mt-1">
+              Report bugs to{" "}
+              <a
+                href="mailto:kipclip@tijs.org"
+                className="underline hover:text-amber-900"
+              >
+                kipclip@tijs.org
+              </a>{" "}
+              or{" "}
+              <a
+                href="https://bsky.app/profile/kipclip.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-amber-900"
+              >
+                @kipclip.com
+              </a>{" "}
+              on Bluesky.
+            </p>
+          </div>
         </div>
         <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-2">
           <svg
