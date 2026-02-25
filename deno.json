@@ -51,6 +51,9 @@
     "dev.ts"
   ],
   "node_modules_dir": false,
+  "unstable": [
+    "kv"
+  ],
   "experimental": {
     "unstable-node-globals": true,
     "unstable-temporal": true,
