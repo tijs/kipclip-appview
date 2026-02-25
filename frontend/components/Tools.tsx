@@ -301,7 +301,8 @@ export function Tools() {
                 <li className="flex items-start gap-2">
                   <span className="font-bold text-coral min-w-[20px]">2.</span>
                   <span>
-                    Tap the menu (⋮), then "Add to Home screen" or "Install app"
+                    Tap the menu (...), then "Add to Home screen" or "Install
+                    app"
                   </span>
                 </li>
                 <li className="flex items-start gap-2">

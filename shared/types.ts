@@ -166,3 +166,59 @@ export interface InitialDataResponse {
   tags: EnrichedTag[];
   settings: UserSettings;
 }
+
+// Import types
+export interface ImportedBookmark {
+  url: string;
+  title?: string;
+  description?: string;
+  tags: string[];
+  createdAt?: string; // ISO 8601, falls back to now
+}
+
+export interface ImportResult {
+  imported: number;
+  skipped: number;
+  failed: number;
+  total: number;
+  format: string;
+}
+
+export interface ImportResponse {
+  success: boolean;
+  jobId?: string;
+  result?: ImportResult;
+  error?: string;
+}
+
+// Background import job types (Deno KV queue)
+export type ImportJobStatus = "processing" | "complete" | "failed";
+
+export interface ImportJob {
+  status: ImportJobStatus;
+  total: number;
+  imported: number;
+  skipped: number;
+  failed: number;
+  format: string;
+  totalChunks: number;
+  processedChunks: number;
+  error?: string;
+}
+
+export interface ImportStatusResponse {
+  status: ImportJobStatus;
+  imported: number;
+  skipped: number;
+  failed: number;
+  total: number;
+  format: string;
+  progress: number; // 0-100 percentage
+}
+
+export interface ImportBatchMessage {
+  type: "import-batch";
+  jobId: string;
+  did: string;
+  chunkIndex: number;
+}

@@ -59,18 +59,19 @@
   },
   "exclude": [
     "**/_fresh/*",
-    "static/"
+    "static/",
+    "tests/fixtures/"
   ],
   "tasks": {
     "build:frontend": "deno run -A scripts/build-frontend.ts",
-    "dev": "deno task build:frontend && deno run -A --watch=static/,routes/,lib/,frontend/,shared/ dev.ts",
-    "build": "deno task build:frontend && deno run -A dev.ts build",
+    "dev": "deno task build:frontend && deno run -A --unstable-kv --watch=static/,routes/,lib/,frontend/,shared/ dev.ts",
+    "build": "deno task build:frontend && deno run -A --unstable-kv dev.ts build",
     "start": "deno serve -A _fresh/server.js",
-    "preview": "deno run -A main.ts",
+    "preview": "deno run -A --unstable-kv main.ts",
     "quality": "deno fmt --check && deno lint && deno audit",
     "check": "deno check --allow-import main.ts",
-    "test": "TURSO_DATABASE_URL=file::memory: COOKIE_SECRET=test-cookie-secret-32-characters-minimum ENCRYPTION_KEY=test-encryption-key-for-unit-tests-only-minimum-32-chars deno test --allow-all --unstable-kv tests/",
-    "test:watch": "COOKIE_SECRET=test-cookie-secret-32-characters-minimum deno test --allow-all --watch",
+    "test": "KIPCLIP_TESTING=1 TURSO_DATABASE_URL=file::memory: COOKIE_SECRET=test-cookie-secret-32-characters-minimum ENCRYPTION_KEY=test-encryption-key-for-unit-tests-only-minimum-32-chars deno test --allow-all --unstable-kv tests/",
+    "test:watch": "KIPCLIP_TESTING=1 COOKIE_SECRET=test-cookie-secret-32-characters-minimum deno test --allow-all --unstable-kv --watch",
     "fmt": "deno fmt",
     "lint": "deno lint"
   }
