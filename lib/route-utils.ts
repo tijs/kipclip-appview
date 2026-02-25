@@ -83,21 +83,10 @@ export async function createNewTagRecords(
   oauthSession: any,
   tags: string[],
 ): Promise<void> {
-  const tagParams = new URLSearchParams({
-    repo: oauthSession.did,
-    collection: TAG_COLLECTION,
-    limit: "100",
-  });
-  const tagListRes = await oauthSession.makeRequest(
-    "GET",
-    `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${tagParams}`,
-  );
+  const records = await listAllRecords(oauthSession, TAG_COLLECTION);
   const existingTagValues = new Set<string>();
-  if (tagListRes.ok) {
-    const tagData = await tagListRes.json();
-    for (const rec of tagData.records || []) {
-      existingTagValues.add(rec.value?.value);
-    }
+  for (const rec of records) {
+    existingTagValues.add(rec.value?.value);
   }
   const newTags = tags.filter((t) => !existingTagValues.has(t));
   await Promise.all(newTags.map((tagValue) =>
@@ -116,6 +105,39 @@ export async function createNewTagRecords(
       console.error(`Failed to create tag "${tagValue}":`, err)
     )
   ));
+}
+
+/**
+ * Paginate through all records in an AT Protocol collection.
+ * Returns every record, following cursors until exhausted.
+ */
+export async function listAllRecords(
+  oauthSession: any,
+  collection: string,
+): Promise<any[]> {
+  const all: any[] = [];
+  let cursor: string | undefined;
+
+  do {
+    const params = new URLSearchParams({
+      repo: oauthSession.did,
+      collection,
+      limit: "100",
+    });
+    if (cursor) params.set("cursor", cursor);
+
+    const res = await oauthSession.makeRequest(
+      "GET",
+      `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${params}`,
+    );
+    if (!res.ok) break;
+
+    const data = await res.json();
+    all.push(...(data.records || []));
+    cursor = data.cursor;
+  } while (cursor);
+
+  return all;
 }
 
 /** Re-export for convenience */

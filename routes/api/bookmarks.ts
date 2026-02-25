@@ -18,6 +18,7 @@ import {
   createAuthErrorResponse,
   createNewTagRecords,
   getSessionFromRequest,
+  listAllRecords,
   setSessionCookie,
 } from "../../lib/route-utils.ts";
 import { getUserSettings } from "../../lib/settings.ts";
@@ -45,27 +46,12 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         return createAuthErrorResponse(error);
       }
 
-      const params = new URLSearchParams({
-        repo: oauthSession.did,
-        collection: BOOKMARK_COLLECTION,
-        limit: "100",
-      });
-
-      const [bookmarksResponse, annotationResult] = await Promise.all([
-        oauthSession.makeRequest(
-          "GET",
-          `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${params}`,
-        ),
+      const [bookmarkRecords, annotationResult] = await Promise.all([
+        listAllRecords(oauthSession, BOOKMARK_COLLECTION),
         fetchAnnotationMap(oauthSession),
       ]);
 
-      if (!bookmarksResponse.ok) {
-        const errorText = await bookmarksResponse.text();
-        throw new Error(`Failed to list records: ${errorText}`);
-      }
-
-      const data = await bookmarksResponse.json();
-      const bookmarks: EnrichedBookmark[] = data.records.map(
+      const bookmarks: EnrichedBookmark[] = bookmarkRecords.map(
         (record: any) => {
           const rkey = extractRkey(record.uri);
           const annotation = rkey ? annotationResult.map.get(rkey) : undefined;
@@ -107,27 +93,12 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         );
       }
 
-      const params = new URLSearchParams({
-        repo: oauthSession.did,
-        collection: BOOKMARK_COLLECTION,
-        limit: "100",
-      });
-      const response = await oauthSession.makeRequest(
-        "GET",
-        `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${params}`,
+      const records = await listAllRecords(
+        oauthSession,
+        BOOKMARK_COLLECTION,
       );
 
-      if (!response.ok) {
-        return setSessionCookie(
-          Response.json(
-            { duplicates: [] } satisfies CheckDuplicatesResponse,
-          ),
-          setCookieHeader,
-        );
-      }
-
-      const data = await response.json();
-      const duplicates: EnrichedBookmark[] = data.records
+      const duplicates: EnrichedBookmark[] = records
         .filter((record: any) => getBaseUrl(record.value.subject) === inputBase)
         .map((record: any) => mapBookmarkRecord(record));
 

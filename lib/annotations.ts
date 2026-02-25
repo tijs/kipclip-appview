@@ -3,7 +3,7 @@
  * Handles reading and writing com.kipclip.annotation records on the PDS.
  */
 
-import { ANNOTATION_COLLECTION } from "./route-utils.ts";
+import { ANNOTATION_COLLECTION, listAllRecords } from "./route-utils.ts";
 import type { AnnotationRecord, EnrichedBookmark } from "../shared/types.ts";
 
 /**
@@ -45,23 +45,9 @@ export async function fetchAnnotationMap(
   oauthSession: any,
 ): Promise<{ map: Map<string, AnnotationRecord>; ok: boolean }> {
   try {
-    const params = new URLSearchParams({
-      repo: oauthSession.did,
-      collection: ANNOTATION_COLLECTION,
-      limit: "100",
-    });
-    const response = await oauthSession.makeRequest(
-      "GET",
-      `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${params}`,
-    );
-
-    if (!response.ok) {
-      return { map: new Map(), ok: false };
-    }
-
-    const data = await response.json();
+    const records = await listAllRecords(oauthSession, ANNOTATION_COLLECTION);
     const map = new Map<string, AnnotationRecord>();
-    for (const record of data.records || []) {
+    for (const record of records) {
       const rkey = extractRkey(record.uri);
       if (rkey) {
         map.set(rkey, record.value as AnnotationRecord);

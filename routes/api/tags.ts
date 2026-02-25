@@ -8,6 +8,7 @@ import {
   BOOKMARK_COLLECTION,
   createAuthErrorResponse,
   getSessionFromRequest,
+  listAllRecords,
   setSessionCookie,
   TAG_COLLECTION,
 } from "../../lib/route-utils.ts";
@@ -31,23 +32,8 @@ export function registerTagRoutes(app: App<any>): App<any> {
         return createAuthErrorResponse(error);
       }
 
-      const params = new URLSearchParams({
-        repo: oauthSession.did,
-        collection: TAG_COLLECTION,
-        limit: "100",
-      });
-      const response = await oauthSession.makeRequest(
-        "GET",
-        `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${params}`,
-      );
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to list records: ${errorText}`);
-      }
-
-      const data = await response.json();
-      const tags: EnrichedTag[] = data.records.map((record: any) => ({
+      const records = await listAllRecords(oauthSession, TAG_COLLECTION);
+      const tags: EnrichedTag[] = records.map((record: any) => ({
         uri: record.uri,
         cid: record.cid,
         value: record.value.value,
@@ -200,19 +186,13 @@ export function registerTagRoutes(app: App<any>): App<any> {
       }
 
       // Update bookmarks with the old tag value
-      const listParams = new URLSearchParams({
-        repo: oauthSession.did,
-        collection: BOOKMARK_COLLECTION,
-        limit: "100",
-      });
-      const listResponse = await oauthSession.makeRequest(
-        "GET",
-        `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${listParams}`,
+      const bookmarkRecords = await listAllRecords(
+        oauthSession,
+        BOOKMARK_COLLECTION,
       );
 
-      if (listResponse.ok) {
-        const bookmarksData = await listResponse.json();
-        const updatePromises = bookmarksData.records
+      await Promise.all(
+        bookmarkRecords
           .filter((record: any) => record.value.tags?.includes(oldValue))
           .map(async (record: any) => {
             const bookmarkRkey = record.uri.split("/").pop();
@@ -220,7 +200,7 @@ export function registerTagRoutes(app: App<any>): App<any> {
               t === oldValue ? newValue : t
             );
 
-            const updateResponse = await oauthSession.makeRequest(
+            const res = await oauthSession.makeRequest(
               "POST",
               `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.putRecord`,
               {
@@ -234,17 +214,14 @@ export function registerTagRoutes(app: App<any>): App<any> {
               },
             );
 
-            if (!updateResponse.ok) {
+            if (!res.ok) {
               console.error(
                 `Failed to update bookmark ${bookmarkRkey}:`,
-                await updateResponse.text(),
+                await res.text(),
               );
             }
-            return updateResponse.ok;
-          });
-
-        await Promise.all(updatePromises);
-      }
+          }),
+      );
 
       // Update the tag record
       const record = {
@@ -318,23 +295,11 @@ export function registerTagRoutes(app: App<any>): App<any> {
       const tagValue = tagData.value.value;
 
       // List all bookmarks
-      const listParams = new URLSearchParams({
-        repo: oauthSession.did,
-        collection: BOOKMARK_COLLECTION,
-        limit: "100",
-      });
-      const listResponse = await oauthSession.makeRequest(
-        "GET",
-        `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${listParams}`,
+      const bookmarkRecords = await listAllRecords(
+        oauthSession,
+        BOOKMARK_COLLECTION,
       );
-
-      if (!listResponse.ok) {
-        const errorText = await listResponse.text();
-        throw new Error(`Failed to list bookmarks: ${errorText}`);
-      }
-
-      const bookmarksData = await listResponse.json();
-      const count = bookmarksData.records.filter((record: any) =>
+      const count = bookmarkRecords.filter((record: any) =>
         record.value.tags?.includes(tagValue)
       ).length;
 
@@ -379,19 +344,13 @@ export function registerTagRoutes(app: App<any>): App<any> {
       const tagValue = tagData.value.value;
 
       // Remove tag from all bookmarks
-      const listParams = new URLSearchParams({
-        repo: oauthSession.did,
-        collection: BOOKMARK_COLLECTION,
-        limit: "100",
-      });
-      const listResponse = await oauthSession.makeRequest(
-        "GET",
-        `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${listParams}`,
+      const bookmarkRecords = await listAllRecords(
+        oauthSession,
+        BOOKMARK_COLLECTION,
       );
 
-      if (listResponse.ok) {
-        const bookmarksData = await listResponse.json();
-        const updatePromises = bookmarksData.records
+      await Promise.all(
+        bookmarkRecords
           .filter((record: any) => record.value.tags?.includes(tagValue))
           .map(async (record: any) => {
             const bookmarkRkey = record.uri.split("/").pop();
@@ -399,7 +358,7 @@ export function registerTagRoutes(app: App<any>): App<any> {
               t !== tagValue
             );
 
-            const updateResponse = await oauthSession.makeRequest(
+            const res = await oauthSession.makeRequest(
               "POST",
               `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.putRecord`,
               {
@@ -413,17 +372,14 @@ export function registerTagRoutes(app: App<any>): App<any> {
               },
             );
 
-            if (!updateResponse.ok) {
+            if (!res.ok) {
               console.error(
                 `Failed to update bookmark ${bookmarkRkey}:`,
-                await updateResponse.text(),
+                await res.text(),
               );
             }
-            return updateResponse.ok;
-          });
-
-        await Promise.all(updatePromises);
-      }
+          }),
+      );
 
       // Delete the tag record
       const deleteResponse = await oauthSession.makeRequest(

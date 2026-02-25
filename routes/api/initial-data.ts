@@ -10,6 +10,7 @@ import {
   BOOKMARK_COLLECTION,
   createAuthErrorResponse,
   getSessionFromRequest,
+  listAllRecords,
   setSessionCookie,
   TAG_COLLECTION,
 } from "../../lib/route-utils.ts";
@@ -33,61 +34,26 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
         return createAuthErrorResponse(error);
       }
 
-      const bookmarksParams = new URLSearchParams({
-        repo: oauthSession.did,
-        collection: BOOKMARK_COLLECTION,
-        limit: "100",
-      });
-
-      const tagsParams = new URLSearchParams({
-        repo: oauthSession.did,
-        collection: TAG_COLLECTION,
-        limit: "100",
-      });
-
-      const annotationsParams = new URLSearchParams({
-        repo: oauthSession.did,
-        collection: ANNOTATION_COLLECTION,
-        limit: "100",
-      });
-
-      const [bookmarksResponse, tagsResponse, annotationsResponse, settings] =
+      const [bookmarkRecords, tagRecords, annotationRecords, settings] =
         await Promise.all([
-          oauthSession.makeRequest(
-            "GET",
-            `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${bookmarksParams}`,
-          ),
-          oauthSession.makeRequest(
-            "GET",
-            `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${tagsParams}`,
-          ),
-          oauthSession.makeRequest(
-            "GET",
-            `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${annotationsParams}`,
-          ),
+          listAllRecords(oauthSession, BOOKMARK_COLLECTION),
+          listAllRecords(oauthSession, TAG_COLLECTION),
+          listAllRecords(oauthSession, ANNOTATION_COLLECTION),
           getUserSettings(oauthSession.did),
         ]);
 
       // Build annotation lookup map (rkey → annotation)
       const annotationMap = new Map<string, AnnotationRecord>();
-      let annotationsOk = false;
-      if (annotationsResponse.ok) {
-        annotationsOk = true;
-        const annotationsData = await annotationsResponse.json();
-        for (const record of annotationsData.records || []) {
-          const rkey = record.uri.split("/").pop();
-          if (rkey) {
-            annotationMap.set(rkey, record.value as AnnotationRecord);
-          }
+      const annotationsOk = true;
+      for (const record of annotationRecords) {
+        const rkey = record.uri.split("/").pop();
+        if (rkey) {
+          annotationMap.set(rkey, record.value as AnnotationRecord);
         }
       }
 
-      let bookmarks: EnrichedBookmark[] = [];
-      let bookmarkRecords: any[] = [];
-      if (bookmarksResponse.ok) {
-        const bookmarksData = await bookmarksResponse.json();
-        bookmarkRecords = bookmarksData.records || [];
-        bookmarks = bookmarkRecords.map((record: any) => {
+      const bookmarks: EnrichedBookmark[] = bookmarkRecords.map(
+        (record: any) => {
           const rkey = record.uri.split("/").pop();
           const annotation = rkey ? annotationMap.get(rkey) : undefined;
           return {
@@ -104,19 +70,15 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
             image: annotation?.image || record.value.$enriched?.image,
             note: annotation?.note,
           };
-        });
-      }
+        },
+      );
 
-      let tags: EnrichedTag[] = [];
-      if (tagsResponse.ok) {
-        const tagsData = await tagsResponse.json();
-        tags = tagsData.records.map((record: any) => ({
-          uri: record.uri,
-          cid: record.cid,
-          value: record.value.value,
-          createdAt: record.value.createdAt,
-        }));
-      }
+      const tags: EnrichedTag[] = tagRecords.map((record: any) => ({
+        uri: record.uri,
+        cid: record.cid,
+        value: record.value.value,
+        createdAt: record.value.createdAt,
+      }));
 
       const result: InitialDataResponse = { bookmarks, tags, settings };
       const response = setSessionCookie(
