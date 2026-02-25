@@ -155,6 +155,45 @@ export function ImportBookmarks() {
         </p>
       </section>
 
+      <div className="space-y-3">
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
+          <span className="text-xs font-bold uppercase tracking-wide text-amber-700 bg-amber-200 rounded px-1.5 py-0.5 mt-0.5 shrink-0">
+            Beta
+          </span>
+          <p className="text-sm text-amber-800">
+            Import is free while in beta. This will become a{" "}
+            <a href="/support" className="underline hover:text-amber-900">
+              supporter
+            </a>-only feature in the future.
+          </p>
+        </div>
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-2">
+          <svg
+            className="w-4 h-4 text-blue-600 mt-0.5 shrink-0"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20 10 10 0 000-20z"
+            />
+          </svg>
+          <p className="text-sm text-blue-800">
+            Bookmarks on AT Protocol are public. Anything you import can be seen
+            by anyone.{" "}
+            <a
+              href="/about#how-it-works"
+              className="underline hover:text-blue-900"
+            >
+              Learn how it works
+            </a>.
+          </p>
+        </div>
+      </div>
+
       <section className="bg-white rounded-lg shadow-md p-6">
         {/* Drop zone */}
         <div

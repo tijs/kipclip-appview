@@ -36,7 +36,10 @@ export function About() {
           </p>
         </section>
 
-        <section className="bg-white rounded-lg shadow-md p-6 space-y-3">
+        <section
+          id="how-it-works"
+          className="bg-white rounded-lg shadow-md p-6 space-y-3"
+        >
           <h3 className="text-xl font-bold text-gray-800">How it works</h3>
           <ul className="list-disc pl-5 text-gray-700 space-y-2">
             <li>
