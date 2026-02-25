@@ -11,6 +11,7 @@ import { CreateAccount } from "./CreateAccount.tsx";
 import { SharedBookmarks } from "./SharedBookmarks.tsx";
 import { Settings } from "./Settings.tsx";
 import { ReadingList } from "./ReadingList.tsx";
+import { Support } from "./Support.tsx";
 import { useApp } from "../context/AppContext.tsx";
 
 type ViewType = "bookmarks" | "reading-list";
@@ -95,6 +96,10 @@ export function App() {
 
   if (currentPath === "/faq") {
     return <FAQ />;
+  }
+
+  if (currentPath === "/support") {
+    return <Support />;
   }
 
   if (currentPath === "/create-account") {
