@@ -120,10 +120,46 @@ export async function getSessionFromRequest(
     }
 
     // Step 2: Get OAuth session using the DID from cookie
-    // getOAuthSession returns null for expired/corrupt/revoked sessions
-    // and only throws on transient NetworkError
+    // restore() can throw typed errors for expired/revoked/missing sessions
     const did = cookieResult.data.did;
-    const oauthSession = await getOAuth().sessions.getOAuthSession(did);
+    let oauthSession: SessionInterface | null;
+    try {
+      oauthSession = await getOAuth().sessions.getOAuthSession(did);
+    } catch (restoreError) {
+      // Known session errors — return null session, no Sentry report
+      const errorName = restoreError instanceof Error
+        ? restoreError.constructor.name
+        : "";
+      const isRecoverableSessionError = [
+        "SessionNotFoundError",
+        "SessionError",
+        "RefreshTokenExpiredError",
+        "RefreshTokenRevokedError",
+        "TokenExchangeError",
+      ].includes(errorName);
+
+      if (isRecoverableSessionError) {
+        console.warn("[Session] OAuth session restore failed (recoverable)", {
+          did,
+          errorName,
+          errorMessage: restoreError instanceof Error
+            ? restoreError.message
+            : String(restoreError),
+          url: request.url,
+        });
+        return {
+          session: null,
+          setCookieHeader: cookieResult.setCookieHeader,
+          error: {
+            type: "SESSION_EXPIRED",
+            message: "Your session has expired, please sign in again",
+          },
+        };
+      }
+
+      // Unknown/transient errors (e.g. NetworkError) — re-throw to outer catch
+      throw restoreError;
+    }
 
     if (!oauthSession) {
       console.warn("[Session] OAuth session not available", {
