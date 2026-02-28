@@ -208,13 +208,27 @@ export function BookmarkList() {
   function handleBookmarkDeleted(uri: string) {
     const deleted = allBookmarks.find((b) => b.uri === uri);
     const remaining = allBookmarks.filter((b) => b.uri !== uri);
+
+    console.log("[orphan-debug] handleBookmarkDeleted", {
+      uri,
+      found: !!deleted,
+      deletedTags: deleted?.tags,
+      allBookmarksCount: allBookmarks.length,
+      remainingCount: remaining.length,
+      availableTagsCount: availableTags.length,
+      availableTagValues: availableTags.map((t) => t.value),
+    });
+
     deleteBookmark(uri);
     setEditingBookmark(null);
     setDetailBookmark(null);
 
     if (deleted?.tags?.length) {
       const orphaned = findOrphanedTags([deleted], remaining, availableTags);
+      console.log("[orphan-debug] orphaned tags found:", orphaned);
       if (orphaned.length > 0) setOrphanedTags(orphaned);
+    } else {
+      console.log("[orphan-debug] no tags on deleted bookmark, skipping check");
     }
   }
 
