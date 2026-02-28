@@ -22,6 +22,7 @@ import { registerAuthRoutes } from "./routes/api/auth.ts";
 import { registerBookmarkRoutes } from "./routes/api/bookmarks.ts";
 import { registerInitialDataRoutes } from "./routes/api/initial-data.ts";
 import { registerSettingsRoutes } from "./routes/api/settings.ts";
+import { registerBulkRoutes } from "./routes/api/bulk.ts";
 import { registerImportRoutes } from "./routes/api/import.ts";
 import { registerPreferencesRoutes } from "./routes/api/preferences.ts";
 import { registerShareApiRoutes } from "./routes/api/share.ts";
@@ -97,6 +98,9 @@ app = registerAuthRoutes(app);
 
 // Bookmark API routes
 app = registerBookmarkRoutes(app);
+
+// Bulk operations API routes
+app = registerBulkRoutes(app);
 
 // Import API routes
 app = registerImportRoutes(app);
