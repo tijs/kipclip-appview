@@ -85,9 +85,6 @@ app = app.use(async (ctx) => {
   return response;
 });
 
-// Serve static files from /static directory (Fresh built-in)
-app.use(staticFiles());
-
 // ============================================================================
 // Register routes
 // ============================================================================
@@ -124,6 +121,10 @@ app = registerRssRoutes(app);
 
 // Share target routes (PWA share functionality)
 app = registerShareTargetRoutes(app);
+
+// Serve static files from /static directory (must be after API routes to
+// prevent staticFiles() from intercepting POST/PUT/DELETE requests with 405)
+app.use(staticFiles());
 
 // Static files and SPA routing (must be last)
 app = registerStaticRoutes(app, import.meta.url);
