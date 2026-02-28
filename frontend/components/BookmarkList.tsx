@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AddBookmark } from "./AddBookmark.tsx";
 import {
   BookmarkCard,
@@ -10,6 +10,7 @@ import {
   type ViewMode,
 } from "./BookmarkCard.tsx";
 import { BookmarkDetail } from "./BookmarkDetail.tsx";
+import { BulkActionToolbar } from "./BulkActionToolbar.tsx";
 import { EditBookmark } from "./EditBookmark.tsx";
 import { useApp } from "../context/AppContext.tsx";
 import type { DateFormatOption } from "../../shared/date-format.ts";
@@ -45,6 +46,42 @@ export function BookmarkList() {
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
 
+  // Select mode state
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedUris, setSelectedUris] = useState<Set<string>>(new Set());
+
+  const toggleSelection = useCallback((uri: string) => {
+    setSelectedUris((prev) => {
+      const next = new Set(prev);
+      if (next.has(uri)) next.delete(uri);
+      else next.add(uri);
+      return next;
+    });
+  }, []);
+
+  function selectAll() {
+    setSelectedUris(new Set(bookmarks.map((b) => b.uri)));
+  }
+
+  function deselectAll() {
+    setSelectedUris(new Set());
+  }
+
+  function exitSelectMode() {
+    setIsSelectMode(false);
+    setSelectedUris(new Set());
+  }
+
+  // Escape key exits select mode
+  useEffect(() => {
+    if (!isSelectMode) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") exitSelectMode();
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isSelectMode]);
+
   function setViewMode(mode: ViewMode) {
     setViewModeState(mode);
     storeViewMode(mode);
@@ -67,6 +104,7 @@ export function BookmarkList() {
     }
 
     function handleTouchStart(e: TouchEvent) {
+      if (isSelectMode) return;
       // Only start pull if scrolled to top
       if (isAtTop()) {
         touchStartY.current = e.touches[0].clientY;
@@ -118,7 +156,7 @@ export function BookmarkList() {
       document.removeEventListener("touchmove", handleTouchMove);
       document.removeEventListener("touchend", handleTouchEnd);
     };
-  }, [isPulling, pullDistance, isRefreshing]);
+  }, [isPulling, pullDistance, isRefreshing, isSelectMode]);
 
   // Manual refresh (for pull-to-refresh and retry button)
   async function loadBookmarks() {
@@ -263,13 +301,32 @@ export function BookmarkList() {
                 {bookmarks.length === 1 ? "bookmark" : "bookmarks"}
               </span>
             </h2>
-            <button
-              type="button"
-              onClick={() => setShowAddModal(true)}
-              className="btn-primary"
-            >
-              + Add Bookmark
-            </button>
+            <div className="flex items-center gap-2">
+              {bookmarks.length > 0 && (
+                <button
+                  type="button"
+                  onClick={isSelectMode
+                    ? exitSelectMode
+                    : () => setIsSelectMode(true)}
+                  className={`px-3 py-2 text-sm rounded-md border ${
+                    isSelectMode
+                      ? "border-gray-300 text-gray-700 hover:bg-gray-50"
+                      : "border-gray-300 text-gray-700 hover:bg-gray-50"
+                  }`}
+                >
+                  {isSelectMode ? "Cancel" : "Select"}
+                </button>
+              )}
+              {!isSelectMode && (
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(true)}
+                  className="btn-primary"
+                >
+                  + Add Bookmark
+                </button>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden">
@@ -344,47 +401,88 @@ export function BookmarkList() {
             : (
               <div className="flex items-center justify-between mb-2">
                 <h2 className="text-2xl font-bold text-gray-800">
-                  Your Bookmarks
+                  {isSelectMode ? "Select Bookmarks" : "Your Bookmarks"}
                 </h2>
                 <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setViewMode(viewMode === "cards" ? "list" : "cards")}
-                    className="p-2 text-gray-500 hover:text-gray-700"
-                    aria-label="Toggle view"
-                  >
-                    {viewMode === "cards"
-                      ? <ListIcon active={false} />
-                      : <GridIcon active={false} />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setMobileSearchOpen(true)}
-                    className="p-2 text-gray-500 hover:text-gray-700"
-                  >
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                      />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowAddModal(true)}
-                    className="px-3 py-2 text-sm rounded-md"
-                    style={{ backgroundColor: "var(--coral)", color: "white" }}
-                  >
-                    + Add
-                  </button>
+                  {isSelectMode
+                    ? (
+                      <button
+                        type="button"
+                        onClick={exitSelectMode}
+                        className="px-3 py-2 text-sm text-gray-700"
+                      >
+                        Cancel
+                      </button>
+                    )
+                    : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setViewMode(
+                              viewMode === "cards" ? "list" : "cards",
+                            )}
+                          className="p-2 text-gray-500 hover:text-gray-700"
+                          aria-label="Toggle view"
+                        >
+                          {viewMode === "cards"
+                            ? <ListIcon active={false} />
+                            : <GridIcon active={false} />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMobileSearchOpen(true)}
+                          className="p-2 text-gray-500 hover:text-gray-700"
+                        >
+                          <svg
+                            className="w-5 h-5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                            />
+                          </svg>
+                        </button>
+                        {bookmarks.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setIsSelectMode(true)}
+                            className="p-2 text-gray-500 hover:text-gray-700"
+                            aria-label="Select bookmarks"
+                          >
+                            <svg
+                              className="w-5 h-5"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+                              />
+                            </svg>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setShowAddModal(true)}
+                          className="px-3 py-2 text-sm rounded-md"
+                          style={{
+                            backgroundColor: "var(--coral)",
+                            color: "white",
+                          }}
+                        >
+                          + Add
+                        </button>
+                      </>
+                    )}
                 </div>
               </div>
             )}
@@ -432,7 +530,11 @@ export function BookmarkList() {
                 isDragOver={dragOverBookmark === bookmark.uri}
                 imageError={imageErrors.has(bookmark.uri)}
                 dateFormat={dateFormat}
-                onClick={() => setDetailBookmark(bookmark)}
+                isSelectMode={isSelectMode}
+                isSelected={selectedUris.has(bookmark.uri)}
+                onClick={isSelectMode
+                  ? () => toggleSelection(bookmark.uri)
+                  : () => setDetailBookmark(bookmark)}
                 onDragOver={(e) => {
                   e.preventDefault();
                   e.dataTransfer.dropEffect = "copy";
@@ -488,6 +590,31 @@ export function BookmarkList() {
           onBookmarkUpdated={handleBookmarkUpdated}
           onBookmarkDeleted={handleBookmarkDeleted}
           onTagsChanged={loadTags}
+        />
+      )}
+
+      {isSelectMode && selectedUris.size > 0 && (
+        <BulkActionToolbar
+          selectedCount={selectedUris.size}
+          totalCount={bookmarks.length}
+          selectedUris={selectedUris}
+          bookmarks={bookmarks}
+          availableTags={availableTags}
+          onSelectAll={selectAll}
+          onDeselectAll={deselectAll}
+          onComplete={(deletedUris, updatedBookmarks) => {
+            for (const uri of deletedUris) deleteBookmark(uri);
+            for (const b of updatedBookmarks) updateBookmark(b);
+            loadTags();
+            exitSelectMode();
+          }}
+          onPartialFailure={(deletedUris, updatedBookmarks, failedUris) => {
+            for (const uri of deletedUris) deleteBookmark(uri);
+            for (const b of updatedBookmarks) updateBookmark(b);
+            loadTags();
+            // Keep only failed URIs selected
+            setSelectedUris(new Set(failedUris));
+          }}
         />
       )}
     </div>

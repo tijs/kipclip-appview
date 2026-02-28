@@ -106,6 +106,22 @@ body {
   }
 }
 
+/* Slide up animation for floating toolbar */
+.animate-slide-up {
+  animation: slideUp 0.2s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
 /* Actor typeahead autocomplete - kipclip themed */
 actor-typeahead {
   --color-background: #ffffff;

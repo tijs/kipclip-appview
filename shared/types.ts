@@ -206,6 +206,21 @@ export interface ImportResult {
   format: string;
 }
 
+// Bulk operations API types
+export interface BulkOperationRequest {
+  action: "delete" | "add-tags" | "remove-tags";
+  uris: string[]; // bookmark URIs to operate on
+  tags?: string[]; // tags to add/remove (required for tag actions)
+}
+
+export interface BulkOperationResponse {
+  success: boolean;
+  succeeded: number;
+  failed: number;
+  errors?: string[];
+  bookmarks?: EnrichedBookmark[]; // updated bookmarks (for tag operations)
+}
+
 export interface ImportPrepareResponse {
   success: boolean;
   jobId?: string;

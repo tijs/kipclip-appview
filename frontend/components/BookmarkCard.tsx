@@ -55,6 +55,8 @@ interface BookmarkCardProps {
   isDragOver: boolean;
   imageError: boolean;
   dateFormat?: DateFormatOption;
+  isSelectMode?: boolean;
+  isSelected?: boolean;
   onClick: () => void;
   onDragOver: (e: React.DragEvent) => void;
   onDragEnter: (e: React.DragEvent) => void;
@@ -205,6 +207,8 @@ export function BookmarkCard(
     isDragOver,
     imageError,
     dateFormat,
+    isSelectMode,
+    isSelected,
     onClick,
     onDragOver,
     onDragEnter,
@@ -213,22 +217,41 @@ export function BookmarkCard(
     onImageError,
   }: BookmarkCardProps,
 ) {
-  const dragOverClass = isDragOver ? "border-2 border-blue-500 bg-blue-50" : "";
+  const selectedClass = isSelected ? "border-2 border-blue-500 bg-blue-50" : "";
+  const dragOverClass = !isSelectMode && isDragOver
+    ? "border-2 border-blue-500 bg-blue-50"
+    : "";
 
   const className = viewMode === "cards"
-    ? `card transition-all cursor-pointer relative ${dragOverClass}`
-    : `px-4 py-3 bg-white rounded-lg border border-gray-200 transition-all cursor-pointer hover:bg-gray-50 ${dragOverClass}`;
+    ? `card transition-all cursor-pointer relative ${
+      selectedClass || dragOverClass
+    }`
+    : `px-4 py-3 bg-white rounded-lg border border-gray-200 transition-all cursor-pointer hover:bg-gray-50 ${
+      selectedClass || dragOverClass
+    }`;
 
   return (
     <div
       data-bookmark-card
       className={className}
       onClick={onClick}
-      onDragOver={onDragOver}
-      onDragEnter={onDragEnter}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
+      onDragOver={isSelectMode ? undefined : onDragOver}
+      onDragEnter={isSelectMode ? undefined : onDragEnter}
+      onDragLeave={isSelectMode ? undefined : onDragLeave}
+      onDrop={isSelectMode ? undefined : onDrop}
     >
+      {isSelectMode && viewMode === "cards" && (
+        <div className="absolute top-2 left-2 z-10">
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={onClick as any}
+            onClick={(e) => e.stopPropagation()}
+            className="w-5 h-5 rounded border-gray-300 text-blue-600 cursor-pointer"
+            aria-label={`Select ${bookmark.title || bookmark.subject}`}
+          />
+        </div>
+      )}
       {viewMode === "cards"
         ? (
           <CardView
@@ -238,7 +261,23 @@ export function BookmarkCard(
             dateFormat={dateFormat}
           />
         )
-        : <ListView bookmark={bookmark} dateFormat={dateFormat} />}
+        : (
+          <div className="flex items-center gap-3">
+            {isSelectMode && (
+              <input
+                type="checkbox"
+                checked={isSelected}
+                onChange={onClick as any}
+                onClick={(e) => e.stopPropagation()}
+                className="w-5 h-5 shrink-0 rounded border-gray-300 text-blue-600 cursor-pointer"
+                aria-label={`Select ${bookmark.title || bookmark.subject}`}
+              />
+            )}
+            <div className="flex-1 min-w-0">
+              <ListView bookmark={bookmark} dateFormat={dateFormat} />
+            </div>
+          </div>
+        )}
     </div>
   );
 }

@@ -26,6 +26,7 @@
     "jsr:@std/path@^1.1.4": "1.1.4",
     "jsr:@std/semver@^1.0.6": "1.0.7",
     "jsr:@std/uuid@^1.0.9": "1.1.0",
+    "jsr:@tijs/atproto-oauth@*": "2.10.0",
     "jsr:@tijs/atproto-oauth@2.10.0": "2.10.0",
     "jsr:@tijs/atproto-sessions@2.1.0": "2.1.0",
     "jsr:@tijs/atproto-storage@0.1.1": "0.1.1",
