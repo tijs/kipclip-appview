@@ -44,6 +44,38 @@ const MIGRATIONS: Array<{
       ALTER TABLE user_settings ADD COLUMN instapaper_password_encrypted TEXT
     `,
   },
+  {
+    version: "003",
+    description: "Create import_jobs and import_chunks tables",
+    sql: `
+      CREATE TABLE IF NOT EXISTS import_jobs (
+        id TEXT PRIMARY KEY,
+        did TEXT NOT NULL,
+        format TEXT NOT NULL,
+        total INTEGER NOT NULL DEFAULT 0,
+        skipped INTEGER NOT NULL DEFAULT 0,
+        imported INTEGER NOT NULL DEFAULT 0,
+        failed INTEGER NOT NULL DEFAULT 0,
+        total_chunks INTEGER NOT NULL DEFAULT 0,
+        processed_chunks INTEGER NOT NULL DEFAULT 0,
+        tags TEXT NOT NULL DEFAULT '[]',
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_import_jobs_did ON import_jobs(did);
+      CREATE TABLE IF NOT EXISTS import_chunks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id TEXT NOT NULL,
+        chunk_index INTEGER NOT NULL,
+        bookmarks TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (job_id) REFERENCES import_jobs(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_import_chunks_job ON import_chunks(job_id, chunk_index)
+    `,
+  },
 ];
 
 export async function runMigrations() {

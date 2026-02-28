@@ -1,10 +1,24 @@
 import { useRef, useState } from "react";
 import { useApp } from "../context/AppContext.tsx";
-import type { ImportResponse, ImportResult } from "../../shared/types.ts";
+import type {
+  ImportPrepareResponse,
+  ImportProcessResponse,
+  ImportResult,
+} from "../../shared/types.ts";
 
 type ImportState =
   | { status: "idle" }
-  | { status: "uploading" }
+  | { status: "preparing" }
+  | {
+    status: "importing";
+    jobId: string;
+    toImport: number;
+    totalChunks: number;
+    format: string;
+    skipped: number;
+    imported: number;
+    failed: number;
+  }
   | { status: "complete"; result: ImportResult }
   | { status: "error"; message: string };
 
@@ -25,31 +39,100 @@ export function ImportBookmarks() {
   async function handleImport() {
     if (!selectedFile) return;
 
-    setImportState({ status: "uploading" });
+    setImportState({ status: "preparing" });
 
     try {
       const formData = new FormData();
       formData.append("file", selectedFile);
 
-      const response = await fetch("/api/import", {
+      // Step 1: Prepare — parse, dedup, create job
+      const prepareRes = await fetch("/api/import", {
         method: "POST",
         body: formData,
       });
+      const prepare: ImportPrepareResponse = await prepareRes.json();
 
-      const data: ImportResponse = await response.json();
-
-      if (!response.ok || !data.success) {
+      if (!prepareRes.ok || !prepare.success) {
         setImportState({
           status: "error",
-          message: data.error || "Import failed",
+          message: prepare.error || "Import failed",
         });
         return;
       }
 
+      // If nothing to import (all dupes or empty), we're done
+      if (prepare.result) {
+        setImportState({ status: "complete", result: prepare.result });
+        setSelectedFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        await loadInitialData();
+        return;
+      }
+
+      // Step 2: Process chunks in a loop
+      const jobId = prepare.jobId!;
+      const toImport = prepare.toImport!;
+      const totalChunks = prepare.totalChunks!;
+      const format = prepare.format!;
+      const skipped = prepare.skipped!;
+
       setImportState({
-        status: "complete",
-        result: data.result!,
+        status: "importing",
+        jobId,
+        toImport,
+        totalChunks,
+        format,
+        skipped,
+        imported: 0,
+        failed: 0,
       });
+
+      let done = false;
+      let lastResult: ImportResult | undefined;
+      const maxIterations = totalChunks + 2;
+      let iterations = 0;
+
+      while (!done && iterations < maxIterations) {
+        iterations++;
+        const processRes = await fetch(`/api/import/${jobId}/process`, {
+          method: "POST",
+        });
+        const process: ImportProcessResponse = await processRes.json();
+
+        if (!processRes.ok || !process.success) {
+          setImportState({
+            status: "error",
+            message: process.error || "Import processing failed",
+          });
+          return;
+        }
+
+        setImportState((prev) => {
+          if (prev.status !== "importing") return prev;
+          return {
+            ...prev,
+            imported: process.totalImported ?? prev.imported,
+            failed: process.totalFailed ?? prev.failed,
+          };
+        });
+
+        if (process.done) {
+          done = true;
+          lastResult = process.result;
+        }
+      }
+
+      if (!done) {
+        setImportState({
+          status: "error",
+          message: "Import stalled — please try again",
+        });
+        return;
+      }
+
+      if (lastResult) {
+        setImportState({ status: "complete", result: lastResult });
+      }
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       await loadInitialData();
@@ -60,6 +143,9 @@ export function ImportBookmarks() {
       });
     }
   }
+
+  const isProcessing = importState.status === "preparing" ||
+    importState.status === "importing";
 
   return (
     <div className="space-y-8">
@@ -163,13 +249,11 @@ export function ImportBookmarks() {
                   <button
                     type="button"
                     onClick={handleImport}
-                    disabled={importState.status === "uploading"}
+                    disabled={isProcessing}
                     className="px-6 py-2 rounded-lg font-bold text-white shadow hover:shadow-md transition disabled:opacity-50"
                     style={{ backgroundColor: "var(--coral)" }}
                   >
-                    {importState.status === "uploading"
-                      ? "Importing..."
-                      : "Import Bookmarks"}
+                    {isProcessing ? "Importing..." : "Import Bookmarks"}
                   </button>
                   <button
                     type="button"
@@ -180,7 +264,8 @@ export function ImportBookmarks() {
                         fileInputRef.current.value = "";
                       }
                     }}
-                    className="px-4 py-2 rounded-lg text-gray-600 hover:text-gray-800 hover:bg-gray-200 transition"
+                    disabled={isProcessing}
+                    className="px-4 py-2 rounded-lg text-gray-600 hover:text-gray-800 hover:bg-gray-200 transition disabled:opacity-50"
                   >
                     Cancel
                   </button>
@@ -211,6 +296,52 @@ export function ImportBookmarks() {
               </div>
             )}
         </div>
+
+        {/* Preparing state */}
+        {importState.status === "preparing" && (
+          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-blue-800 font-medium">Preparing import...</p>
+            <p className="text-sm text-blue-700 mt-1">
+              Parsing file and checking for duplicates
+            </p>
+          </div>
+        )}
+
+        {/* Progress bar during importing */}
+        {importState.status === "importing" && (
+          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex justify-between items-center mb-2">
+              <p className="text-blue-800 font-medium">
+                Importing bookmarks...
+              </p>
+              <p className="text-sm text-blue-700">
+                {importState.imported + importState.failed} /{" "}
+                {importState.toImport}
+              </p>
+            </div>
+            <div className="w-full bg-blue-200 rounded-full h-2.5">
+              <div
+                className="h-2.5 rounded-full transition-all duration-300"
+                style={{
+                  width: `${
+                    Math.round(
+                      ((importState.imported + importState.failed) /
+                        importState.toImport) * 100,
+                    )
+                  }%`,
+                  backgroundColor: "var(--coral)",
+                }}
+              />
+            </div>
+            <ul className="text-sm text-blue-700 mt-2 space-y-0.5">
+              <li>{importState.imported} imported</li>
+              {importState.skipped > 0 && (
+                <li>{importState.skipped} skipped (duplicates)</li>
+              )}
+              {importState.failed > 0 && <li>{importState.failed} failed</li>}
+            </ul>
+          </div>
+        )}
 
         {/* Import result */}
         {importState.status === "complete" && importState.result && (

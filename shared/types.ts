@@ -206,8 +206,26 @@ export interface ImportResult {
   format: string;
 }
 
-export interface ImportResponse {
+export interface ImportPrepareResponse {
   success: boolean;
-  result?: ImportResult;
+  jobId?: string;
+  total?: number;
+  skipped?: number;
+  toImport?: number;
+  totalChunks?: number;
+  format?: string;
+  result?: ImportResult; // only when toImport === 0
+  error?: string;
+}
+
+export interface ImportProcessResponse {
+  success: boolean;
+  imported?: number; // this chunk
+  failed?: number; // this chunk
+  totalImported?: number; // cumulative
+  totalFailed?: number; // cumulative
+  remaining?: number; // chunks left
+  done?: boolean;
+  result?: ImportResult; // only when done
   error?: string;
 }
