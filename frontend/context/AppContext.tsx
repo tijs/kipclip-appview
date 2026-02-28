@@ -32,12 +32,12 @@ function matchesSearch(bookmark: EnrichedBookmark, query: string): boolean {
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
-  readingListTag: "toread",
   instapaperEnabled: false,
 };
 
 const DEFAULT_PREFERENCES: UserPreferences = {
   dateFormat: "us",
+  readingListTag: "toread",
 };
 
 interface AppState {
@@ -198,7 +198,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (localFormat !== "us" && pdsFormat === "us") {
           // localStorage has a user-chosen value, PDS still has default.
           // Keep the local value and try to push it to PDS.
-          setPreferences({ dateFormat: localFormat });
+          setPreferences({
+            ...data.preferences,
+            dateFormat: localFormat,
+          });
           apiPut("/api/preferences", { dateFormat: localFormat })
             .catch(() => {
               // Silently ignore — user may lack new OAuth scope
@@ -312,8 +315,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Reading list: bookmarks with the configured reading list tag
   const readingListBookmarks = useMemo(
-    () => bookmarks.filter((b) => b.tags?.includes(settings.readingListTag)),
-    [bookmarks, settings.readingListTag],
+    () => bookmarks.filter((b) => b.tags?.includes(preferences.readingListTag)),
+    [bookmarks, preferences.readingListTag],
   );
 
   // Tags that appear on reading list bookmarks
@@ -323,11 +326,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Sort to show reading list tag first, then alphabetically
     const tagArray = Array.from(tagSet);
     return tagArray.sort((a, b) => {
-      if (a === settings.readingListTag) return -1;
-      if (b === settings.readingListTag) return 1;
+      if (a === preferences.readingListTag) return -1;
+      if (b === preferences.readingListTag) return 1;
       return a.localeCompare(b);
     });
-  }, [readingListBookmarks, settings.readingListTag]);
+  }, [readingListBookmarks, preferences.readingListTag]);
 
   // Filtered reading list based on additional tag selection and search
   const filteredReadingList = useMemo(() => {

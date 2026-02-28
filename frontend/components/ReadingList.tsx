@@ -104,7 +104,7 @@ function ReadingListTagSidebar() {
     readingListSelectedTags,
     toggleReadingListTag,
     clearReadingListFilters,
-    settings,
+    preferences,
   } = useApp();
 
   if (readingListTags.length === 0) {
@@ -122,7 +122,7 @@ function ReadingListTagSidebar() {
           <div className="space-y-1">
             {readingListTags.map((tag) => {
               const isSelected = readingListSelectedTags.has(tag);
-              const isReadingListTag = tag === settings.readingListTag;
+              const isReadingListTag = tag === preferences.readingListTag;
               return (
                 <button
                   type="button"
@@ -213,7 +213,6 @@ export function ReadingList() {
     filteredReadingList,
     readingListBookmarks,
     totalReadingList,
-    settings,
     preferences,
     readingListSearchQuery,
     setReadingListSearchQuery,
@@ -225,7 +224,7 @@ export function ReadingList() {
   if (readingListBookmarks.length === 0) {
     return (
       <div className="flex flex-col md:flex-row flex-1 md:overflow-hidden">
-        <ReadingListEmpty tagName={settings.readingListTag} />
+        <ReadingListEmpty tagName={preferences.readingListTag} />
       </div>
     );
   }

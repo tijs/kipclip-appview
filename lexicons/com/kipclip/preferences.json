@@ -16,6 +16,11 @@
             "description": "Date display format preference",
             "knownValues": ["us", "eu", "eu-dot", "iso", "text"]
           },
+          "readingListTag": {
+            "type": "string",
+            "description": "Tag used to identify reading list bookmarks",
+            "maxLength": 64
+          },
           "createdAt": {
             "type": "string",
             "format": "datetime",

@@ -126,7 +126,6 @@ export interface SharedBookmarksResponse {
 
 // User settings (stored in database)
 export interface UserSettings {
-  readingListTag: string;
   instapaperEnabled: boolean;
   instapaperUsername?: string; // Decrypted, only in memory (never includes password)
 }
@@ -138,7 +137,6 @@ export interface GetSettingsResponse {
 
 // Settings API update request
 export interface UpdateSettingsRequest {
-  readingListTag?: string;
   instapaperEnabled?: boolean;
   instapaperUsername?: string;
   instapaperPassword?: string; // Only when updating credentials
@@ -163,15 +161,18 @@ export interface CheckDuplicatesResponse {
 // User preferences (stored on PDS as com.kipclip.preferences)
 export interface PreferencesRecord {
   dateFormat: string;
+  readingListTag?: string;
   createdAt: string;
 }
 
 export interface UserPreferences {
   dateFormat: string;
+  readingListTag: string;
 }
 
 export interface UpdatePreferencesRequest {
   dateFormat?: string;
+  readingListTag?: string;
 }
 
 export interface UpdatePreferencesResponse {

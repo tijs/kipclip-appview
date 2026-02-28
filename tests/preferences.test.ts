@@ -49,3 +49,18 @@ Deno.test("PUT /api/preferences - rejects invalid date format", async () => {
   assertEquals(res.status, 401);
   await res.json(); // consume body
 });
+
+Deno.test("PUT /api/preferences - rejects invalid readingListTag", async () => {
+  // Without auth this returns 401 first, so this test verifies the
+  // endpoint exists and responds. Full validation tested via integration.
+  const req = new Request("https://kipclip.com/api/preferences", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ readingListTag: "my tag!" }),
+  });
+  const res = await handler(req);
+
+  // Without auth, we get 401 before validation
+  assertEquals(res.status, 401);
+  await res.json(); // consume body
+});

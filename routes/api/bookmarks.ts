@@ -22,6 +22,7 @@ import {
   setSessionCookie,
 } from "../../lib/route-utils.ts";
 import { getUserSettings } from "../../lib/settings.ts";
+import { getUserPreferences } from "../../lib/preferences.ts";
 import { sendToInstapaperAsync } from "../../lib/instapaper.ts";
 import type {
   AddBookmarkRequest,
@@ -331,24 +332,26 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         createdAt: currentRecord.value.createdAt,
       };
 
-      // Run bookmark write, annotation write, and settings fetch in parallel
-      const [putResult, annotationWritten, settings] = await Promise.all([
-        oauthSession.makeRequest(
-          "POST",
-          `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.putRecord`,
-          {
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              repo: oauthSession.did,
-              collection: BOOKMARK_COLLECTION,
-              rkey,
-              record,
-            }),
-          },
-        ),
-        writeAnnotation(oauthSession, rkey, annotation),
-        getUserSettings(oauthSession.did),
-      ]);
+      // Run bookmark write, annotation write, settings + preferences fetch in parallel
+      const [putResult, annotationWritten, settings, preferences] =
+        await Promise.all([
+          oauthSession.makeRequest(
+            "POST",
+            `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.putRecord`,
+            {
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                repo: oauthSession.did,
+                collection: BOOKMARK_COLLECTION,
+                rkey,
+                record,
+              }),
+            },
+          ),
+          writeAnnotation(oauthSession, rkey, annotation),
+          getUserSettings(oauthSession.did),
+          getUserPreferences(oauthSession),
+        ]);
 
       if (!putResult.ok) {
         const errorText = await putResult.text();
@@ -397,9 +400,12 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         note: body.note,
       };
 
-      const hasReadingListTag = record.tags.includes(settings.readingListTag);
+      const hasReadingListTag = record.tags.includes(
+        preferences.readingListTag,
+      );
       const hadReadingListTag =
-        currentRecord.value.tags?.includes(settings.readingListTag) || false;
+        currentRecord.value.tags?.includes(preferences.readingListTag) ||
+        false;
 
       if (
         settings.instapaperEnabled && hasReadingListTag && !hadReadingListTag

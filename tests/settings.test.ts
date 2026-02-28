@@ -28,7 +28,7 @@ Deno.test("PATCH /api/settings - returns 401 when not authenticated", async () =
   const req = new Request("https://kipclip.com/api/settings", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ readingListTag: "readlater" }),
+    body: JSON.stringify({ instapaperEnabled: false }),
   });
   const res = await handler(req);
 
@@ -50,51 +50,7 @@ Deno.test({
     assertEquals(res.status, 200);
     const body = await res.json();
     assertExists(body.settings);
-    assertEquals(body.settings.readingListTag, "toread");
-  },
-});
-
-Deno.test({
-  name: "PATCH /api/settings - validates tag format",
-  async fn() {
-    setTestSessionProvider(() =>
-      Promise.resolve(createMockSessionResult({ pdsResponses: new Map() }))
-    );
-
-    // Test empty tag
-    const req = new Request("https://kipclip.com/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ readingListTag: "" }),
-    });
-    const res = await handler(req);
-
-    assertEquals(res.status, 400);
-    const body = await res.json();
-    assertEquals(body.success, false);
-    assertExists(body.error);
-  },
-});
-
-Deno.test({
-  name: "PATCH /api/settings - validates tag characters",
-  async fn() {
-    setTestSessionProvider(() =>
-      Promise.resolve(createMockSessionResult({ pdsResponses: new Map() }))
-    );
-
-    // Test tag with invalid characters
-    const req = new Request("https://kipclip.com/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ readingListTag: "my tag!" }),
-    });
-    const res = await handler(req);
-
-    assertEquals(res.status, 400);
-    const body = await res.json();
-    assertEquals(body.success, false);
-    assertExists(body.error);
+    assertEquals(body.settings.instapaperEnabled, false);
   },
 });
 

@@ -58,6 +58,27 @@ export function registerPreferencesRoutes(app: App<any>): App<any> {
         );
       }
 
+      if (body.readingListTag !== undefined) {
+        const tag = body.readingListTag.trim();
+        if (tag.length === 0 || tag.length > 64) {
+          return Response.json(
+            { success: false, error: "Tag must be 1-64 characters" },
+            { status: 400 },
+          );
+        }
+        if (!/^[a-zA-Z0-9_-]+$/.test(tag)) {
+          return Response.json(
+            {
+              success: false,
+              error:
+                "Tag can only contain letters, numbers, dashes, and underscores",
+            },
+            { status: 400 },
+          );
+        }
+        body.readingListTag = tag;
+      }
+
       const preferences = await updateUserPreferences(oauthSession, body);
       return setSessionCookie(
         Response.json({ success: true, preferences }),

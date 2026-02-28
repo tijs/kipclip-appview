@@ -7,8 +7,6 @@ import { rawDb } from "./db.ts";
 import type { UserSettings } from "../shared/types.ts";
 import { decrypt, encrypt } from "./encryption.ts";
 
-const DEFAULT_READING_LIST_TAG = "toread";
-
 /**
  * Get user settings by DID.
  * Creates default settings if none exist.
@@ -17,7 +15,6 @@ export async function getUserSettings(did: string): Promise<UserSettings> {
   // Try to get existing settings
   const result = await rawDb.execute({
     sql: `SELECT
-            reading_list_tag,
             instapaper_enabled,
             instapaper_username_encrypted
           FROM user_settings
@@ -27,9 +24,8 @@ export async function getUserSettings(did: string): Promise<UserSettings> {
 
   if (result.rows && result.rows.length > 0) {
     const row = result.rows[0] as (string | number | null)[];
-    const readingListTag = String(row[0] || DEFAULT_READING_LIST_TAG);
-    const instapaperEnabled = row[1] === 1 || row[1] === "1";
-    const encryptedUsername = row[2] ? String(row[2]) : null;
+    const instapaperEnabled = row[0] === 1 || row[0] === "1";
+    const encryptedUsername = row[1] ? String(row[1]) : null;
 
     // Decrypt username if available
     let instapaperUsername: string | undefined;
@@ -42,7 +38,6 @@ export async function getUserSettings(did: string): Promise<UserSettings> {
     }
 
     return {
-      readingListTag,
       instapaperEnabled,
       instapaperUsername,
     };
@@ -50,12 +45,11 @@ export async function getUserSettings(did: string): Promise<UserSettings> {
 
   // Create default settings for new user
   await rawDb.execute({
-    sql: "INSERT INTO user_settings (did, reading_list_tag) VALUES (?, ?)",
-    args: [did, DEFAULT_READING_LIST_TAG],
+    sql: "INSERT INTO user_settings (did) VALUES (?)",
+    args: [did],
   });
 
   return {
-    readingListTag: DEFAULT_READING_LIST_TAG,
     instapaperEnabled: false,
   };
 }
@@ -68,20 +62,6 @@ export async function updateUserSettings(
   did: string,
   updates: Partial<UserSettings> & { instapaperPassword?: string },
 ): Promise<UserSettings> {
-  // Validate reading list tag if provided
-  if (updates.readingListTag !== undefined) {
-    const tag = updates.readingListTag.trim();
-    if (tag.length === 0 || tag.length > 64) {
-      throw new Error("Tag must be 1-64 characters");
-    }
-    if (!/^[a-zA-Z0-9_-]+$/.test(tag)) {
-      throw new Error(
-        "Tag can only contain letters, numbers, dashes, and underscores",
-      );
-    }
-    updates.readingListTag = tag;
-  }
-
   // Validate Instapaper settings
   if (updates.instapaperEnabled) {
     // Check if credentials are provided or already exist
@@ -122,11 +102,6 @@ export async function updateUserSettings(
   const updateFields: string[] = [];
   const updateValues: (string | number)[] = [];
 
-  if (updates.readingListTag !== undefined) {
-    updateFields.push("reading_list_tag = ?");
-    updateValues.push(updates.readingListTag);
-  }
-
   if (updates.instapaperEnabled !== undefined) {
     updateFields.push("instapaper_enabled = ?");
     updateValues.push(updates.instapaperEnabled ? 1 : 0);
@@ -166,12 +141,11 @@ export async function updateUserSettings(
 
     await rawDb.execute({
       sql: `INSERT INTO user_settings
-            (did, reading_list_tag, instapaper_enabled,
+            (did, instapaper_enabled,
              instapaper_username_encrypted, instapaper_password_encrypted)
-            VALUES (?, ?, ?, ?, ?)`,
+            VALUES (?, ?, ?, ?)`,
       args: [
         did,
-        updates.readingListTag || DEFAULT_READING_LIST_TAG,
         updates.instapaperEnabled ? 1 : 0,
         encryptedUsername,
         encryptedPassword,

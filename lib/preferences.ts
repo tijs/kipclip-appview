@@ -8,6 +8,7 @@ import type { UserPreferences } from "../shared/types.ts";
 
 const DEFAULT_PREFERENCES: UserPreferences = {
   dateFormat: "us",
+  readingListTag: "toread",
 };
 
 /**
@@ -36,6 +37,8 @@ export async function getUserPreferences(
     const data = await res.json();
     return {
       dateFormat: data.value?.dateFormat || DEFAULT_PREFERENCES.dateFormat,
+      readingListTag: data.value?.readingListTag ||
+        DEFAULT_PREFERENCES.readingListTag,
     };
   } catch {
     return { ...DEFAULT_PREFERENCES };
@@ -64,6 +67,7 @@ export async function updateUserPreferences(
         rkey: "self",
         record: {
           dateFormat: merged.dateFormat,
+          readingListTag: merged.readingListTag,
           createdAt: new Date().toISOString(),
         },
       }),

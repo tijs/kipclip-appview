@@ -15,7 +15,9 @@ export function Settings() {
     const hash = globalThis.location?.hash;
     return hash === "#import" ? "import" : "general";
   });
-  const [readingListTag, setReadingListTag] = useState(settings.readingListTag);
+  const [readingListTag, setReadingListTag] = useState(
+    preferences.readingListTag,
+  );
   const [instapaperEnabled, setInstapaperEnabled] = useState(
     settings.instapaperEnabled,
   );
@@ -30,13 +32,13 @@ export function Settings() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  // Sync local state when settings from context change
+  // Sync local state when settings/preferences from context change
   useEffect(() => {
-    setReadingListTag(settings.readingListTag);
+    setReadingListTag(preferences.readingListTag);
     setInstapaperEnabled(settings.instapaperEnabled);
     setInstapaperUsername(settings.instapaperUsername || "");
   }, [
-    settings.readingListTag,
+    preferences.readingListTag,
     settings.instapaperEnabled,
     settings.instapaperUsername,
   ]);
@@ -57,7 +59,6 @@ export function Settings() {
 
     try {
       const updates: any = {
-        readingListTag: readingListTag.trim(),
         instapaperEnabled,
       };
 
@@ -83,8 +84,7 @@ export function Settings() {
     }
   }
 
-  const hasChanges = readingListTag.trim() !== settings.readingListTag ||
-    instapaperEnabled !== settings.instapaperEnabled ||
+  const hasChanges = instapaperEnabled !== settings.instapaperEnabled ||
     (instapaperEnabled &&
       instapaperUsername.trim() !== (settings.instapaperUsername || "")) ||
     instapaperPassword.trim().length > 0;
@@ -198,43 +198,56 @@ export function Settings() {
               </div>
             </section>
 
-            <form onSubmit={handleSubmit}>
-              <section className="bg-white rounded-lg shadow-md p-6 space-y-6">
-                <div>
-                  <h3 className="text-xl font-bold text-gray-800 mb-4">
-                    Reading List
-                  </h3>
-                  <p className="text-gray-600 mb-4">
-                    Your Reading List shows bookmarks with a specific tag. Use
-                    it to track articles you want to read later.
+            {/* Reading List Tag — instant apply, no save button needed */}
+            <section className="bg-white rounded-lg shadow-md p-6 space-y-4">
+              <div>
+                <h3 className="text-xl font-bold text-gray-800 mb-1">
+                  Reading List
+                </h3>
+                <p className="text-gray-600 text-sm mb-4">
+                  Your Reading List shows bookmarks with a specific tag. Use it
+                  to track articles you want to read later.
+                </p>
+
+                <div className="space-y-2">
+                  <label
+                    htmlFor="readingListTag"
+                    className="block text-sm font-medium text-gray-700"
+                  >
+                    Reading List Tag
+                  </label>
+                  <input
+                    type="text"
+                    id="readingListTag"
+                    value={readingListTag}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setReadingListTag(value);
+                    }}
+                    onBlur={() => {
+                      const trimmed = readingListTag.trim();
+                      if (
+                        trimmed.length > 0 &&
+                        trimmed !== preferences.readingListTag
+                      ) {
+                        updatePreferences({ readingListTag: trimmed });
+                      }
+                    }}
+                    placeholder="toread"
+                    className="w-full max-w-xs px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral/50 focus:border-coral"
+                    style={{
+                      "--tw-ring-color": "rgba(230, 100, 86, 0.5)",
+                    } as any}
+                  />
+                  <p className="text-sm text-gray-500">
+                    Bookmarks tagged with "{readingListTag || "toread"}" will
+                    appear in your Reading List.
                   </p>
-
-                  <div className="space-y-2">
-                    <label
-                      htmlFor="readingListTag"
-                      className="block text-sm font-medium text-gray-700"
-                    >
-                      Reading List Tag
-                    </label>
-                    <input
-                      type="text"
-                      id="readingListTag"
-                      value={readingListTag}
-                      onChange={(e) => setReadingListTag(e.target.value)}
-                      placeholder="toread"
-                      className="w-full max-w-xs px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral/50 focus:border-coral"
-                      style={{
-                        "--tw-ring-color": "rgba(230, 100, 86, 0.5)",
-                      } as any}
-                    />
-                    <p className="text-sm text-gray-500">
-                      Bookmarks tagged with "{readingListTag || "toread"}" will
-                      appear in your Reading List.
-                    </p>
-                  </div>
                 </div>
-              </section>
+              </div>
+            </section>
 
+            <form onSubmit={handleSubmit}>
               {/* Instapaper Integration Section */}
               <section className="bg-white rounded-lg shadow-md p-6 space-y-6">
                 <div>
