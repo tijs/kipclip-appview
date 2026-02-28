@@ -264,9 +264,16 @@ export function registerImportRoutes(app: App<any>): App<any> {
         return setSessionCookie(Response.json(resp), setCookieHeader);
       }
 
-      // Build applyWrites from chunk bookmarks
+      // Build write operations grouped per bookmark, then batch into
+      // sub-batches of max 10 operations (AT Protocol applyWrites limit).
       const did = oauthSession.did;
-      const writes = chunk.bookmarks.flatMap((b) => {
+      const MAX_WRITES = 10;
+
+      // Group writes per bookmark so we can track imported/failed per bookmark
+      const bookmarkWrites: {
+        bookmark: typeof chunk.bookmarks[0];
+        ops: any[];
+      }[] = chunk.bookmarks.map((b) => {
         const rkey = crypto.randomUUID().replace(/-/g, "").slice(0, 13);
         const createdAt = b.createdAt || new Date().toISOString();
         const bookmarkUri = `at://${did}/${BOOKMARK_COLLECTION}/${rkey}`;
@@ -294,32 +301,53 @@ export function registerImportRoutes(app: App<any>): App<any> {
           });
         }
 
-        return ops;
+        return { bookmark: b, ops };
       });
+
+      // Pack bookmarks into sub-batches that fit within MAX_WRITES
+      const subBatches: typeof bookmarkWrites[] = [];
+      let currentBatch: typeof bookmarkWrites = [];
+      let currentOps = 0;
+
+      for (const bw of bookmarkWrites) {
+        if (
+          currentOps + bw.ops.length > MAX_WRITES && currentBatch.length > 0
+        ) {
+          subBatches.push(currentBatch);
+          currentBatch = [];
+          currentOps = 0;
+        }
+        currentBatch.push(bw);
+        currentOps += bw.ops.length;
+      }
+      if (currentBatch.length > 0) subBatches.push(currentBatch);
 
       let chunkImported = 0;
       let chunkFailed = 0;
 
-      try {
-        const res = await oauthSession.makeRequest(
-          "POST",
-          `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.applyWrites`,
-          {
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ repo: did, writes }),
-          },
-        );
+      for (const batch of subBatches) {
+        const writes = batch.flatMap((bw) => bw.ops);
+        try {
+          const res = await oauthSession.makeRequest(
+            "POST",
+            `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.applyWrites`,
+            {
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ repo: did, writes }),
+            },
+          );
 
-        if (res.ok) {
-          chunkImported = chunk.bookmarks.length;
-        } else {
-          const errorText = await res.text();
-          console.error(`Import applyWrites failed: ${errorText}`);
-          chunkFailed = chunk.bookmarks.length;
+          if (res.ok) {
+            chunkImported += batch.length;
+          } else {
+            const errorText = await res.text();
+            console.error(`Import applyWrites failed: ${errorText}`);
+            chunkFailed += batch.length;
+          }
+        } catch (err) {
+          console.error("Import applyWrites error:", err);
+          chunkFailed += batch.length;
         }
-      } catch (err) {
-        console.error("Import applyWrites error:", err);
-        chunkFailed = chunk.bookmarks.length;
       }
 
       // Update chunk and job counters
