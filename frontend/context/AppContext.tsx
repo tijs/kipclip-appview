@@ -106,7 +106,18 @@ const AppContext = createContext<AppContextValue | null>(null);
 export function AppProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [bookmarks, setBookmarks] = useState<EnrichedBookmark[]>([]);
-  const [tags, setTags] = useState<EnrichedTag[]>([]);
+  const [tags, setTagsRaw] = useState<EnrichedTag[]>([]);
+  const sortTags = (t: EnrichedTag[]) =>
+    [...t].sort((a, b) => a.value.localeCompare(b.value));
+  const setTags = (
+    update: EnrichedTag[] | ((prev: EnrichedTag[]) => EnrichedTag[]),
+  ) => {
+    if (typeof update === "function") {
+      setTagsRaw((prev) => sortTags(update(prev)));
+    } else {
+      setTagsRaw(sortTags(update));
+    }
+  };
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [preferences, setPreferences] = useState<UserPreferences>(
