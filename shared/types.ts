@@ -218,6 +218,7 @@ export interface BulkOperationResponse {
   succeeded: number;
   failed: number;
   errors?: string[];
+  deletedUris?: string[]; // URIs that were actually deleted (for delete action)
   bookmarks?: EnrichedBookmark[]; // updated bookmarks (for tag operations)
 }
 

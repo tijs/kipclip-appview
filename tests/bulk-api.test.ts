@@ -143,6 +143,7 @@ Deno.test("POST /api/bookmarks/bulk - delete succeeds", async () => {
   assertEquals(body.success, true);
   assertEquals(body.succeeded, 2);
   assertEquals(body.failed, 0);
+  assertEquals(body.deletedUris, uris);
 
   // Should have called applyWrites for bookmark deletes
   const bookmarkDeletes = applyWritesCalls.find((call) =>
@@ -192,6 +193,9 @@ Deno.test("POST /api/bookmarks/bulk - delete handles partial failure", async () 
   assertEquals(body.succeeded, 10);
   assertEquals(body.failed, 2);
   assertEquals(body.errors!.length, 1);
+  // deletedUris should contain exactly the first 10 URIs (first batch succeeded)
+  assertEquals(body.deletedUris!.length, 10);
+  assertEquals(body.deletedUris, uris.slice(0, 10));
 });
 
 // ---------- Add Tags Tests ----------

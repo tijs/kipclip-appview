@@ -12,19 +12,44 @@ import {
 import { BookmarkDetail } from "./BookmarkDetail.tsx";
 import { BulkActionToolbar } from "./BulkActionToolbar.tsx";
 import { EditBookmark } from "./EditBookmark.tsx";
+import { OrphanedTagsDialog } from "./OrphanedTagsDialog.tsx";
 import { useApp } from "../context/AppContext.tsx";
 import type { DateFormatOption } from "../../shared/date-format.ts";
-import type { EnrichedBookmark } from "../../shared/types.ts";
+import type { EnrichedBookmark, EnrichedTag } from "../../shared/types.ts";
+
+/** Find tags from deleted bookmarks that no remaining bookmark uses. */
+function findOrphanedTags(
+  deletedBookmarks: EnrichedBookmark[],
+  remainingBookmarks: EnrichedBookmark[],
+  allTags: EnrichedTag[],
+): EnrichedTag[] {
+  const candidates = new Set<string>();
+  for (const b of deletedBookmarks) {
+    b.tags?.forEach((t) => candidates.add(t));
+  }
+  if (candidates.size === 0) return [];
+
+  for (const b of remainingBookmarks) {
+    b.tags?.forEach((t) => candidates.delete(t));
+  }
+  if (candidates.size === 0) return [];
+
+  return allTags.filter((t) => candidates.has(t.value));
+}
 
 export function BookmarkList() {
   const {
+    bookmarks: allBookmarks,
     filteredBookmarks: bookmarks,
     totalBookmarks,
     tags: availableTags,
+    selectedTags,
     preferences,
     addBookmark,
     updateBookmark,
     deleteBookmark,
+    deleteTag,
+    toggleTag,
     loadBookmarks: loadBookmarksFromContext,
     loadTags,
     bookmarkSearchQuery,
@@ -45,6 +70,9 @@ export function BookmarkList() {
   const [viewMode, setViewModeState] = useState<ViewMode>(getStoredViewMode);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
+
+  // Orphaned tags prompt
+  const [orphanedTags, setOrphanedTags] = useState<EnrichedTag[]>([]);
 
   // Select mode state
   const [isSelectMode, setIsSelectMode] = useState(false);
@@ -178,9 +206,16 @@ export function BookmarkList() {
   }
 
   function handleBookmarkDeleted(uri: string) {
+    const deleted = allBookmarks.find((b) => b.uri === uri);
+    const remaining = allBookmarks.filter((b) => b.uri !== uri);
     deleteBookmark(uri);
     setEditingBookmark(null);
     setDetailBookmark(null);
+
+    if (deleted?.tags?.length) {
+      const orphaned = findOrphanedTags([deleted], remaining, availableTags);
+      if (orphaned.length > 0) setOrphanedTags(orphaned);
+    }
   }
 
   function handleBookmarkAdded(bookmark: EnrichedBookmark) {
@@ -589,6 +624,21 @@ export function BookmarkList() {
         />
       )}
 
+      {orphanedTags.length > 0 && (
+        <OrphanedTagsDialog
+          tags={orphanedTags}
+          onComplete={(deletedTagUris) => {
+            for (const uri of deletedTagUris) {
+              const tag = orphanedTags.find((t) => t.uri === uri);
+              deleteTag(uri);
+              if (tag && selectedTags.has(tag.value)) toggleTag(tag.value);
+            }
+            setOrphanedTags([]);
+          }}
+          onDismiss={() => setOrphanedTags([])}
+        />
+      )}
+
       {isSelectMode && selectedUris.size > 0 && (
         <BulkActionToolbar
           selectedCount={selectedUris.size}
@@ -599,17 +649,44 @@ export function BookmarkList() {
           onSelectAll={selectAll}
           onDeselectAll={deselectAll}
           onComplete={(deletedUris, updatedBookmarks) => {
+            const deletedSet = new Set(deletedUris);
+            const deleted = allBookmarks.filter((b) => deletedSet.has(b.uri));
+            const remaining = allBookmarks.filter((b) =>
+              !deletedSet.has(b.uri)
+            );
             for (const uri of deletedUris) deleteBookmark(uri);
             for (const b of updatedBookmarks) updateBookmark(b);
             loadTags();
             exitSelectMode();
+
+            if (deletedUris.length > 0) {
+              const orphaned = findOrphanedTags(
+                deleted,
+                remaining,
+                availableTags,
+              );
+              if (orphaned.length > 0) setOrphanedTags(orphaned);
+            }
           }}
           onPartialFailure={(deletedUris, updatedBookmarks, failedUris) => {
+            const deletedSet = new Set(deletedUris);
+            const deleted = allBookmarks.filter((b) => deletedSet.has(b.uri));
+            const remaining = allBookmarks.filter((b) =>
+              !deletedSet.has(b.uri)
+            );
             for (const uri of deletedUris) deleteBookmark(uri);
             for (const b of updatedBookmarks) updateBookmark(b);
             loadTags();
-            // Keep only failed URIs selected
             setSelectedUris(new Set(failedUris));
+
+            if (deletedUris.length > 0) {
+              const orphaned = findOrphanedTags(
+                deleted,
+                remaining,
+                availableTags,
+              );
+              if (orphaned.length > 0) setOrphanedTags(orphaned);
+            }
           }}
         />
       )}

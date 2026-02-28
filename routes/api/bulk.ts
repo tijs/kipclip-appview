@@ -100,32 +100,37 @@ async function bulkDelete(
   const did = oauthSession.did;
   const rkeys = uris.map((uri) => extractRkey(uri)).filter(Boolean) as string[];
 
-  // Build delete operations for bookmarks
-  const deleteOps = rkeys.map((rkey) => ({
+  // Build delete operations for bookmarks, keeping URI association
+  const deleteOps = rkeys.map((rkey, i) => ({
     $type: "com.atproto.repo.applyWrites#delete",
     collection: BOOKMARK_COLLECTION,
     rkey,
+    _uri: uris[i], // track which URI this op belongs to
   }));
 
   // Batch into groups of MAX_WRITES
   let succeeded = 0;
   let failed = 0;
   const errors: string[] = [];
+  const deletedUris: string[] = [];
 
   for (let i = 0; i < deleteOps.length; i += MAX_WRITES) {
     const batch = deleteOps.slice(i, i + MAX_WRITES);
+    // Strip internal _uri before sending to PDS
+    const writes = batch.map(({ _uri: _, ...op }) => op);
     try {
       const res = await oauthSession.makeRequest(
         "POST",
         `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.applyWrites`,
         {
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ repo: did, writes: batch }),
+          body: JSON.stringify({ repo: did, writes }),
         },
       );
 
       if (res.ok) {
         succeeded += batch.length;
+        for (const op of batch) deletedUris.push(op._uri);
       } else {
         const errorText = await res.text();
         console.error("Bulk delete batch failed:", errorText);
@@ -163,6 +168,7 @@ async function bulkDelete(
     succeeded,
     failed,
     errors: errors.length > 0 ? errors : undefined,
+    deletedUris,
   };
 }
 

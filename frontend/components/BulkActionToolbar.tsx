@@ -62,17 +62,15 @@ export function BulkActionToolbar({
       const data: BulkOperationResponse = await res.json();
 
       if (data.success) {
-        onComplete(uris, []);
+        onComplete(data.deletedUris || uris, []);
       } else if (data.succeeded > 0) {
-        // Partial success: figure out which ones succeeded
-        // Since we can't know exactly which failed, we reload
-        // For now, treat all as potentially deleted and let the user retry
-        const failedCount = data.failed;
-        setError(`${data.succeeded} deleted, ${failedCount} failed`);
+        const deletedSet = new Set(data.deletedUris || []);
+        const failedUris = uris.filter((u) => !deletedSet.has(u));
+        setError(`${data.succeeded} deleted, ${data.failed} failed`);
         onPartialFailure(
-          uris.slice(0, data.succeeded),
+          data.deletedUris || [],
           [],
-          uris.slice(data.succeeded),
+          failedUris,
         );
       } else {
         setError(data.errors?.[0] || "Delete failed");
