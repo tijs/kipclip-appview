@@ -1,22 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useApp } from "../context/AppContext.tsx";
-import type {
-  ImportResponse,
-  ImportStatusResponse,
-} from "../../shared/types.ts";
+import type { ImportResponse, ImportResult } from "../../shared/types.ts";
 
 type ImportState =
   | { status: "idle" }
   | { status: "uploading" }
-  | {
-    status: "processing";
-    jobId: string;
-    progress: ImportStatusResponse;
-  }
-  | { status: "complete"; result: ImportStatusResponse }
+  | { status: "complete"; result: ImportResult }
   | { status: "error"; message: string };
-
-const POLL_INTERVAL = 2000;
 
 export function ImportBookmarks() {
   const [importState, setImportState] = useState<ImportState>({
@@ -25,56 +15,11 @@ export function ImportBookmarks() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const pollRef = useRef<number | null>(null);
   const { loadInitialData } = useApp();
-
-  // Clean up polling on unmount
-  useEffect(() => {
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, []);
 
   function handleFileSelect(file: File | null) {
     setSelectedFile(file);
     setImportState({ status: "idle" });
-  }
-
-  function startPolling(jobId: string) {
-    if (pollRef.current) clearInterval(pollRef.current);
-
-    pollRef.current = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/import/status/${jobId}`);
-        if (!res.ok) return;
-
-        const data: ImportStatusResponse = await res.json();
-
-        if (data.status === "complete") {
-          if (pollRef.current) clearInterval(pollRef.current);
-          pollRef.current = null;
-          setImportState({ status: "complete", result: data });
-          setSelectedFile(null);
-          if (fileInputRef.current) fileInputRef.current.value = "";
-          await loadInitialData();
-        } else if (data.status === "failed") {
-          if (pollRef.current) clearInterval(pollRef.current);
-          pollRef.current = null;
-          setImportState({
-            status: "error",
-            message: (data as any).error || "Import failed during processing",
-          });
-        } else {
-          setImportState({
-            status: "processing",
-            jobId,
-            progress: data,
-          });
-        }
-      } catch {
-        // Network error — keep polling, it may recover
-      }
-    }, POLL_INTERVAL) as unknown as number;
   }
 
   async function handleImport() {
@@ -101,37 +46,9 @@ export function ImportBookmarks() {
         return;
       }
 
-      // If a jobId was returned, switch to polling mode
-      if (data.jobId) {
-        setImportState({
-          status: "processing",
-          jobId: data.jobId,
-          progress: {
-            status: "processing",
-            imported: 0,
-            skipped: data.result?.skipped || 0,
-            failed: 0,
-            total: data.result?.total || 0,
-            format: data.result?.format || "",
-            progress: 0,
-          },
-        });
-        startPolling(data.jobId);
-        return;
-      }
-
-      // No jobId means synchronous completion (e.g. all duplicates)
       setImportState({
         status: "complete",
-        result: {
-          status: "complete",
-          imported: data.result?.imported || 0,
-          skipped: data.result?.skipped || 0,
-          failed: data.result?.failed || 0,
-          total: data.result?.total || 0,
-          format: data.result?.format || "",
-          progress: 100,
-        },
+        result: data.result!,
       });
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -246,13 +163,12 @@ export function ImportBookmarks() {
                   <button
                     type="button"
                     onClick={handleImport}
-                    disabled={importState.status === "uploading" ||
-                      importState.status === "processing"}
+                    disabled={importState.status === "uploading"}
                     className="px-6 py-2 rounded-lg font-bold text-white shadow hover:shadow-md transition disabled:opacity-50"
                     style={{ backgroundColor: "var(--coral)" }}
                   >
                     {importState.status === "uploading"
-                      ? "Uploading..."
+                      ? "Importing..."
                       : "Import Bookmarks"}
                   </button>
                   <button
@@ -295,28 +211,6 @@ export function ImportBookmarks() {
               </div>
             )}
         </div>
-
-        {/* Progress bar during background processing */}
-        {importState.status === "processing" && (
-          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-blue-800 font-medium mb-2">
-              Importing... {importState.progress.imported}/
-              {importState.progress.total - importState.progress.skipped}{" "}
-              bookmarks
-            </p>
-            <div className="w-full bg-blue-200 rounded-full h-2">
-              <div
-                className="bg-blue-600 h-2 rounded-full transition-all duration-500"
-                style={{ width: `${importState.progress.progress}%` }}
-              />
-            </div>
-            {importState.progress.skipped > 0 && (
-              <p className="text-xs text-blue-600 mt-1">
-                {importState.progress.skipped} duplicates skipped
-              </p>
-            )}
-          </div>
-        )}
 
         {/* Import result */}
         {importState.status === "complete" && importState.result && (

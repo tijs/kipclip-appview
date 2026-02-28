@@ -1,34 +1,24 @@
 /**
- * Import API routes.
- * POST /api/import — parse file, dedup, enqueue background processing via KV queue.
- * GET /api/import/status/:jobId — poll job progress.
+ * Import API route.
+ * POST /api/import — parse file, dedup, process bookmarks synchronously.
  */
 
 import type { App } from "@fresh/core";
 import { parseBookmarkFile } from "../../lib/import-parsers.ts";
 import {
-  createImportJob,
-  enqueueFirstBatch,
-  getImportJob,
-} from "../../lib/import-queue.ts";
-import {
+  ANNOTATION_COLLECTION,
   BOOKMARK_COLLECTION,
   createAuthErrorResponse,
+  createNewTagRecords,
   getSessionFromRequest,
   setSessionCookie,
 } from "../../lib/route-utils.ts";
 import { getBaseUrl } from "../../shared/url-utils.ts";
-import type {
-  ImportedBookmark,
-  ImportJob,
-  ImportResponse,
-  ImportStatusResponse,
-} from "../../shared/types.ts";
+import type { ImportedBookmark, ImportResponse } from "../../shared/types.ts";
 
-const CHUNK_SIZE = 100;
+const BATCH_SIZE = 200;
 
 export function registerImportRoutes(app: App<any>): App<any> {
-  // POST /api/import — parse, dedup, enqueue for background processing
   app = app.post("/api/import", async (ctx) => {
     try {
       const { session: oauthSession, setCookieHeader, error } =
@@ -86,7 +76,7 @@ export function registerImportRoutes(app: App<any>): App<any> {
         return setSessionCookie(Response.json(result), setCookieHeader);
       }
 
-      // Fetch existing bookmarks for dedup (fast even for 10K — pagination only)
+      // Fetch existing bookmarks for dedup
       const existingUrls = new Set<string>();
       let cursor: string | undefined;
       do {
@@ -128,35 +118,78 @@ export function registerImportRoutes(app: App<any>): App<any> {
         return setSessionCookie(Response.json(result), setCookieHeader);
       }
 
-      // Split into chunks for background processing
-      const chunks: ImportedBookmark[][] = [];
-      for (let i = 0; i < newBookmarks.length; i += CHUNK_SIZE) {
-        chunks.push(newBookmarks.slice(i, i + CHUNK_SIZE));
+      // Process all bookmarks synchronously via applyWrites batching
+      let imported = 0;
+      let failed = 0;
+      const did = oauthSession.did;
+
+      for (let i = 0; i < newBookmarks.length; i += BATCH_SIZE) {
+        const batch = newBookmarks.slice(i, i + BATCH_SIZE);
+        const writes = batch.flatMap((b) => {
+          const rkey = crypto.randomUUID().replace(/-/g, "").slice(0, 13);
+          const createdAt = b.createdAt || new Date().toISOString();
+          const bookmarkUri = `at://${did}/${BOOKMARK_COLLECTION}/${rkey}`;
+
+          const ops: any[] = [
+            {
+              $type: "com.atproto.repo.applyWrites#create",
+              collection: BOOKMARK_COLLECTION,
+              rkey,
+              value: { subject: b.url, createdAt, tags: b.tags },
+            },
+          ];
+
+          if (b.title || b.description) {
+            ops.push({
+              $type: "com.atproto.repo.applyWrites#create",
+              collection: ANNOTATION_COLLECTION,
+              rkey,
+              value: {
+                subject: bookmarkUri,
+                title: b.title,
+                description: b.description,
+                createdAt,
+              },
+            });
+          }
+
+          return ops;
+        });
+
+        try {
+          const res = await oauthSession.makeRequest(
+            "POST",
+            `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.applyWrites`,
+            {
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ repo: did, writes }),
+            },
+          );
+
+          if (res.ok) {
+            imported += batch.length;
+          } else {
+            const errorText = await res.text();
+            console.error(`Import applyWrites failed: ${errorText}`);
+            failed += batch.length;
+          }
+        } catch (err) {
+          console.error("Import applyWrites error:", err);
+          failed += batch.length;
+        }
       }
 
-      // Collect unique tags for creation after all chunks are processed
+      // Create tag records for any new tags
       const allTags = [...new Set(newBookmarks.flatMap((b) => b.tags))];
-
-      // Create job in KV
-      const jobId = crypto.randomUUID();
-      const job: ImportJob = {
-        status: "processing",
-        total,
-        imported: 0,
-        skipped,
-        failed: 0,
-        format,
-        totalChunks: chunks.length,
-        processedChunks: 0,
-      };
-
-      await createImportJob(jobId, job, chunks, allTags);
-      await enqueueFirstBatch(jobId, oauthSession.did);
+      if (allTags.length > 0) {
+        await createNewTagRecords(oauthSession, allTags).catch((err) =>
+          console.error("Failed to create tag records during import:", err)
+        );
+      }
 
       const result: ImportResponse = {
         success: true,
-        jobId,
-        result: { imported: 0, skipped, failed: 0, total, format },
+        result: { imported, skipped, failed, total, format },
       };
       return setSessionCookie(Response.json(result), setCookieHeader);
     } catch (error: any) {
@@ -165,48 +198,6 @@ export function registerImportRoutes(app: App<any>): App<any> {
         { success: false, error: error.message } as ImportResponse,
         { status: 500 },
       );
-    }
-  });
-
-  // GET /api/import/status/:jobId — poll job progress
-  app = app.get("/api/import/status/:jobId", async (ctx) => {
-    try {
-      const { session: oauthSession, setCookieHeader, error } =
-        await getSessionFromRequest(ctx.req);
-      if (!oauthSession) {
-        return createAuthErrorResponse(error);
-      }
-
-      const jobId = ctx.params.jobId;
-      const job = await getImportJob(jobId);
-
-      if (!job) {
-        return Response.json(
-          { error: "Job not found or expired" },
-          { status: 404 },
-        );
-      }
-
-      const progress = job.total > 0
-        ? Math.round(
-          ((job.imported + job.failed + job.skipped) / job.total) * 100,
-        )
-        : 100;
-
-      const response: ImportStatusResponse = {
-        status: job.status,
-        imported: job.imported,
-        skipped: job.skipped,
-        failed: job.failed,
-        total: job.total,
-        format: job.format,
-        progress,
-      };
-
-      return setSessionCookie(Response.json(response), setCookieHeader);
-    } catch (error: any) {
-      console.error("Import status error:", error);
-      return Response.json({ error: error.message }, { status: 500 });
     }
   });
 

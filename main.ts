@@ -14,11 +14,6 @@ try {
 
 import { App, staticFiles } from "@fresh/core";
 import { initializeTables } from "./lib/db.ts";
-import {
-  isImportBatchMessage,
-  processImportBatch,
-} from "./lib/import-queue.ts";
-import { getKv } from "./lib/kv.ts";
 import { initOAuth } from "./lib/oauth-config.ts";
 import { captureError } from "./lib/sentry.ts";
 
@@ -38,18 +33,6 @@ import { registerStaticRoutes } from "./routes/static.ts";
 
 // Run database migrations on startup
 await initializeTables();
-
-// Register KV queue listener for background import processing.
-// Skip during tests — the listener creates persistent background ops that
-// trigger Deno's resource leak detection across all test files.
-if (!Deno.env.get("KIPCLIP_TESTING")) {
-  const kv = await getKv();
-  kv.listenQueue(async (msg: unknown) => {
-    if (isImportBatchMessage(msg)) {
-      await processImportBatch(msg);
-    }
-  });
-}
 
 // Create the Fresh app
 let app = new App();

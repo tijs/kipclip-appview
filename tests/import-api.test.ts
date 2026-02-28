@@ -1,6 +1,6 @@
 /**
- * Integration tests for the import API endpoints.
- * Tests auth, file parsing, dedup, async job creation, and status polling.
+ * Integration tests for the import API endpoint.
+ * Tests auth, file parsing, dedup, and synchronous bookmark processing.
  */
 
 import "./test-setup.ts";
@@ -28,6 +28,23 @@ function createImportRequest(
     method: "POST",
     body: formData,
   });
+}
+
+/** Create a mock session that returns OK for applyWrites and listRecords. */
+function createImportSession(
+  existingRecords: Array<{ uri: string; cid: string; value: unknown }> = [],
+) {
+  const pdsResponses = new Map<string, Response>();
+  pdsResponses.set("listRecords", listRecordsResponse(existingRecords));
+  pdsResponses.set(
+    "applyWrites",
+    new Response(JSON.stringify({ results: [] }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }),
+  );
+  // Default OK for createRecord (tag creation)
+  return createMockSessionResult({ pdsResponses });
 }
 
 Deno.test("POST /api/import - returns 401 when not authenticated", async () => {
@@ -83,15 +100,9 @@ Deno.test({
 });
 
 Deno.test({
-  name: "POST /api/import - returns jobId for async processing",
-  sanitizeResources: false, // KV singleton opens on first use, persists across tests
+  name: "POST /api/import - imports bookmarks synchronously",
   async fn() {
-    const pdsResponses = new Map<string, Response>();
-    pdsResponses.set("listRecords", listRecordsResponse([]));
-
-    setTestSessionProvider(() =>
-      Promise.resolve(createMockSessionResult({ pdsResponses }))
-    );
+    setTestSessionProvider(() => Promise.resolve(createImportSession()));
 
     const pinboardJson = JSON.stringify([
       {
@@ -116,10 +127,11 @@ Deno.test({
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(body.success, true);
-    assertEquals(typeof body.jobId, "string");
+    assertEquals(body.jobId, undefined);
     assertEquals(body.result.format, "pinboard");
     assertEquals(body.result.total, 2);
     assertEquals(body.result.skipped, 0);
+    assertEquals(body.result.imported, 2);
 
     setTestSessionProvider(null);
   },
@@ -128,36 +140,31 @@ Deno.test({
 Deno.test({
   name: "POST /api/import - returns synchronous result when all duplicates",
   async fn() {
-    const pdsResponses = new Map<string, Response>();
-    // All bookmarks already exist
-    pdsResponses.set(
-      "listRecords",
-      listRecordsResponse([
-        {
-          uri:
-            "at://did:plc:test123/community.lexicon.bookmarks.bookmark/existing1",
-          cid: "bafyexisting1",
-          value: {
-            subject: "https://example.com/one",
-            createdAt: "2024-01-01T00:00:00Z",
-            tags: [],
-          },
-        },
-        {
-          uri:
-            "at://did:plc:test123/community.lexicon.bookmarks.bookmark/existing2",
-          cid: "bafyexisting2",
-          value: {
-            subject: "https://example.com/two",
-            createdAt: "2024-01-01T00:00:00Z",
-            tags: [],
-          },
-        },
-      ]),
-    );
-
     setTestSessionProvider(() =>
-      Promise.resolve(createMockSessionResult({ pdsResponses }))
+      Promise.resolve(
+        createImportSession([
+          {
+            uri:
+              "at://did:plc:test123/community.lexicon.bookmarks.bookmark/existing1",
+            cid: "bafyexisting1",
+            value: {
+              subject: "https://example.com/one",
+              createdAt: "2024-01-01T00:00:00Z",
+              tags: [],
+            },
+          },
+          {
+            uri:
+              "at://did:plc:test123/community.lexicon.bookmarks.bookmark/existing2",
+            cid: "bafyexisting2",
+            value: {
+              subject: "https://example.com/two",
+              createdAt: "2024-01-01T00:00:00Z",
+              tags: [],
+            },
+          },
+        ]),
+      )
     );
 
     const pinboardJson = JSON.stringify([
@@ -171,7 +178,6 @@ Deno.test({
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(body.success, true);
-    // No jobId when all are duplicates — synchronous response
     assertEquals(body.jobId, undefined);
     assertEquals(body.result.total, 2);
     assertEquals(body.result.skipped, 2);
@@ -182,27 +188,23 @@ Deno.test({
 });
 
 Deno.test({
-  name: "POST /api/import - partial dedup returns jobId for remaining",
+  name: "POST /api/import - partial dedup imports only new bookmarks",
   async fn() {
-    const pdsResponses = new Map<string, Response>();
-    pdsResponses.set(
-      "listRecords",
-      listRecordsResponse([
-        {
-          uri:
-            "at://did:plc:test123/community.lexicon.bookmarks.bookmark/existing1",
-          cid: "bafyexisting1",
-          value: {
-            subject: "https://example.com/one",
-            createdAt: "2024-01-01T00:00:00Z",
-            tags: [],
-          },
-        },
-      ]),
-    );
-
     setTestSessionProvider(() =>
-      Promise.resolve(createMockSessionResult({ pdsResponses }))
+      Promise.resolve(
+        createImportSession([
+          {
+            uri:
+              "at://did:plc:test123/community.lexicon.bookmarks.bookmark/existing1",
+            cid: "bafyexisting1",
+            value: {
+              subject: "https://example.com/one",
+              createdAt: "2024-01-01T00:00:00Z",
+              tags: [],
+            },
+          },
+        ]),
+      )
     );
 
     const pinboardJson = JSON.stringify([
@@ -220,23 +222,19 @@ Deno.test({
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(body.success, true);
-    assertEquals(typeof body.jobId, "string");
+    assertEquals(body.jobId, undefined);
     assertEquals(body.result.total, 2);
     assertEquals(body.result.skipped, 1);
+    assertEquals(body.result.imported, 1);
 
     setTestSessionProvider(null);
   },
 });
 
 Deno.test({
-  name: "POST /api/import - Netscape HTML returns jobId",
+  name: "POST /api/import - Netscape HTML imports synchronously",
   async fn() {
-    const pdsResponses = new Map<string, Response>();
-    pdsResponses.set("listRecords", listRecordsResponse([]));
-
-    setTestSessionProvider(() =>
-      Promise.resolve(createMockSessionResult({ pdsResponses }))
-    );
+    setTestSessionProvider(() => Promise.resolve(createImportSession()));
 
     const html = `<!DOCTYPE NETSCAPE-Bookmark-file-1>
 <DL><p>
@@ -249,23 +247,18 @@ Deno.test({
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(body.success, true);
-    assertEquals(typeof body.jobId, "string");
     assertEquals(body.result.format, "netscape");
     assertEquals(body.result.total, 1);
+    assertEquals(body.result.imported, 1);
 
     setTestSessionProvider(null);
   },
 });
 
 Deno.test({
-  name: "POST /api/import - Pocket CSV returns jobId",
+  name: "POST /api/import - Pocket CSV imports synchronously",
   async fn() {
-    const pdsResponses = new Map<string, Response>();
-    pdsResponses.set("listRecords", listRecordsResponse([]));
-
-    setTestSessionProvider(() =>
-      Promise.resolve(createMockSessionResult({ pdsResponses }))
-    );
+    setTestSessionProvider(() => Promise.resolve(createImportSession()));
 
     const csv =
       "url,title,tags,time_added\nhttps://example.com/pocket,Pocket Article,tech,1700000000\n";
@@ -276,23 +269,18 @@ Deno.test({
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(body.success, true);
-    assertEquals(typeof body.jobId, "string");
     assertEquals(body.result.format, "pocket");
     assertEquals(body.result.total, 1);
+    assertEquals(body.result.imported, 1);
 
     setTestSessionProvider(null);
   },
 });
 
 Deno.test({
-  name: "POST /api/import - Instapaper CSV returns jobId",
+  name: "POST /api/import - Instapaper CSV imports synchronously",
   async fn() {
-    const pdsResponses = new Map<string, Response>();
-    pdsResponses.set("listRecords", listRecordsResponse([]));
-
-    setTestSessionProvider(() =>
-      Promise.resolve(createMockSessionResult({ pdsResponses }))
-    );
+    setTestSessionProvider(() => Promise.resolve(createImportSession()));
 
     const csv =
       "URL,Title,Selection,Folder\nhttps://example.com/insta,Instapaper Article,,Tech\n";
@@ -303,9 +291,9 @@ Deno.test({
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(body.success, true);
-    assertEquals(typeof body.jobId, "string");
     assertEquals(body.result.format, "instapaper");
     assertEquals(body.result.total, 1);
+    assertEquals(body.result.imported, 1);
 
     setTestSessionProvider(null);
   },
@@ -364,70 +352,39 @@ Deno.test({
 });
 
 Deno.test({
-  name: "GET /api/import/status/:jobId - returns 401 when not authenticated",
-  async fn() {
-    setTestSessionProvider(null);
-    const req = new Request(
-      "https://kipclip.com/api/import/status/fake-job-id",
-    );
-    const res = await handler(req);
-
-    assertEquals(res.status, 401);
-  },
-});
-
-Deno.test({
-  name: "GET /api/import/status/:jobId - returns 404 for unknown job",
-  async fn() {
-    setTestSessionProvider(() => Promise.resolve(createMockSessionResult()));
-
-    const req = new Request(
-      "https://kipclip.com/api/import/status/nonexistent-job-id",
-    );
-    const res = await handler(req);
-
-    assertEquals(res.status, 404);
-    const body = await res.json();
-    assertEquals(body.error, "Job not found or expired");
-
-    setTestSessionProvider(null);
-  },
-});
-
-Deno.test({
-  name: "GET /api/import/status/:jobId - returns progress for active job",
+  name: "POST /api/import - handles applyWrites failure gracefully",
   async fn() {
     const pdsResponses = new Map<string, Response>();
     pdsResponses.set("listRecords", listRecordsResponse([]));
+    pdsResponses.set(
+      "applyWrites",
+      new Response(JSON.stringify({ error: "Internal error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
 
     setTestSessionProvider(() =>
       Promise.resolve(createMockSessionResult({ pdsResponses }))
     );
 
-    // First create a job via import
     const pinboardJson = JSON.stringify([
       {
-        href: "https://example.com/status-test",
-        description: "Test",
+        href: "https://example.com/fail-test",
+        description: "Will fail",
         tags: "",
       },
     ]);
-    const importReq = createImportRequest(pinboardJson, "pinboard.json");
-    const importRes = await handler(importReq);
-    const importBody = await importRes.json();
-    const jobId = importBody.jobId;
 
-    // Now poll status
-    const statusReq = new Request(
-      `https://kipclip.com/api/import/status/${jobId}`,
-    );
-    const statusRes = await handler(statusReq);
+    const req = createImportRequest(pinboardJson, "pinboard.json");
+    const res = await handler(req);
 
-    assertEquals(statusRes.status, 200);
-    const statusBody = await statusRes.json();
-    assertEquals(statusBody.total, 1);
-    assertEquals(statusBody.format, "pinboard");
-    assertEquals(typeof statusBody.progress, "number");
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.success, true);
+    assertEquals(body.result.total, 1);
+    assertEquals(body.result.imported, 0);
+    assertEquals(body.result.failed, 1);
 
     setTestSessionProvider(null);
   },
