@@ -191,26 +191,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSettings(data.settings);
 
       if (data.preferences) {
-        setPreferences(data.preferences);
-        // Sync to localStorage so formatDate fallback stays current
-        setDateFormat(data.preferences.dateFormat as any);
-
-        // Migration: if localStorage has a non-default value but PDS has
-        // the default, push localStorage value to PDS once
+        // Read localStorage BEFORE overwriting — needed for migration check
         const localFormat = getDateFormat();
-        if (
-          localFormat !== "us" &&
-          data.preferences.dateFormat === "us"
-        ) {
+        const pdsFormat = data.preferences.dateFormat;
+
+        if (localFormat !== "us" && pdsFormat === "us") {
+          // localStorage has a user-chosen value, PDS still has default.
+          // Keep the local value and try to push it to PDS.
+          setPreferences({ dateFormat: localFormat });
           apiPut("/api/preferences", { dateFormat: localFormat })
-            .then((res) => {
-              if (res.ok) {
-                setPreferences({ dateFormat: localFormat });
-              }
-            })
             .catch(() => {
               // Silently ignore — user may lack new OAuth scope
             });
+        } else {
+          // PDS has a real preference (or both are default) — use it
+          setPreferences(data.preferences);
+          setDateFormat(pdsFormat as any);
         }
       }
     } catch (err) {
@@ -239,6 +235,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Preferences actions
   async function updatePreferences(updates: Partial<UserPreferences>) {
+    // Optimistically update context + localStorage immediately so the
+    // value survives full-page navigations even if the API call is slow
+    setPreferences((prev) => ({ ...prev, ...updates }));
+    if (updates.dateFormat) {
+      setDateFormat(updates.dateFormat as any);
+    }
+
     try {
       const response = await apiPut("/api/preferences", updates);
       if (!response.ok) {
@@ -247,17 +250,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const data = await response.json();
       if (data.preferences) {
         setPreferences(data.preferences);
-        // Keep localStorage in sync as fallback
-        if (data.preferences.dateFormat) {
-          setDateFormat(data.preferences.dateFormat as any);
-        }
       }
     } catch {
-      // Fall back to localStorage-only if PDS write fails (missing scope)
-      if (updates.dateFormat) {
-        setDateFormat(updates.dateFormat as any);
-        setPreferences((prev) => ({ ...prev, ...updates }));
-      }
+      // PDS write failed (e.g. missing OAuth scope) — optimistic update
+      // and localStorage already applied above, so the UI stays correct
     }
   }
 
