@@ -187,9 +187,7 @@ async function bulkUpdateTags(
   for (let i = 0; i < uris.length; i += CONCURRENCY) {
     const batch = uris.slice(i, i + CONCURRENCY);
     const results = await Promise.allSettled(
-      batch.map((uri) =>
-        updateBookmarkTags(oauthSession, uri, tags, mode)
-      ),
+      batch.map((uri) => updateBookmarkTags(oauthSession, uri, tags, mode)),
     );
 
     for (const result of results) {

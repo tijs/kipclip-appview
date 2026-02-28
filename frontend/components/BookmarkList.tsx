@@ -305,7 +305,9 @@ export function BookmarkList() {
               {bookmarks.length > 0 && (
                 <button
                   type="button"
-                  onClick={isSelectMode ? exitSelectMode : () => setIsSelectMode(true)}
+                  onClick={isSelectMode
+                    ? exitSelectMode
+                    : () => setIsSelectMode(true)}
                   className={`px-3 py-2 text-sm rounded-md border ${
                     isSelectMode
                       ? "border-gray-300 text-gray-700 hover:bg-gray-50"

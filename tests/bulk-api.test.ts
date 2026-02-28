@@ -75,7 +75,9 @@ Deno.test("POST /api/bookmarks/bulk - returns 401 without auth", async () => {
 
 Deno.test("POST /api/bookmarks/bulk - rejects missing action", async () => {
   setTestSessionProvider(() =>
-    Promise.resolve(createBulkSession(() => new Response("{}", { status: 200 })))
+    Promise.resolve(
+      createBulkSession(() => new Response("{}", { status: 200 })),
+    )
   );
 
   const res = await handler(bulkRequest({ uris: ["a"] }));
@@ -86,7 +88,9 @@ Deno.test("POST /api/bookmarks/bulk - rejects missing action", async () => {
 
 Deno.test("POST /api/bookmarks/bulk - rejects empty uris", async () => {
   setTestSessionProvider(() =>
-    Promise.resolve(createBulkSession(() => new Response("{}", { status: 200 })))
+    Promise.resolve(
+      createBulkSession(() => new Response("{}", { status: 200 })),
+    )
   );
 
   const res = await handler(bulkRequest({ action: "delete", uris: [] }));
@@ -95,7 +99,9 @@ Deno.test("POST /api/bookmarks/bulk - rejects empty uris", async () => {
 
 Deno.test("POST /api/bookmarks/bulk - rejects add-tags without tags", async () => {
   setTestSessionProvider(() =>
-    Promise.resolve(createBulkSession(() => new Response("{}", { status: 200 })))
+    Promise.resolve(
+      createBulkSession(() => new Response("{}", { status: 200 })),
+    )
   );
 
   const res = await handler(bulkRequest({ action: "add-tags", uris: ["a"] }));
@@ -200,10 +206,13 @@ Deno.test("POST /api/bookmarks/bulk - add-tags succeeds", async () => {
           url.includes(BOOKMARK_COLLECTION)
         ) {
           const rkey = new URL(url).searchParams.get("rkey") || "rkey1";
-          return new Response(JSON.stringify(bookmarkRecord(rkey, ["existing"])), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
+          return new Response(
+            JSON.stringify(bookmarkRecord(rkey, ["existing"])),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            },
+          );
         }
         // getRecord for annotation - return 404 (no annotation)
         if (

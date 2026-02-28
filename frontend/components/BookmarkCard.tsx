@@ -217,16 +217,18 @@ export function BookmarkCard(
     onImageError,
   }: BookmarkCardProps,
 ) {
-  const selectedClass = isSelected
-    ? "border-2 border-blue-500 bg-blue-50"
-    : "";
+  const selectedClass = isSelected ? "border-2 border-blue-500 bg-blue-50" : "";
   const dragOverClass = !isSelectMode && isDragOver
     ? "border-2 border-blue-500 bg-blue-50"
     : "";
 
   const className = viewMode === "cards"
-    ? `card transition-all cursor-pointer relative ${selectedClass || dragOverClass}`
-    : `px-4 py-3 bg-white rounded-lg border border-gray-200 transition-all cursor-pointer hover:bg-gray-50 ${selectedClass || dragOverClass}`;
+    ? `card transition-all cursor-pointer relative ${
+      selectedClass || dragOverClass
+    }`
+    : `px-4 py-3 bg-white rounded-lg border border-gray-200 transition-all cursor-pointer hover:bg-gray-50 ${
+      selectedClass || dragOverClass
+    }`;
 
   return (
     <div

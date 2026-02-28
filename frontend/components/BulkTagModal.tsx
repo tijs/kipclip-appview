@@ -47,8 +47,12 @@ export function BulkTagModal({
         </h3>
         <p className="text-sm text-gray-500 mb-4">
           {mode === "add"
-            ? `Add tags to ${selectedBookmarks.length} selected bookmark${selectedBookmarks.length === 1 ? "" : "s"}`
-            : `Remove tags from ${selectedBookmarks.length} selected bookmark${selectedBookmarks.length === 1 ? "" : "s"}`}
+            ? `Add tags to ${selectedBookmarks.length} selected bookmark${
+              selectedBookmarks.length === 1 ? "" : "s"
+            }`
+            : `Remove tags from ${selectedBookmarks.length} selected bookmark${
+              selectedBookmarks.length === 1 ? "" : "s"
+            }`}
         </p>
 
         {mode === "add"
