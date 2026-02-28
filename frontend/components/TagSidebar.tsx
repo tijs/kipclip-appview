@@ -207,6 +207,9 @@ export function TagSidebar() {
         <div className="flex items-center gap-3 px-3 py-3 overflow-x-auto">
           <h2 className="text-sm font-bold text-gray-800 flex-shrink-0">
             Tags
+            <span className="font-normal text-gray-500 ml-1">
+              ({tags.length})
+            </span>
           </h2>
           {error
             ? (
@@ -285,10 +288,15 @@ export function TagSidebar() {
       {/* Desktop: Vertical sidebar */}
       <aside
         style={{ backgroundColor: "var(--sidebar-bg)" }}
-        className="hidden md:flex md:flex-col w-64 border-r border-gray-200 p-4"
+        className="hidden md:flex md:flex-col w-64 border-r border-gray-200 px-4 pt-8 pb-4"
       >
         <div className="mb-4">
-          <h2 className="text-lg font-bold text-gray-800 mb-3">Tags</h2>
+          <h2 className="text-2xl font-bold text-gray-800 mb-3">
+            Tags
+            <span className="text-sm font-normal text-gray-500 ml-3">
+              {tags.length} {tags.length === 1 ? "tag" : "tags"}
+            </span>
+          </h2>
           <button
             type="button"
             onClick={() => setShowAddModal(true)}
