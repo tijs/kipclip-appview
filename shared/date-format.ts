@@ -68,9 +68,12 @@ export function setDateFormat(format: DateFormatOption) {
   } catch { /* ignore */ }
 }
 
-export function formatDate(isoDate: string): string {
-  const format = getDateFormat();
+export function formatDate(
+  isoDate: string,
+  format?: DateFormatOption,
+): string {
+  const effectiveFormat = format || getDateFormat();
   const d = new Date(isoDate);
-  const entry = DATE_FORMATS.find((f) => f.id === format);
+  const entry = DATE_FORMATS.find((f) => f.id === effectiveFormat);
   return entry ? entry.format(d) : d.toLocaleDateString();
 }

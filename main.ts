@@ -28,6 +28,7 @@ import { registerBookmarkRoutes } from "./routes/api/bookmarks.ts";
 import { registerInitialDataRoutes } from "./routes/api/initial-data.ts";
 import { registerSettingsRoutes } from "./routes/api/settings.ts";
 import { registerImportRoutes } from "./routes/api/import.ts";
+import { registerPreferencesRoutes } from "./routes/api/preferences.ts";
 import { registerShareApiRoutes } from "./routes/api/share.ts";
 import { registerTagRoutes } from "./routes/api/tags.ts";
 import { registerOAuthRoutes } from "./routes/oauth.ts";
@@ -128,6 +129,9 @@ app = registerInitialDataRoutes(app);
 
 // Settings API routes
 app = registerSettingsRoutes(app);
+
+// Preferences API routes (PDS-backed user preferences)
+app = registerPreferencesRoutes(app);
 
 // Share API routes (public bookmark sharing)
 app = registerShareApiRoutes(app);

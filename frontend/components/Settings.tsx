@@ -3,7 +3,6 @@ import { useApp } from "../context/AppContext.tsx";
 import {
   DATE_FORMATS,
   type DateFormatOption,
-  getDateFormat,
   setDateFormat,
 } from "../../shared/date-format.ts";
 import { ImportBookmarks } from "./ImportBookmarks.tsx";
@@ -11,7 +10,7 @@ import { ImportBookmarks } from "./ImportBookmarks.tsx";
 type SettingsTab = "general" | "import";
 
 export function Settings() {
-  const { settings, updateSettings } = useApp();
+  const { settings, preferences, updateSettings, updatePreferences } = useApp();
   const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
     const hash = globalThis.location?.hash;
     return hash === "#import" ? "import" : "general";
@@ -25,7 +24,7 @@ export function Settings() {
   );
   const [instapaperPassword, setInstapaperPassword] = useState("");
   const [dateFormat, setDateFormatState] = useState<DateFormatOption>(
-    getDateFormat,
+    preferences.dateFormat as DateFormatOption,
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -176,6 +175,7 @@ export function Settings() {
                         onClick={() => {
                           setDateFormatState(fmt.id);
                           setDateFormat(fmt.id);
+                          updatePreferences({ dateFormat: fmt.id });
                         }}
                         className={`px-4 py-2.5 rounded-lg text-sm font-medium transition border ${
                           isActive

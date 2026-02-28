@@ -2,7 +2,7 @@ import { useState } from "react";
 import { AddTag } from "./AddTag.tsx";
 import { EditTag } from "./EditTag.tsx";
 import { useApp } from "../context/AppContext.tsx";
-import { formatDate } from "../../shared/date-format.ts";
+import { useDateFormat } from "../hooks/useDateFormat.ts";
 import { encodeTagsForUrl } from "../../shared/utils.ts";
 
 export function TagSidebar() {
@@ -17,6 +17,7 @@ export function TagSidebar() {
     deleteTag,
     session,
   } = useApp();
+  const formatDate = useDateFormat();
 
   // Data is pre-loaded by App.tsx via loadInitialData(), so no initial loading state
   const [showAddModal, setShowAddModal] = useState(false);

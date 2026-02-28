@@ -1,4 +1,4 @@
-import { formatDate } from "../../shared/date-format.ts";
+import { useDateFormat } from "../hooks/useDateFormat.ts";
 import type { EnrichedBookmark } from "../../shared/types.ts";
 
 interface DuplicateWarningProps {
@@ -14,6 +14,7 @@ export function DuplicateWarning({
   onContinue,
   loading,
 }: DuplicateWarningProps) {
+  const formatDate = useDateFormat();
   return (
     <div className="space-y-4">
       <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">

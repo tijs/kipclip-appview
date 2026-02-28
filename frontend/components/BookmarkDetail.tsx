@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { formatDate } from "../../shared/date-format.ts";
+import { useDateFormat } from "../hooks/useDateFormat.ts";
 import type { EnrichedBookmark } from "../../shared/types.ts";
 
 interface BookmarkDetailProps {
@@ -17,6 +17,7 @@ export function BookmarkDetail({
   onShare,
   onOpen,
 }: BookmarkDetailProps) {
+  const formatDate = useDateFormat();
   const [imageError, setImageError] = useState(false);
 
   // Close on Escape key

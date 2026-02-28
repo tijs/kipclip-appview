@@ -12,9 +12,11 @@ import type {
   EnrichedTag,
   InitialDataResponse,
   SessionInfo,
+  UserPreferences,
   UserSettings,
 } from "../../shared/types.ts";
-import { apiGet, apiPatch, apiPost } from "../utils/api.ts";
+import { getDateFormat, setDateFormat } from "../../shared/date-format.ts";
+import { apiGet, apiPatch, apiPost, apiPut } from "../utils/api.ts";
 
 // Search helper: case-insensitive match across searchable fields
 function matchesSearch(bookmark: EnrichedBookmark, query: string): boolean {
@@ -34,12 +36,17 @@ const DEFAULT_SETTINGS: UserSettings = {
   instapaperEnabled: false,
 };
 
+const DEFAULT_PREFERENCES: UserPreferences = {
+  dateFormat: "us",
+};
+
 interface AppState {
   session: SessionInfo | null;
   bookmarks: EnrichedBookmark[];
   tags: EnrichedTag[];
   selectedTags: Set<string>;
   settings: UserSettings;
+  preferences: UserPreferences;
   readingListSelectedTags: Set<string>;
   loading: boolean;
   bookmarkSearchQuery: string;
@@ -74,6 +81,9 @@ interface AppContextValue extends AppState {
   // Settings actions
   updateSettings: (updates: Partial<UserSettings>) => Promise<void>;
 
+  // Preferences actions
+  updatePreferences: (updates: Partial<UserPreferences>) => Promise<void>;
+
   // Reading list filter actions
   toggleReadingListTag: (tagValue: string) => void;
   clearReadingListFilters: () => void;
@@ -99,6 +109,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [tags, setTags] = useState<EnrichedTag[]>([]);
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
+  const [preferences, setPreferences] = useState<UserPreferences>(
+    DEFAULT_PREFERENCES,
+  );
   const [readingListSelectedTags, setReadingListSelectedTags] = useState<
     Set<string>
   >(new Set());
@@ -176,6 +189,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setBookmarks(data.bookmarks);
       setTags(data.tags);
       setSettings(data.settings);
+
+      if (data.preferences) {
+        setPreferences(data.preferences);
+        // Sync to localStorage so formatDate fallback stays current
+        setDateFormat(data.preferences.dateFormat as any);
+
+        // Migration: if localStorage has a non-default value but PDS has
+        // the default, push localStorage value to PDS once
+        const localFormat = getDateFormat();
+        if (
+          localFormat !== "us" &&
+          data.preferences.dateFormat === "us"
+        ) {
+          apiPut("/api/preferences", { dateFormat: localFormat })
+            .then((res) => {
+              if (res.ok) {
+                setPreferences({ dateFormat: localFormat });
+              }
+            })
+            .catch(() => {
+              // Silently ignore — user may lack new OAuth scope
+            });
+        }
+      }
     } catch (err) {
       console.error("Failed to load initial data:", err);
       throw err;
@@ -197,6 +234,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.error("Failed to update settings:", err);
       throw err;
+    }
+  }
+
+  // Preferences actions
+  async function updatePreferences(updates: Partial<UserPreferences>) {
+    try {
+      const response = await apiPut("/api/preferences", updates);
+      if (!response.ok) {
+        throw new Error("Failed to update preferences");
+      }
+      const data = await response.json();
+      if (data.preferences) {
+        setPreferences(data.preferences);
+        // Keep localStorage in sync as fallback
+        if (data.preferences.dateFormat) {
+          setDateFormat(data.preferences.dateFormat as any);
+        }
+      }
+    } catch {
+      // Fall back to localStorage-only if PDS write fails (missing scope)
+      if (updates.dateFormat) {
+        setDateFormat(updates.dateFormat as any);
+        setPreferences((prev) => ({ ...prev, ...updates }));
+      }
     }
   }
 
@@ -360,6 +421,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     tags,
     selectedTags,
     settings,
+    preferences,
     readingListSelectedTags,
     loading,
     bookmarkSearchQuery,
@@ -391,6 +453,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     // Settings actions
     updateSettings,
+
+    // Preferences actions
+    updatePreferences,
 
     // Reading list filter actions
     toggleReadingListTag,

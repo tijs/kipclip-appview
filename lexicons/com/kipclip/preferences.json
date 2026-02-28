@@ -1,0 +1,28 @@
+{
+  "lexicon": 1,
+  "id": "com.kipclip.preferences",
+  "description": "User preferences for kipclip",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "Per-user preferences stored on their PDS",
+      "key": "literal:self",
+      "record": {
+        "type": "object",
+        "required": ["dateFormat", "createdAt"],
+        "properties": {
+          "dateFormat": {
+            "type": "string",
+            "description": "Date display format preference",
+            "knownValues": ["us", "eu", "eu-dot", "iso", "text"]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Timestamp when preferences were last updated"
+          }
+        }
+      }
+    }
+  }
+}

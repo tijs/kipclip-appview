@@ -14,6 +14,7 @@ import {
   setSessionCookie,
   TAG_COLLECTION,
 } from "../../lib/route-utils.ts";
+import { getUserPreferences } from "../../lib/preferences.ts";
 import { getUserSettings } from "../../lib/settings.ts";
 import { migrateAnnotations } from "../../lib/migration-annotations.ts";
 import { repairMissingFavicons } from "../../lib/repair-favicons.ts";
@@ -34,13 +35,19 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
         return createAuthErrorResponse(error);
       }
 
-      const [bookmarkRecords, tagRecords, annotationRecords, settings] =
-        await Promise.all([
-          listAllRecords(oauthSession, BOOKMARK_COLLECTION),
-          listAllRecords(oauthSession, TAG_COLLECTION),
-          listAllRecords(oauthSession, ANNOTATION_COLLECTION),
-          getUserSettings(oauthSession.did),
-        ]);
+      const [
+        bookmarkRecords,
+        tagRecords,
+        annotationRecords,
+        settings,
+        preferences,
+      ] = await Promise.all([
+        listAllRecords(oauthSession, BOOKMARK_COLLECTION),
+        listAllRecords(oauthSession, TAG_COLLECTION),
+        listAllRecords(oauthSession, ANNOTATION_COLLECTION),
+        getUserSettings(oauthSession.did),
+        getUserPreferences(oauthSession),
+      ]);
 
       // Build annotation lookup map (rkey → annotation)
       const annotationMap = new Map<string, AnnotationRecord>();
@@ -80,7 +87,12 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
         createdAt: record.value.createdAt,
       }));
 
-      const result: InitialDataResponse = { bookmarks, tags, settings };
+      const result: InitialDataResponse = {
+        bookmarks,
+        tags,
+        settings,
+        preferences,
+      };
       const response = setSessionCookie(
         Response.json(result),
         setCookieHeader,

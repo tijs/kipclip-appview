@@ -12,6 +12,7 @@ import {
 import { BookmarkDetail } from "./BookmarkDetail.tsx";
 import { EditBookmark } from "./EditBookmark.tsx";
 import { useApp } from "../context/AppContext.tsx";
+import type { DateFormatOption } from "../../shared/date-format.ts";
 import type { EnrichedBookmark } from "../../shared/types.ts";
 
 export function BookmarkList() {
@@ -19,6 +20,7 @@ export function BookmarkList() {
     filteredBookmarks: bookmarks,
     totalBookmarks,
     tags: availableTags,
+    preferences,
     addBookmark,
     updateBookmark,
     deleteBookmark,
@@ -27,6 +29,7 @@ export function BookmarkList() {
     bookmarkSearchQuery,
     setBookmarkSearchQuery,
   } = useApp();
+  const dateFormat = preferences.dateFormat as DateFormatOption;
 
   // Data is pre-loaded by App.tsx via loadInitialData(), so no initial loading state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -428,6 +431,7 @@ export function BookmarkList() {
                 viewMode={viewMode}
                 isDragOver={dragOverBookmark === bookmark.uri}
                 imageError={imageErrors.has(bookmark.uri)}
+                dateFormat={dateFormat}
                 onClick={() => setDetailBookmark(bookmark)}
                 onDragOver={(e) => {
                   e.preventDefault();

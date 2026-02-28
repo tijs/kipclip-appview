@@ -1,9 +1,14 @@
 import { useState } from "react";
 import { useApp } from "../context/AppContext.tsx";
-import { formatDate } from "../../shared/date-format.ts";
+import { type DateFormatOption, formatDate } from "../../shared/date-format.ts";
 import type { EnrichedBookmark } from "../../shared/types.ts";
 
-function ReadingListCard({ bookmark }: { bookmark: EnrichedBookmark }) {
+function ReadingListCard(
+  { bookmark, dateFormat }: {
+    bookmark: EnrichedBookmark;
+    dateFormat?: DateFormatOption;
+  },
+) {
   // Extract domain from URL
   const domain = (() => {
     try {
@@ -13,7 +18,7 @@ function ReadingListCard({ bookmark }: { bookmark: EnrichedBookmark }) {
     }
   })();
 
-  const formattedDate = formatDate(bookmark.createdAt);
+  const formattedDate = formatDate(bookmark.createdAt, dateFormat);
 
   const handleClick = () => {
     globalThis.open(bookmark.subject, "_blank", "noopener,noreferrer");
@@ -209,9 +214,11 @@ export function ReadingList() {
     readingListBookmarks,
     totalReadingList,
     settings,
+    preferences,
     readingListSearchQuery,
     setReadingListSearchQuery,
   } = useApp();
+  const dateFormat = preferences.dateFormat as DateFormatOption;
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
 
   // If there are no reading list bookmarks at all, show empty state
@@ -329,7 +336,11 @@ export function ReadingList() {
             : (
               <div className="space-y-4">
                 {filteredReadingList.map((bookmark) => (
-                  <ReadingListCard key={bookmark.uri} bookmark={bookmark} />
+                  <ReadingListCard
+                    key={bookmark.uri}
+                    bookmark={bookmark}
+                    dateFormat={dateFormat}
+                  />
                 ))}
               </div>
             )}

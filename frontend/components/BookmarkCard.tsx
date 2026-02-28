@@ -1,4 +1,4 @@
-import { formatDate } from "../../shared/date-format.ts";
+import { type DateFormatOption, formatDate } from "../../shared/date-format.ts";
 import type { EnrichedBookmark } from "../../shared/types.ts";
 
 type ViewMode = "cards" | "list";
@@ -54,6 +54,7 @@ interface BookmarkCardProps {
   viewMode: ViewMode;
   isDragOver: boolean;
   imageError: boolean;
+  dateFormat?: DateFormatOption;
   onClick: () => void;
   onDragOver: (e: React.DragEvent) => void;
   onDragEnter: (e: React.DragEvent) => void;
@@ -88,10 +89,11 @@ function getTitle(bookmark: EnrichedBookmark): string {
 }
 
 function CardView(
-  { bookmark, imageError, onImageError }: {
+  { bookmark, imageError, onImageError, dateFormat }: {
     bookmark: EnrichedBookmark;
     imageError: boolean;
     onImageError: () => void;
+    dateFormat?: DateFormatOption;
   },
 ) {
   return (
@@ -118,7 +120,7 @@ function CardView(
       </div>
 
       <div className="flex items-center gap-2 text-xs text-gray-400">
-        <span>{formatDate(bookmark.createdAt)}</span>
+        <span>{formatDate(bookmark.createdAt, dateFormat)}</span>
         {bookmark.note && <NoteIcon />}
       </div>
 
@@ -138,7 +140,12 @@ function CardView(
   );
 }
 
-function ListView({ bookmark }: { bookmark: EnrichedBookmark }) {
+function ListView(
+  { bookmark, dateFormat }: {
+    bookmark: EnrichedBookmark;
+    dateFormat?: DateFormatOption;
+  },
+) {
   return (
     <div className="flex items-center gap-3 min-w-0">
       {bookmark.favicon
@@ -185,7 +192,7 @@ function ListView({ bookmark }: { bookmark: EnrichedBookmark }) {
       )}
 
       <span className="text-xs text-gray-400 shrink-0 hidden sm:block">
-        {formatDate(bookmark.createdAt)}
+        {formatDate(bookmark.createdAt, dateFormat)}
       </span>
     </div>
   );
@@ -197,6 +204,7 @@ export function BookmarkCard(
     viewMode,
     isDragOver,
     imageError,
+    dateFormat,
     onClick,
     onDragOver,
     onDragEnter,
@@ -227,9 +235,10 @@ export function BookmarkCard(
             bookmark={bookmark}
             imageError={imageError}
             onImageError={onImageError}
+            dateFormat={dateFormat}
           />
         )
-        : <ListView bookmark={bookmark} />}
+        : <ListView bookmark={bookmark} dateFormat={dateFormat} />}
     </div>
   );
 }

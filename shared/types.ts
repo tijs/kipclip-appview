@@ -160,11 +160,32 @@ export interface CheckDuplicatesResponse {
   duplicates: EnrichedBookmark[];
 }
 
+// User preferences (stored on PDS as com.kipclip.preferences)
+export interface PreferencesRecord {
+  dateFormat: string;
+  createdAt: string;
+}
+
+export interface UserPreferences {
+  dateFormat: string;
+}
+
+export interface UpdatePreferencesRequest {
+  dateFormat?: string;
+}
+
+export interface UpdatePreferencesResponse {
+  success: boolean;
+  preferences?: UserPreferences;
+  error?: string;
+}
+
 // Combined initial data response (for optimized page load)
 export interface InitialDataResponse {
   bookmarks: EnrichedBookmark[];
   tags: EnrichedTag[];
   settings: UserSettings;
+  preferences: UserPreferences;
 }
 
 // Import types

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { formatDate } from "../../shared/date-format.ts";
+import { useDateFormat } from "../hooks/useDateFormat.ts";
 import type { EnrichedBookmark, EnrichedTag } from "../../shared/types.ts";
 import { TagInput } from "./TagInput.tsx";
 
@@ -20,6 +20,7 @@ export function EditBookmark({
   onBookmarkDeleted,
   onTagsChanged,
 }: EditBookmarkProps) {
+  const formatDate = useDateFormat();
   const [tags, setTags] = useState<string[]>(bookmark.tags || []);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
