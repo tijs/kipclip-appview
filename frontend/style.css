@@ -122,6 +122,14 @@ body {
   }
 }
 
+/* Swipe-to-delete row collapse animation */
+.swipe-row-removing {
+  transition: max-height 0.3s ease-out, opacity 0.2s ease-out;
+  max-height: 0 !important;
+  opacity: 0;
+  overflow: hidden;
+}
+
 /* Actor typeahead autocomplete - kipclip themed */
 actor-typeahead {
   --color-background: #ffffff;

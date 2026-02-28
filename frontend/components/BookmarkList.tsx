@@ -13,6 +13,7 @@ import { BookmarkDetail } from "./BookmarkDetail.tsx";
 import { BulkActionToolbar } from "./BulkActionToolbar.tsx";
 import { EditBookmark } from "./EditBookmark.tsx";
 import { OrphanedTagsDialog } from "./OrphanedTagsDialog.tsx";
+import { SwipeableRow } from "./SwipeableRow.tsx";
 import { useApp } from "../context/AppContext.tsx";
 import type { DateFormatOption } from "../../shared/date-format.ts";
 import type { EnrichedBookmark, EnrichedTag } from "../../shared/types.ts";
@@ -274,6 +275,18 @@ export function BookmarkList() {
 
   function handleImageError(bookmarkUri: string) {
     setImageErrors((prev) => new Set([...prev, bookmarkUri]));
+  }
+
+  async function handleSwipeDelete(bookmark: EnrichedBookmark) {
+    const rkey = bookmark.uri.split("/").pop();
+    if (!rkey) throw new Error("Invalid bookmark URI");
+
+    const response = await fetch(`/api/bookmarks/${rkey}`, {
+      method: "DELETE",
+    });
+    if (!response.ok) throw new Error("Failed to delete bookmark");
+
+    handleBookmarkDeleted(bookmark.uri);
   }
 
   if (error) {
@@ -553,44 +566,59 @@ export function BookmarkList() {
               ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
               : "flex flex-col gap-2"}
           >
-            {bookmarks.map((bookmark) => (
-              <BookmarkCard
-                key={bookmark.uri}
-                bookmark={bookmark}
-                viewMode={viewMode}
-                isDragOver={dragOverBookmark === bookmark.uri}
-                imageError={imageErrors.has(bookmark.uri)}
-                dateFormat={dateFormat}
-                isSelectMode={isSelectMode}
-                isSelected={selectedUris.has(bookmark.uri)}
-                onClick={isSelectMode
-                  ? () => toggleSelection(bookmark.uri)
-                  : () => setDetailBookmark(bookmark)}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = "copy";
-                }}
-                onDragEnter={(e) => {
-                  e.preventDefault();
-                  setDragOverBookmark(bookmark.uri);
-                }}
-                onDragLeave={(e) => {
-                  e.preventDefault();
-                  if (e.currentTarget === e.target) {
+            {bookmarks.map((bookmark) => {
+              const card = (
+                <BookmarkCard
+                  key={bookmark.uri}
+                  bookmark={bookmark}
+                  viewMode={viewMode}
+                  isDragOver={dragOverBookmark === bookmark.uri}
+                  imageError={imageErrors.has(bookmark.uri)}
+                  dateFormat={dateFormat}
+                  isSelectMode={isSelectMode}
+                  isSelected={selectedUris.has(bookmark.uri)}
+                  onClick={isSelectMode
+                    ? () => toggleSelection(bookmark.uri)
+                    : () => setDetailBookmark(bookmark)}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "copy";
+                  }}
+                  onDragEnter={(e) => {
+                    e.preventDefault();
+                    setDragOverBookmark(bookmark.uri);
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault();
+                    if (e.currentTarget === e.target) {
+                      setDragOverBookmark(null);
+                    }
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
                     setDragOverBookmark(null);
-                  }
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setDragOverBookmark(null);
-                  const tagValue = e.dataTransfer.getData("text/plain");
-                  if (tagValue) {
-                    handleDropTag(bookmark.uri, tagValue);
-                  }
-                }}
-                onImageError={() => handleImageError(bookmark.uri)}
-              />
-            ))}
+                    const tagValue = e.dataTransfer.getData("text/plain");
+                    if (tagValue) {
+                      handleDropTag(bookmark.uri, tagValue);
+                    }
+                  }}
+                  onImageError={() => handleImageError(bookmark.uri)}
+                />
+              );
+
+              if (viewMode === "list" && !isSelectMode) {
+                return (
+                  <SwipeableRow
+                    key={bookmark.uri}
+                    onDelete={() => handleSwipeDelete(bookmark)}
+                  >
+                    {card}
+                  </SwipeableRow>
+                );
+              }
+
+              return card;
+            })}
           </div>
         )}
 
