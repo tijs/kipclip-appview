@@ -214,9 +214,10 @@ Deno.test({
 
       const body = await res.json();
       assertEquals(body.bookmarks.length, 2);
-      assertEquals(body.bookmarks[0].title, "Page One");
-      assertEquals(body.bookmarks[0].tags, ["work"]);
-      assertEquals(body.bookmarks[1].title, "Page Two");
+      // Sorted by createdAt descending — newer first
+      assertEquals(body.bookmarks[0].title, "Page Two");
+      assertEquals(body.bookmarks[1].title, "Page One");
+      assertEquals(body.bookmarks[1].tags, ["work"]);
     } finally {
       setTestSessionProvider(null);
     }
@@ -645,6 +646,68 @@ Deno.test({
 
       const body = await res.json();
       assertEquals(body.duplicates, []);
+    } finally {
+      setTestSessionProvider(null);
+    }
+  },
+});
+
+Deno.test({
+  name: "GET /api/bookmarks - returns bookmarks sorted by createdAt descending",
+  async fn() {
+    // Bookmarks with out-of-order dates (simulates imported bookmarks with
+    // random rkeys that don't sort chronologically)
+    const mockBookmarks = [
+      {
+        uri: "at://did:plc:test123/community.lexicon.bookmarks.bookmark/zzz",
+        cid: "cid1",
+        value: {
+          subject: "https://example.com/oldest",
+          createdAt: "2024-06-15T10:00:00.000Z",
+          tags: [],
+          $enriched: { title: "Oldest" },
+        },
+      },
+      {
+        uri: "at://did:plc:test123/community.lexicon.bookmarks.bookmark/aaa",
+        cid: "cid2",
+        value: {
+          subject: "https://example.com/newest",
+          createdAt: "2025-03-01T12:00:00.000Z",
+          tags: [],
+          $enriched: { title: "Newest" },
+        },
+      },
+      {
+        uri: "at://did:plc:test123/community.lexicon.bookmarks.bookmark/mmm",
+        cid: "cid3",
+        value: {
+          subject: "https://example.com/middle",
+          createdAt: "2025-01-10T08:00:00.000Z",
+          tags: [],
+          $enriched: { title: "Middle" },
+        },
+      },
+    ];
+
+    const pdsResponses = new Map<string, Response>();
+    pdsResponses.set("listRecords", listRecordsResponse(mockBookmarks));
+
+    setTestSessionProvider(() =>
+      Promise.resolve(createMockSessionResult({ pdsResponses }))
+    );
+
+    try {
+      const req = new Request("https://kipclip.com/api/bookmarks");
+      const res = await handler(req);
+
+      assertEquals(res.status, 200);
+
+      const body = await res.json();
+      assertEquals(body.bookmarks.length, 3);
+      assertEquals(body.bookmarks[0].title, "Newest");
+      assertEquals(body.bookmarks[1].title, "Middle");
+      assertEquals(body.bookmarks[2].title, "Oldest");
     } finally {
       setTestSessionProvider(null);
     }

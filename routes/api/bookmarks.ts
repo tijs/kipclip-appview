@@ -57,7 +57,7 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
           const annotation = rkey ? annotationResult.map.get(rkey) : undefined;
           return mapBookmarkRecord(record, annotation);
         },
-      );
+      ).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
       const result: ListBookmarksResponse = { bookmarks };
       return setSessionCookie(Response.json(result), setCookieHeader);

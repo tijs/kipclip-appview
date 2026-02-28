@@ -71,7 +71,7 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
             note: annotation?.note,
           };
         },
-      );
+      ).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
       const tags: EnrichedTag[] = tagRecords.map((record: any) => ({
         uri: record.uri,
