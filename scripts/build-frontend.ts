@@ -69,6 +69,8 @@ try {
     alias: {
       "react": "https://esm.sh/react@19",
       "react-dom/client": "https://esm.sh/react-dom@19/client",
+      "@tanstack/react-virtual": "https://esm.sh/@tanstack/react-virtual@3",
+      "idb": "https://esm.sh/idb@8",
     },
     metafile: true,
   });

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { useApp } from "../context/AppContext.tsx";
 import { type DateFormatOption, formatDate } from "../../shared/date-format.ts";
 import type { EnrichedBookmark } from "../../shared/types.ts";
@@ -208,6 +209,55 @@ function ReadingListTagSidebar() {
   );
 }
 
+function VirtualReadingList(
+  { items, dateFormat }: {
+    items: EnrichedBookmark[];
+    dateFormat: DateFormatOption;
+  },
+) {
+  const parentRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 200,
+    overscan: 5,
+  });
+
+  return (
+    <div ref={parentRef} style={{ height: "100%", overflow: "auto" }}>
+      <div
+        style={{
+          height: `${virtualizer.getTotalSize()}px`,
+          width: "100%",
+          position: "relative",
+        }}
+      >
+        {virtualizer.getVirtualItems().map((virtualRow) => (
+          <div
+            key={virtualRow.key}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: "100%",
+              transform: `translateY(${virtualRow.start}px)`,
+            }}
+            data-index={virtualRow.index}
+            ref={virtualizer.measureElement}
+          >
+            <div className="pb-4">
+              <ReadingListCard
+                bookmark={items[virtualRow.index]}
+                dateFormat={dateFormat}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function ReadingList() {
   const {
     filteredReadingList,
@@ -333,15 +383,10 @@ export function ReadingList() {
               </div>
             )
             : (
-              <div className="space-y-4">
-                {filteredReadingList.map((bookmark) => (
-                  <ReadingListCard
-                    key={bookmark.uri}
-                    bookmark={bookmark}
-                    dateFormat={dateFormat}
-                  />
-                ))}
-              </div>
+              <VirtualReadingList
+                items={filteredReadingList}
+                dateFormat={dateFormat}
+              />
             )}
         </div>
       </main>

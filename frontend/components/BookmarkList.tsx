@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AddBookmark } from "./AddBookmark.tsx";
 import {
-  BookmarkCard,
   getStoredViewMode,
   GridIcon,
   ListIcon,
@@ -13,7 +12,7 @@ import { BookmarkDetail } from "./BookmarkDetail.tsx";
 import { BulkActionToolbar } from "./BulkActionToolbar.tsx";
 import { EditBookmark } from "./EditBookmark.tsx";
 import { OrphanedTagsDialog } from "./OrphanedTagsDialog.tsx";
-import { SwipeableRow } from "./SwipeableRow.tsx";
+import { VirtualBookmarkList } from "./VirtualBookmarkList.tsx";
 import { useApp } from "../context/AppContext.tsx";
 import type { DateFormatOption } from "../../shared/date-format.ts";
 import type { EnrichedBookmark, EnrichedTag } from "../../shared/types.ts";
@@ -71,6 +70,19 @@ export function BookmarkList() {
   const [viewMode, setViewModeState] = useState<ViewMode>(getStoredViewMode);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
+
+  // Debounced search input
+  const [localSearchQuery, setLocalSearchQuery] = useState(bookmarkSearchQuery);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const handleSearchChange = useCallback((value: string) => {
+    setLocalSearchQuery(value);
+    clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(
+      () => setBookmarkSearchQuery(value),
+      150,
+    );
+  }, [setBookmarkSearchQuery]);
+  useEffect(() => () => clearTimeout(searchTimerRef.current), []);
 
   // Orphaned tags prompt
   const [orphanedTags, setOrphanedTags] = useState<EnrichedTag[]>([]);
@@ -398,8 +410,8 @@ export function BookmarkList() {
             <input
               type="text"
               placeholder="Search bookmarks..."
-              value={bookmarkSearchQuery}
-              onChange={(e) => setBookmarkSearchQuery(e.target.value)}
+              value={localSearchQuery}
+              onChange={(e) => handleSearchChange(e.target.value)}
               className="flex-1 px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-coral focus:border-transparent outline-none transition"
             />
           </div>
@@ -413,8 +425,8 @@ export function BookmarkList() {
                 <input
                   type="text"
                   placeholder="Search bookmarks..."
-                  value={bookmarkSearchQuery}
-                  onChange={(e) => setBookmarkSearchQuery(e.target.value)}
+                  value={localSearchQuery}
+                  onChange={(e) => handleSearchChange(e.target.value)}
                   className="flex-1 px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-coral focus:border-transparent outline-none"
                   autoFocus
                 />
@@ -422,6 +434,7 @@ export function BookmarkList() {
                   type="button"
                   onClick={() => {
                     setMobileSearchOpen(false);
+                    setLocalSearchQuery("");
                     setBookmarkSearchQuery("");
                   }}
                   className="p-2 text-gray-500 hover:text-gray-700"
@@ -561,65 +574,22 @@ export function BookmarkList() {
           </div>
         )
         : (
-          <div
-            className={viewMode === "cards"
-              ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
-              : "flex flex-col gap-2"}
-          >
-            {bookmarks.map((bookmark) => {
-              const card = (
-                <BookmarkCard
-                  key={bookmark.uri}
-                  bookmark={bookmark}
-                  viewMode={viewMode}
-                  isDragOver={dragOverBookmark === bookmark.uri}
-                  imageError={imageErrors.has(bookmark.uri)}
-                  dateFormat={dateFormat}
-                  isSelectMode={isSelectMode}
-                  isSelected={selectedUris.has(bookmark.uri)}
-                  onClick={isSelectMode
-                    ? () => toggleSelection(bookmark.uri)
-                    : () => setDetailBookmark(bookmark)}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = "copy";
-                  }}
-                  onDragEnter={(e) => {
-                    e.preventDefault();
-                    setDragOverBookmark(bookmark.uri);
-                  }}
-                  onDragLeave={(e) => {
-                    e.preventDefault();
-                    if (e.currentTarget === e.target) {
-                      setDragOverBookmark(null);
-                    }
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    setDragOverBookmark(null);
-                    const tagValue = e.dataTransfer.getData("text/plain");
-                    if (tagValue) {
-                      handleDropTag(bookmark.uri, tagValue);
-                    }
-                  }}
-                  onImageError={() => handleImageError(bookmark.uri)}
-                />
-              );
-
-              if (viewMode === "list" && !isSelectMode) {
-                return (
-                  <SwipeableRow
-                    key={bookmark.uri}
-                    onDelete={() => handleSwipeDelete(bookmark)}
-                  >
-                    {card}
-                  </SwipeableRow>
-                );
-              }
-
-              return card;
-            })}
-          </div>
+          <VirtualBookmarkList
+            bookmarks={bookmarks}
+            viewMode={viewMode}
+            dateFormat={dateFormat}
+            isSelectMode={isSelectMode}
+            selectedUris={selectedUris}
+            dragOverBookmark={dragOverBookmark}
+            imageErrors={imageErrors}
+            onBookmarkClick={isSelectMode
+              ? (b) => toggleSelection(b.uri)
+              : (b) => setDetailBookmark(b)}
+            onDragOverBookmark={setDragOverBookmark}
+            onDropTag={handleDropTag}
+            onImageError={handleImageError}
+            onSwipeDelete={handleSwipeDelete}
+          />
         )}
 
       {showAddModal && (

@@ -1,6 +1,7 @@
 import {
   createContext,
   type ReactNode,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -17,6 +18,14 @@ import type {
 } from "../../shared/types.ts";
 import { getDateFormat, setDateFormat } from "../../shared/date-format.ts";
 import { apiGet, apiPatch, apiPost, apiPut } from "../utils/api.ts";
+import {
+  deleteBookmarkFromCache,
+  deleteTagFromCache,
+  openCacheDb,
+  putBookmark as putBookmarkToCache,
+  putTag as putTagToCache,
+} from "../cache/db.ts";
+import { checkForChanges, loadWithCache } from "../cache/sync.ts";
 
 // Search helper: case-insensitive match across searchable fields
 function matchesSearch(bookmark: EnrichedBookmark, query: string): boolean {
@@ -104,7 +113,7 @@ interface AppContextValue extends AppState {
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<SessionInfo | null>(null);
+  const [session, setSessionRaw] = useState<SessionInfo | null>(null);
   const [bookmarks, setBookmarks] = useState<EnrichedBookmark[]>([]);
   const [tags, setTagsRaw] = useState<EnrichedTag[]>([]);
   const sortTags = (t: EnrichedTag[]) =>
@@ -133,6 +142,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   });
   const [readingListSearchQuery, setReadingListSearchQuery] = useState("");
 
+  // Initialize IndexedDB when session is set
+  const setSession = useCallback((s: SessionInfo | null) => {
+    setSessionRaw(s);
+    if (s) {
+      openCacheDb(s.did).catch(() => {});
+    }
+  }, []);
+
   // Bookmark actions
   async function loadBookmarks() {
     try {
@@ -150,16 +167,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   function addBookmark(bookmark: EnrichedBookmark) {
     setBookmarks((prev) => [bookmark, ...prev]);
+    putBookmarkToCache(bookmark).catch(() => {});
   }
 
   function updateBookmark(bookmark: EnrichedBookmark) {
     setBookmarks((prev) =>
       prev.map((b) => b.uri === bookmark.uri ? bookmark : b)
     );
+    putBookmarkToCache(bookmark).catch(() => {});
   }
 
   function deleteBookmark(uri: string) {
     setBookmarks((prev) => prev.filter((b) => b.uri !== uri));
+    deleteBookmarkFromCache(uri).catch(() => {});
   }
 
   // Tag actions
@@ -179,55 +199,87 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   function addTag(tag: EnrichedTag) {
     setTags((prev) => [tag, ...prev]);
+    putTagToCache(tag).catch(() => {});
   }
 
   function updateTag(tag: EnrichedTag) {
     setTags((prev) => prev.map((t) => t.uri === tag.uri ? tag : t));
+    putTagToCache(tag).catch(() => {});
   }
 
   function deleteTag(uri: string) {
     setTags((prev) => prev.filter((t) => t.uri !== uri));
+    deleteTagFromCache(uri).catch(() => {});
   }
 
-  // Combined initial data loading (avoids token refresh race condition)
+  /** Apply settings/preferences from server response */
+  function applyServerMeta(data: InitialDataResponse) {
+    setSettings(data.settings);
+    if (data.preferences) {
+      const localFormat = getDateFormat();
+      const pdsFormat = data.preferences.dateFormat;
+      if (localFormat !== "us" && pdsFormat === "us") {
+        setPreferences({ ...data.preferences, dateFormat: localFormat });
+        apiPut("/api/preferences", { dateFormat: localFormat }).catch(() => {});
+      } else {
+        setPreferences(data.preferences);
+        setDateFormat(pdsFormat as any);
+      }
+    }
+  }
+
+  // Combined initial data loading with cache-first strategy
   async function loadInitialData() {
     try {
-      const response = await apiGet("/api/initial-data");
-      if (!response.ok) {
-        throw new Error("Failed to load initial data");
-      }
-      const data: InitialDataResponse = await response.json();
-      setBookmarks(data.bookmarks);
-      setTags(data.tags);
-      setSettings(data.settings);
+      const { immediate, refresh } = await loadWithCache();
 
-      if (data.preferences) {
-        // Read localStorage BEFORE overwriting — needed for migration check
-        const localFormat = getDateFormat();
-        const pdsFormat = data.preferences.dateFormat;
-
-        if (localFormat !== "us" && pdsFormat === "us") {
-          // localStorage has a user-chosen value, PDS still has default.
-          // Keep the local value and try to push it to PDS.
-          setPreferences({
-            ...data.preferences,
-            dateFormat: localFormat,
-          });
-          apiPut("/api/preferences", { dateFormat: localFormat })
-            .catch(() => {
-              // Silently ignore — user may lack new OAuth scope
-            });
-        } else {
-          // PDS has a real preference (or both are default) — use it
-          setPreferences(data.preferences);
-          setDateFormat(pdsFormat as any);
-        }
+      // If we have cached data, render it immediately
+      if (immediate) {
+        setBookmarks(immediate.bookmarks);
+        setTags(immediate.tags);
       }
+
+      // Wait for server refresh (always runs to get settings/preferences)
+      const data = await refresh;
+
+      // Only update bookmarks/tags if data actually changed
+      if (!data._unchanged) {
+        setBookmarks(data.bookmarks);
+        setTags(data.tags);
+      }
+
+      // Always apply settings/preferences from server
+      applyServerMeta(data);
     } catch (err) {
       console.error("Failed to load initial data:", err);
       throw err;
     }
   }
+
+  // Tab re-focus: check for changes and refresh if needed (debounced)
+  const lastSyncCheckRef = useRef(0);
+  useEffect(() => {
+    if (!session) return;
+
+    function handleVisibilityChange() {
+      if (document.visibilityState !== "visible") return;
+      const now = Date.now();
+      if (now - lastSyncCheckRef.current < 60_000) return; // max once per 60s
+      lastSyncCheckRef.current = now;
+
+      checkForChanges().then((changed) => {
+        if (changed) {
+          loadInitialData().catch((err) =>
+            console.error("Tab-refocus refresh failed:", err)
+          );
+        }
+      }).catch(() => {});
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [session]);
 
   // Settings actions
   async function updateSettings(updates: Partial<UserSettings>) {
@@ -249,8 +301,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Preferences actions
   async function updatePreferences(updates: Partial<UserPreferences>) {
-    // Optimistically update context + localStorage immediately so the
-    // value survives full-page navigations even if the API call is slow
     setPreferences((prev) => ({ ...prev, ...updates }));
     if (updates.dateFormat) {
       setDateFormat(updates.dateFormat as any);
@@ -266,8 +316,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setPreferences(data.preferences);
       }
     } catch {
-      // PDS write failed (e.g. missing OAuth scope) — optimistic update
-      // and localStorage already applied above, so the UI stays correct
+      // PDS write failed — optimistic update already applied
     }
   }
 
@@ -309,7 +358,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const filteredBookmarks = useMemo(() => {
     let result = bookmarks;
 
-    // Apply tag filter (case-insensitive)
     if (selectedTags.size > 0) {
       result = result.filter((bookmark) =>
         [...selectedTags].every((tag) =>
@@ -318,7 +366,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       );
     }
 
-    // Apply search filter
     if (bookmarkSearchQuery.trim()) {
       result = result.filter((b) => matchesSearch(b, bookmarkSearchQuery));
     }
@@ -326,7 +373,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return result;
   }, [bookmarks, selectedTags, bookmarkSearchQuery]);
 
-  // Reading list: bookmarks with the configured reading list tag
   const readingListBookmarks = useMemo(
     () => {
       const rlLower = preferences.readingListTag.toLowerCase();
@@ -337,11 +383,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [bookmarks, preferences.readingListTag],
   );
 
-  // Tags that appear on reading list bookmarks
   const readingListTags = useMemo(() => {
     const tagSet = new Set<string>();
     readingListBookmarks.forEach((b) => b.tags?.forEach((t) => tagSet.add(t)));
-    // Sort to show reading list tag first, then alphabetically
     const tagArray = Array.from(tagSet);
     return tagArray.sort((a, b) => {
       if (a === preferences.readingListTag) return -1;
@@ -350,11 +394,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, [readingListBookmarks, preferences.readingListTag]);
 
-  // Filtered reading list based on additional tag selection and search
   const filteredReadingList = useMemo(() => {
     let result = readingListBookmarks;
 
-    // Apply tag filter (case-insensitive)
     if (readingListSelectedTags.size > 0) {
       result = result.filter((b) =>
         [...readingListSelectedTags].every((tag) =>
@@ -363,7 +405,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       );
     }
 
-    // Apply search filter
     if (readingListSearchQuery.trim()) {
       result = result.filter((b) => matchesSearch(b, readingListSearchQuery));
     }
@@ -373,22 +414,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Track which bookmarks are currently being enriched (in-flight requests)
   const enrichingRef = useRef<Set<string>>(new Set());
-  // Track failed enrichment attempts to limit retries (uri -> attempt count)
   const failedAttemptsRef = useRef<Map<string, number>>(new Map());
   const MAX_ENRICHMENT_RETRIES = 3;
 
   // Background re-enrichment for reading list bookmarks missing images
   useEffect(() => {
     const bookmarksNeedingEnrichment = readingListBookmarks.filter((b) => {
-      if (b.image) return false; // Already has image
-      if (enrichingRef.current.has(b.uri)) return false; // Currently in progress
+      if (b.image) return false;
+      if (enrichingRef.current.has(b.uri)) return false;
       const attempts = failedAttemptsRef.current.get(b.uri) || 0;
-      return attempts < MAX_ENRICHMENT_RETRIES; // Skip if max retries exceeded
+      return attempts < MAX_ENRICHMENT_RETRIES;
     });
 
     if (bookmarksNeedingEnrichment.length === 0) return;
 
-    // Rate-limit: enrich up to 3 bookmarks at a time with delay between batches
     const enrichBatch = async () => {
       const batch = bookmarksNeedingEnrichment.slice(0, 3);
 
@@ -396,7 +435,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         enrichingRef.current.add(bookmark.uri);
 
         try {
-          // Extract rkey from URI: at://did/collection/rkey
           const rkey = bookmark.uri.split("/").pop();
           if (!rkey) {
             enrichingRef.current.delete(bookmark.uri);
@@ -408,33 +446,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
             const data = await response.json();
             if (data.bookmark) {
               updateBookmark(data.bookmark);
-              // Clear failure tracking on success
               failedAttemptsRef.current.delete(bookmark.uri);
             }
           } else {
-            // Track failed attempt
             const attempts = failedAttemptsRef.current.get(bookmark.uri) || 0;
             failedAttemptsRef.current.set(bookmark.uri, attempts + 1);
           }
         } catch (err) {
           console.error("Failed to enrich bookmark:", err);
-          // Track failed attempt
           const attempts = failedAttemptsRef.current.get(bookmark.uri) || 0;
           failedAttemptsRef.current.set(bookmark.uri, attempts + 1);
         } finally {
-          // Always remove from in-progress set
           enrichingRef.current.delete(bookmark.uri);
         }
       }
     };
 
-    // Delay slightly to not block initial render
     const timeoutId = setTimeout(enrichBatch, 1000);
     return () => clearTimeout(timeoutId);
   }, [readingListBookmarks]);
 
   const value: AppContextValue = {
-    // State
     session,
     bookmarks,
     tags,
@@ -445,46 +477,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     loading,
     bookmarkSearchQuery,
     readingListSearchQuery,
-
-    // Session actions
     setSession,
-
-    // Bookmark actions
     setBookmarks,
     addBookmark,
     updateBookmark,
     deleteBookmark,
     loadBookmarks,
-
-    // Tag actions
     setTags,
     addTag,
     updateTag,
     deleteTag,
     loadTags,
-
-    // Combined initial data loading
     loadInitialData,
-
-    // Filter actions
     toggleTag,
     clearFilters,
-
-    // Settings actions
     updateSettings,
-
-    // Preferences actions
     updatePreferences,
-
-    // Reading list filter actions
     toggleReadingListTag,
     clearReadingListFilters,
-
-    // Search actions
     setBookmarkSearchQuery,
     setReadingListSearchQuery,
-
-    // Computed values
     totalBookmarks: bookmarks.length,
     totalReadingList: readingListBookmarks.length,
     filteredBookmarks,

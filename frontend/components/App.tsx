@@ -13,11 +13,12 @@ import { Settings } from "./Settings.tsx";
 import { ReadingList } from "./ReadingList.tsx";
 import { Support } from "./Support.tsx";
 import { useApp } from "../context/AppContext.tsx";
+import { clearAll as clearCache } from "../cache/db.ts";
 
 type ViewType = "bookmarks" | "reading-list";
 
 export function App() {
-  const { session, setSession, loadInitialData } = useApp();
+  const { session, setSession, loadInitialData, bookmarks } = useApp();
   const [loading, setLoading] = useState(true);
   const [dataLoading, setDataLoading] = useState(false);
   const [currentPath, setCurrentPath] = useState(globalThis.location.pathname);
@@ -79,6 +80,7 @@ export function App() {
   async function handleLogout() {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
+      await clearCache();
       setSession(null);
     } catch (error) {
       console.error("Failed to logout:", error);
@@ -125,7 +127,9 @@ export function App() {
     }
   }
 
-  if (loading || dataLoading) {
+  // Show spinner only when session is loading or no data available yet
+  // (cache may have populated bookmarks before server responds)
+  if (loading || (dataLoading && bookmarks.length === 0)) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="spinner"></div>

@@ -117,5 +117,64 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
     }
   });
 
+  // Lightweight sync-check: hash first page of CIDs to detect changes
+  app = app.get("/api/sync-check", async (ctx) => {
+    try {
+      const { session: oauthSession, setCookieHeader, error } =
+        await getSessionFromRequest(ctx.req);
+
+      if (!oauthSession) {
+        return createAuthErrorResponse(error);
+      }
+
+      // Fetch first page of each collection (3 requests instead of 30+)
+      const fetchFirstPage = async (collection: string) => {
+        const params = new URLSearchParams({
+          repo: oauthSession.did,
+          collection,
+          limit: "100",
+        });
+        const res = await oauthSession.makeRequest(
+          "GET",
+          `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${params}`,
+        );
+        if (!res.ok) return { cids: [] as string[], cursor: "" };
+        const data = await res.json();
+        const cids = (data.records || []).map((r: any) => r.cid);
+        return { cids, cursor: data.cursor || "" };
+      };
+
+      const [bookmarkPage, tagPage] = await Promise.all([
+        fetchFirstPage(BOOKMARK_COLLECTION),
+        fetchFirstPage(TAG_COLLECTION),
+      ]);
+
+      // Build hash from CIDs + cursors
+      const hashInput = [
+        ...bookmarkPage.cids,
+        bookmarkPage.cursor,
+        ...tagPage.cids,
+        tagPage.cursor,
+      ].join("|");
+
+      const hashBuffer = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(hashInput),
+      );
+      const hashArray = new Uint8Array(hashBuffer);
+      const hash = Array.from(hashArray, (b) => b.toString(16).padStart(2, "0"))
+        .join("").slice(0, 16);
+
+      const response = setSessionCookie(
+        Response.json({ hash }),
+        setCookieHeader,
+      );
+      return response;
+    } catch (error: any) {
+      console.error("Error in sync-check:", error);
+      return Response.json({ error: error.message }, { status: 500 });
+    }
+  });
+
   return app;
 }
