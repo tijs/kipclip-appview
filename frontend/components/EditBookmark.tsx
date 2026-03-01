@@ -37,9 +37,13 @@ export function EditBookmark({
     setError(null);
 
     try {
-      // Find new tags that don't exist in availableTags
-      const existingTagValues = new Set(availableTags.map((t) => t.value));
-      const newTags = tags.filter((tag) => !existingTagValues.has(tag));
+      // Find new tags that don't exist in availableTags (case-insensitive)
+      const existingLower = new Set(
+        availableTags.map((t) => t.value.toLowerCase()),
+      );
+      const newTags = tags.filter(
+        (tag) => !existingLower.has(tag.toLowerCase()),
+      );
 
       // Create tag records for new tags (parallel, non-blocking)
       const tagPromises = newTags.map((tagValue) =>

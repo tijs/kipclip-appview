@@ -3,6 +3,7 @@
  */
 
 import { getClearSessionCookie, getSessionFromRequest } from "./session.ts";
+import { tagIncludes } from "../shared/tag-utils.ts";
 
 /** AT Protocol collection names */
 export const BOOKMARK_COLLECTION = "community.lexicon.bookmarks.bookmark";
@@ -82,17 +83,20 @@ export async function requireAuth(request: Request): Promise<
 
 /**
  * Create PDS tag records for tags that don't already exist.
+ * Comparison is case-insensitive — "swift" won't create a new record if "Swift" exists.
+ * Optionally pass pre-fetched tag records to avoid a redundant listRecords call.
  */
 export async function createNewTagRecords(
   oauthSession: any,
   tags: string[],
+  existingRecords?: any[],
 ): Promise<void> {
-  const records = await listAllRecords(oauthSession, TAG_COLLECTION);
-  const existingTagValues = new Set<string>();
-  for (const rec of records) {
-    existingTagValues.add(rec.value?.value);
-  }
-  const newTags = tags.filter((t) => !existingTagValues.has(t));
+  const records = existingRecords ??
+    await listAllRecords(oauthSession, TAG_COLLECTION);
+  const existingTagValues: string[] = records.map((rec: any) =>
+    rec.value?.value
+  ).filter(Boolean);
+  const newTags = tags.filter((t) => !tagIncludes(existingTagValues, t));
   await Promise.all(newTags.map((tagValue) =>
     oauthSession.makeRequest(
       "POST",

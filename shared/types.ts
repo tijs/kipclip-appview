@@ -222,6 +222,18 @@ export interface BulkOperationResponse {
   bookmarks?: EnrichedBookmark[]; // updated bookmarks (for tag operations)
 }
 
+// Tag merge/deduplication response
+export interface MergeTagDuplicatesResponse {
+  merged: number;
+  tagsDeleted: number;
+  bookmarksUpdated: number;
+  details: {
+    canonical: string;
+    merged: string[];
+    bookmarksUpdated: number;
+  }[];
+}
+
 export interface ImportPrepareResponse {
   success: boolean;
   jobId?: string;

@@ -19,19 +19,26 @@ export function TagInput({
   const [tagInput, setTagInput] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
 
+  const tagsLower = tags.map((t) => t.toLowerCase());
+
   const suggestions = availableTags
     .filter((tag) =>
       tag.value.toLowerCase().includes(tagInput.toLowerCase()) &&
-      !tags.includes(tag.value)
+      !tagsLower.includes(tag.value.toLowerCase())
     )
     .slice(0, 5);
 
   function handleAddTag(tagValue: string) {
-    if (tagValue && !tags.includes(tagValue)) {
-      onTagsChange([...tags, tagValue]);
-      setTagInput("");
-      setShowSuggestions(false);
-    }
+    if (!tagValue) return;
+    // Check case-insensitively if already added
+    if (tagsLower.includes(tagValue.toLowerCase())) return;
+    // Use existing tag casing if available
+    const existing = availableTags.find(
+      (t) => t.value.toLowerCase() === tagValue.toLowerCase(),
+    );
+    onTagsChange([...tags, existing ? existing.value : tagValue]);
+    setTagInput("");
+    setShowSuggestions(false);
   }
 
   function handleRemoveTag(tagValue: string) {

@@ -128,15 +128,16 @@ export function BulkTagModal({
   );
 }
 
-/** Get tags that appear on ALL selected bookmarks. */
+/** Get tags that appear on ALL selected bookmarks (case-insensitive). */
 function getIntersectionTags(bookmarks: EnrichedBookmark[]): string[] {
   if (bookmarks.length === 0) return [];
-  const first = new Set(bookmarks[0].tags || []);
+  // Start with the first bookmark's tags
+  let intersection = [...(bookmarks[0].tags || [])];
   for (let i = 1; i < bookmarks.length; i++) {
-    const tags = new Set(bookmarks[i].tags || []);
-    for (const tag of first) {
-      if (!tags.has(tag)) first.delete(tag);
-    }
+    const tagsLower = new Set(
+      (bookmarks[i].tags || []).map((t) => t.toLowerCase()),
+    );
+    intersection = intersection.filter((t) => tagsLower.has(t.toLowerCase()));
   }
-  return [...first].sort();
+  return intersection.sort();
 }

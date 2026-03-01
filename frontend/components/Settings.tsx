@@ -6,6 +6,7 @@ import {
   setDateFormat,
 } from "../../shared/date-format.ts";
 import { ImportBookmarks } from "./ImportBookmarks.tsx";
+import type { MergeTagDuplicatesResponse } from "../../shared/types.ts";
 
 type SettingsTab = "general" | "import";
 
@@ -31,6 +32,11 @@ export function Settings() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [merging, setMerging] = useState(false);
+  const [mergeResult, setMergeResult] = useState<
+    MergeTagDuplicatesResponse | null
+  >(null);
+  const [mergeError, setMergeError] = useState<string | null>(null);
 
   // Sync local state when settings/preferences from context change
   useEffect(() => {
@@ -50,6 +56,25 @@ export function Settings() {
       globalThis.history.replaceState(null, "", `/settings${hash}`);
     }
   }, [activeTab]);
+
+  async function handleMergeDuplicates() {
+    setMerging(true);
+    setMergeResult(null);
+    setMergeError(null);
+    try {
+      const res = await fetch("/api/tags/merge-duplicates", { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to merge duplicates");
+      }
+      const result: MergeTagDuplicatesResponse = await res.json();
+      setMergeResult(result);
+    } catch (err: any) {
+      setMergeError(err.message || "Failed to merge duplicates");
+    } finally {
+      setMerging(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -244,6 +269,70 @@ export function Settings() {
                     appear in your Reading List.
                   </p>
                 </div>
+              </div>
+            </section>
+
+            {/* Merge Duplicate Tags */}
+            <section className="bg-white rounded-lg shadow-md p-6 space-y-4">
+              <div>
+                <h3 className="text-xl font-bold text-gray-800 mb-1">
+                  Merge Duplicate Tags
+                </h3>
+                <p className="text-gray-600 text-sm mb-4">
+                  Find and merge tags that differ only in capitalization (e.g.
+                  "Swift" and "swift"). The earliest-created version is kept as
+                  canonical.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleMergeDuplicates}
+                  disabled={merging}
+                  className="px-4 py-2 rounded-lg font-medium text-white transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ backgroundColor: "var(--coral)" }}
+                >
+                  {merging ? "Merging..." : "Merge Duplicate Tags"}
+                </button>
+                {mergeResult && (
+                  <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                    {mergeResult.merged === 0
+                      ? (
+                        <p className="text-sm text-green-800">
+                          No duplicate tags found.
+                        </p>
+                      )
+                      : (
+                        <div className="text-sm text-green-800 space-y-1">
+                          <p className="font-medium">
+                            Merged {mergeResult.merged} group
+                            {mergeResult.merged !== 1 ? "s" : ""} of duplicates.
+                          </p>
+                          <p>
+                            {mergeResult.tagsDeleted} tag
+                            {mergeResult.tagsDeleted !== 1 ? "s" : ""} deleted,
+                            {" "}
+                            {mergeResult.bookmarksUpdated} bookmark
+                            {mergeResult.bookmarksUpdated !== 1 ? "s" : ""}{" "}
+                            updated.
+                          </p>
+                          <ul className="mt-2 list-disc list-inside">
+                            {mergeResult.details.map((d) => (
+                              <li key={d.canonical}>
+                                Kept "{d.canonical}", merged:{" "}
+                                {d.merged.map((m) =>
+                                  `"${m}"`
+                                ).join(", ")}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                  </div>
+                )}
+                {mergeError && (
+                  <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                    {mergeError}
+                  </div>
+                )}
               </div>
             </section>
 

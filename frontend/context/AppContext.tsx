@@ -309,10 +309,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const filteredBookmarks = useMemo(() => {
     let result = bookmarks;
 
-    // Apply tag filter
+    // Apply tag filter (case-insensitive)
     if (selectedTags.size > 0) {
       result = result.filter((bookmark) =>
-        [...selectedTags].every((tag) => bookmark.tags?.includes(tag))
+        [...selectedTags].every((tag) =>
+          bookmark.tags?.some((t) => t.toLowerCase() === tag.toLowerCase())
+        )
       );
     }
 
@@ -326,7 +328,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Reading list: bookmarks with the configured reading list tag
   const readingListBookmarks = useMemo(
-    () => bookmarks.filter((b) => b.tags?.includes(preferences.readingListTag)),
+    () => {
+      const rlLower = preferences.readingListTag.toLowerCase();
+      return bookmarks.filter((b) =>
+        b.tags?.some((t) => t.toLowerCase() === rlLower)
+      );
+    },
     [bookmarks, preferences.readingListTag],
   );
 
@@ -347,10 +354,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const filteredReadingList = useMemo(() => {
     let result = readingListBookmarks;
 
-    // Apply tag filter
+    // Apply tag filter (case-insensitive)
     if (readingListSelectedTags.size > 0) {
       result = result.filter((b) =>
-        [...readingListSelectedTags].every((tag) => b.tags?.includes(tag))
+        [...readingListSelectedTags].every((tag) =>
+          b.tags?.some((t) => t.toLowerCase() === tag.toLowerCase())
+        )
       );
     }
 

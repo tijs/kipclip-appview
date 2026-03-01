@@ -13,9 +13,15 @@ import {
   createAuthErrorResponse,
   createNewTagRecords,
   getSessionFromRequest,
+  listAllRecords,
   setSessionCookie,
+  TAG_COLLECTION,
 } from "../../lib/route-utils.ts";
 import { getBaseUrl } from "../../shared/url-utils.ts";
+import {
+  deduplicateTagsCaseInsensitive,
+  resolveTagCasing,
+} from "../../shared/tag-utils.ts";
 import type {
   ImportPrepareResponse,
   ImportProcessResponse,
@@ -137,12 +143,26 @@ export function registerImportRoutes(app: App<any>): App<any> {
         return setSessionCookie(Response.json(resp), setCookieHeader);
       }
 
-      // Collect all unique tags for later creation
-      const tagSet = new Set<string>();
+      // Collect all unique tags (case-insensitive) and resolve against existing PDS tags
+      const rawTags: string[] = [];
       for (const b of newBookmarks) {
-        for (const t of b.tags) tagSet.add(t);
+        for (const t of b.tags) rawTags.push(t);
       }
-      const allTags = [...tagSet];
+      const existingTagRecords = await listAllRecords(
+        oauthSession,
+        TAG_COLLECTION,
+      );
+      const existingTagValues = existingTagRecords
+        .map((r: any) => r.value?.value)
+        .filter(Boolean);
+      const allTags = deduplicateTagsCaseInsensitive(
+        resolveTagCasing(rawTags, existingTagValues),
+      );
+
+      // Resolve each bookmark's tags to use canonical casing
+      for (const b of newBookmarks) {
+        b.tags = resolveTagCasing(b.tags, existingTagValues);
+      }
 
       // Probabilistically clean up old jobs (~10% of requests)
       if (Math.random() < 0.1) {

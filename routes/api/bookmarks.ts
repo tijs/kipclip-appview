@@ -20,7 +20,12 @@ import {
   getSessionFromRequest,
   listAllRecords,
   setSessionCookie,
+  TAG_COLLECTION,
 } from "../../lib/route-utils.ts";
+import {
+  deduplicateTagsCaseInsensitive,
+  resolveTagCasing,
+} from "../../shared/tag-utils.ts";
 import { getUserSettings } from "../../lib/settings.ts";
 import { getUserPreferences } from "../../lib/preferences.ts";
 import { sendToInstapaperAsync } from "../../lib/instapaper.ts";
@@ -141,6 +146,7 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
 
       // Validate optional tags
       let validatedTags: string[] = [];
+      let tagRecords: any[] | undefined;
       if (body.tags !== undefined) {
         if (!Array.isArray(body.tags)) {
           return Response.json(
@@ -148,14 +154,18 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
             { status: 400 },
           );
         }
-        validatedTags = [
-          ...new Set(
-            body.tags
-              .filter((t): t is string => typeof t === "string")
-              .map((t) => t.trim())
-              .filter((t) => t.length > 0 && t.length <= 64),
-          ),
-        ];
+        const cleaned = body.tags
+          .filter((t): t is string => typeof t === "string")
+          .map((t) => t.trim())
+          .filter((t) => t.length > 0 && t.length <= 64);
+        // Deduplicate case-insensitively, then resolve against existing tag casing
+        const deduped = deduplicateTagsCaseInsensitive(cleaned);
+        if (deduped.length > 0) {
+          tagRecords = await listAllRecords(oauthSession, TAG_COLLECTION);
+          const existingValues = tagRecords.map((r: any) => r.value?.value)
+            .filter(Boolean);
+          validatedTags = resolveTagCasing(deduped, existingValues);
+        }
       }
 
       const metadata = await extractUrlMetadata(body.url);
@@ -214,8 +224,8 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
 
       // Create PDS tag records for new tags (non-blocking)
       if (validatedTags.length > 0) {
-        createNewTagRecords(oauthSession, validatedTags).catch((err) =>
-          console.error("Failed to create tag records:", err)
+        createNewTagRecords(oauthSession, validatedTags, tagRecords).catch(
+          (err) => console.error("Failed to create tag records:", err),
         );
       }
 
@@ -400,12 +410,13 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         note: body.note,
       };
 
-      const hasReadingListTag = record.tags.includes(
-        preferences.readingListTag,
+      const rlTagLower = preferences.readingListTag.toLowerCase();
+      const hasReadingListTag = record.tags.some(
+        (t: string) => t.toLowerCase() === rlTagLower,
       );
-      const hadReadingListTag =
-        currentRecord.value.tags?.includes(preferences.readingListTag) ||
-        false;
+      const hadReadingListTag = currentRecord.value.tags?.some(
+        (t: string) => t.toLowerCase() === rlTagLower,
+      ) || false;
 
       if (
         settings.instapaperEnabled && hasReadingListTag && !hadReadingListTag

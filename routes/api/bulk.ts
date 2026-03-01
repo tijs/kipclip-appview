@@ -19,6 +19,7 @@ import type {
   BulkOperationResponse,
   EnrichedBookmark,
 } from "../../shared/types.ts";
+import { tagIncludes } from "../../shared/tag-utils.ts";
 
 const MAX_WRITES = 10;
 
@@ -269,15 +270,18 @@ async function updateBookmarkTags(
   const currentRecord = await getResponse.json();
   const currentTags: string[] = currentRecord.value.tags || [];
 
-  // Compute new tags
+  // Compute new tags (case-insensitive)
   let newTags: string[];
   if (mode === "add") {
-    const tagSet = new Set(currentTags);
-    for (const tag of tags) tagSet.add(tag);
-    newTags = [...tagSet];
+    const result = [...currentTags];
+    for (const tag of tags) {
+      if (!tagIncludes(result, tag)) {
+        result.push(tag);
+      }
+    }
+    newTags = result;
   } else {
-    const removeSet = new Set(tags);
-    newTags = currentTags.filter((t) => !removeSet.has(t));
+    newTags = currentTags.filter((t) => !tagIncludes(tags, t));
   }
 
   // Write updated bookmark record
