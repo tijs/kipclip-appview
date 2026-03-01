@@ -187,6 +187,10 @@ export interface InitialDataResponse {
   tags: EnrichedTag[];
   settings: UserSettings;
   preferences: UserPreferences;
+  /** Cursor for next page of bookmarks (absent when all loaded) */
+  bookmarkCursor?: string;
+  /** Cursor for next page of annotations (absent when all loaded) */
+  annotationCursor?: string;
 }
 
 // Import types

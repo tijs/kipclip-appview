@@ -1,7 +1,7 @@
 /**
- * Initial data API route.
- * Fetches bookmarks, tags, annotations, and settings in a single request
- * to avoid token refresh race conditions.
+ * Initial data API routes.
+ * Supports progressive loading: first page returns quickly (~1s),
+ * subsequent pages fetched in background by the client.
  */
 
 import type { App } from "@fresh/core";
@@ -11,6 +11,7 @@ import {
   createAuthErrorResponse,
   getSessionFromRequest,
   listAllRecords,
+  listOnePage,
   setSessionCookie,
   TAG_COLLECTION,
 } from "../../lib/route-utils.ts";
@@ -24,7 +25,34 @@ import type {
   InitialDataResponse,
 } from "../../shared/types.ts";
 
+/** Join bookmark records with an annotation map to produce EnrichedBookmarks. */
+function joinBookmarksWithAnnotations(
+  bookmarkRecords: any[],
+  annotationMap: Map<string, AnnotationRecord>,
+): EnrichedBookmark[] {
+  return bookmarkRecords.map((record: any) => {
+    const rkey = record.uri.split("/").pop();
+    const annotation = rkey ? annotationMap.get(rkey) : undefined;
+    return {
+      uri: record.uri,
+      cid: record.cid,
+      subject: record.value.subject,
+      createdAt: record.value.createdAt,
+      tags: record.value.tags || [],
+      title: annotation?.title || record.value.$enriched?.title ||
+        record.value.title,
+      description: annotation?.description ||
+        record.value.$enriched?.description,
+      favicon: annotation?.favicon || record.value.$enriched?.favicon,
+      image: annotation?.image || record.value.$enriched?.image,
+      note: annotation?.note,
+    };
+  });
+}
+
 export function registerInitialDataRoutes(app: App<any>): App<any> {
+  // Paginated initial data: first call returns tags + settings + first page;
+  // subsequent calls (with cursors) return additional bookmark pages.
   app = app.get("/api/initial-data", async (ctx) => {
     try {
       const { session: oauthSession, setCookieHeader, error } =
@@ -34,82 +62,124 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
         return createAuthErrorResponse(error);
       }
 
-      const [
-        bookmarkRecords,
-        tagRecords,
-        annotationRecords,
-        settings,
-        preferences,
-      ] = await Promise.all([
-        listAllRecords(oauthSession, BOOKMARK_COLLECTION),
-        listAllRecords(oauthSession, TAG_COLLECTION),
-        listAllRecords(oauthSession, ANNOTATION_COLLECTION),
-        getUserSettings(oauthSession.did),
-        getUserPreferences(oauthSession),
+      const url = new URL(ctx.req.url);
+      const bookmarkCursor = url.searchParams.get("bookmarkCursor") ||
+        undefined;
+      const annotationCursor = url.searchParams.get("annotationCursor") ||
+        undefined;
+      const isFirstPage = !bookmarkCursor;
+
+      if (isFirstPage) {
+        // First page: fetch tags + settings + first page bookmarks/annotations
+        // All in parallel (~5 PDS requests, ~1s)
+        const [
+          bookmarkPage,
+          annotationPage,
+          tagRecords,
+          settings,
+          preferences,
+        ] = await Promise.all([
+          listOnePage(oauthSession, BOOKMARK_COLLECTION, { reverse: true }),
+          listOnePage(oauthSession, ANNOTATION_COLLECTION, { reverse: true }),
+          listAllRecords(oauthSession, TAG_COLLECTION),
+          getUserSettings(oauthSession.did),
+          getUserPreferences(oauthSession),
+        ]);
+
+        const annotationMap = new Map<string, AnnotationRecord>();
+        for (const record of annotationPage.records) {
+          const rkey = record.uri.split("/").pop();
+          if (rkey) annotationMap.set(rkey, record.value as AnnotationRecord);
+        }
+
+        const bookmarks = joinBookmarksWithAnnotations(
+          bookmarkPage.records,
+          annotationMap,
+        );
+
+        const tags: EnrichedTag[] = tagRecords.map((record: any) => ({
+          uri: record.uri,
+          cid: record.cid,
+          value: record.value.value,
+          createdAt: record.value.createdAt,
+        }));
+
+        const result: InitialDataResponse = {
+          bookmarks,
+          tags,
+          settings,
+          preferences,
+          bookmarkCursor: bookmarkPage.cursor,
+          annotationCursor: annotationPage.cursor,
+        };
+
+        const response = setSessionCookie(
+          Response.json(result),
+          setCookieHeader,
+        );
+
+        // Background migrations on first page load
+        if (bookmarkPage.records.length > 0) {
+          // Run migrations only when we have all data — fire a full fetch
+          // in background for migration purposes (doesn't block response)
+          Promise.all([
+            listAllRecords(oauthSession, BOOKMARK_COLLECTION),
+            listAllRecords(oauthSession, ANNOTATION_COLLECTION),
+          ]).then(([allBookmarks, allAnnotations]) => {
+            const allAnnotationMap = new Map<string, AnnotationRecord>();
+            for (const record of allAnnotations) {
+              const rkey = record.uri.split("/").pop();
+              if (rkey) {
+                allAnnotationMap.set(rkey, record.value as AnnotationRecord);
+              }
+            }
+            return runPdsMigrations({
+              oauthSession,
+              bookmarkRecords: allBookmarks,
+              tagRecords,
+              annotationMap: allAnnotationMap,
+            });
+          }).catch((err) =>
+            console.error("Background PDS migration error:", err)
+          );
+        }
+
+        return response;
+      }
+
+      // Subsequent page: fetch next page of bookmarks + annotations
+      const [bookmarkPage, annotationPage] = await Promise.all([
+        listOnePage(oauthSession, BOOKMARK_COLLECTION, {
+          cursor: bookmarkCursor,
+          reverse: true,
+        }),
+        annotationCursor
+          ? listOnePage(oauthSession, ANNOTATION_COLLECTION, {
+            cursor: annotationCursor,
+            reverse: true,
+          })
+          : Promise.resolve({ records: [] as any[], cursor: undefined }),
       ]);
 
-      // Build annotation lookup map (rkey → annotation)
       const annotationMap = new Map<string, AnnotationRecord>();
-      const annotationsOk = true;
-      for (const record of annotationRecords) {
+      for (const record of annotationPage.records) {
         const rkey = record.uri.split("/").pop();
-        if (rkey) {
-          annotationMap.set(rkey, record.value as AnnotationRecord);
-        }
+        if (rkey) annotationMap.set(rkey, record.value as AnnotationRecord);
       }
 
-      const bookmarks: EnrichedBookmark[] = bookmarkRecords.map(
-        (record: any) => {
-          const rkey = record.uri.split("/").pop();
-          const annotation = rkey ? annotationMap.get(rkey) : undefined;
-          return {
-            uri: record.uri,
-            cid: record.cid,
-            subject: record.value.subject,
-            createdAt: record.value.createdAt,
-            tags: record.value.tags || [],
-            title: annotation?.title || record.value.$enriched?.title ||
-              record.value.title,
-            description: annotation?.description ||
-              record.value.$enriched?.description,
-            favicon: annotation?.favicon || record.value.$enriched?.favicon,
-            image: annotation?.image || record.value.$enriched?.image,
-            note: annotation?.note,
-          };
-        },
-      ).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-
-      const tags: EnrichedTag[] = tagRecords.map((record: any) => ({
-        uri: record.uri,
-        cid: record.cid,
-        value: record.value.value,
-        createdAt: record.value.createdAt,
-      }));
-
-      const result: InitialDataResponse = {
-        bookmarks,
-        tags,
-        settings,
-        preferences,
-      };
-      const response = setSessionCookie(
-        Response.json(result),
-        setCookieHeader,
+      const bookmarks = joinBookmarksWithAnnotations(
+        bookmarkPage.records,
+        annotationMap,
       );
 
-      // Background migrations (fire-and-forget, run after response is sent)
-      // See BACKGROUND-TASKS.md for details on when these can be removed.
-      if (annotationsOk && bookmarkRecords.length > 0) {
-        runPdsMigrations({
-          oauthSession,
-          bookmarkRecords,
-          tagRecords,
-          annotationMap,
-        }).catch((err) =>
-          console.error("Background PDS migration error:", err)
-        );
-      }
-
+      const response = setSessionCookie(
+        Response.json({
+          bookmarks,
+          bookmarkCursor: bookmarkPage.cursor,
+          annotationCursor: annotationPage.cursor,
+        }),
+        setCookieHeader,
+      );
       return response;
     } catch (error: any) {
       console.error("Error fetching initial data:", error);
@@ -127,34 +197,16 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
         return createAuthErrorResponse(error);
       }
 
-      // Fetch first page of each collection (3 requests instead of 30+)
-      const fetchFirstPage = async (collection: string) => {
-        const params = new URLSearchParams({
-          repo: oauthSession.did,
-          collection,
-          limit: "100",
-        });
-        const res = await oauthSession.makeRequest(
-          "GET",
-          `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${params}`,
-        );
-        if (!res.ok) return { cids: [] as string[], cursor: "" };
-        const data = await res.json();
-        const cids = (data.records || []).map((r: any) => r.cid);
-        return { cids, cursor: data.cursor || "" };
-      };
-
       const [bookmarkPage, tagPage] = await Promise.all([
-        fetchFirstPage(BOOKMARK_COLLECTION),
-        fetchFirstPage(TAG_COLLECTION),
+        listOnePage(oauthSession, BOOKMARK_COLLECTION),
+        listOnePage(oauthSession, TAG_COLLECTION),
       ]);
 
-      // Build hash from CIDs + cursors
       const hashInput = [
-        ...bookmarkPage.cids,
-        bookmarkPage.cursor,
-        ...tagPage.cids,
-        tagPage.cursor,
+        ...bookmarkPage.records.map((r: any) => r.cid),
+        bookmarkPage.cursor || "",
+        ...tagPage.records.map((r: any) => r.cid),
+        tagPage.cursor || "",
       ].join("|");
 
       const hashBuffer = await crypto.subtle.digest(

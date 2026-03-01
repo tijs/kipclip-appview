@@ -116,6 +116,36 @@ export async function createNewTagRecords(
 }
 
 /**
+ * Fetch a single page of records from an AT Protocol collection.
+ * Returns records and an optional cursor for the next page.
+ */
+export async function listOnePage(
+  oauthSession: any,
+  collection: string,
+  options?: { cursor?: string; reverse?: boolean; limit?: number },
+): Promise<{ records: any[]; cursor?: string }> {
+  const params = new URLSearchParams({
+    repo: oauthSession.did,
+    collection,
+    limit: String(options?.limit ?? 100),
+  });
+  if (options?.cursor) params.set("cursor", options.cursor);
+  if (options?.reverse) params.set("reverse", "true");
+
+  const res = await oauthSession.makeRequest(
+    "GET",
+    `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${params}`,
+  );
+  if (!res.ok) return { records: [] };
+
+  const data = await res.json();
+  return {
+    records: data.records || [],
+    cursor: data.cursor || undefined,
+  };
+}
+
+/**
  * Paginate through all records in an AT Protocol collection.
  * Returns every record, following cursors until exhausted.
  */

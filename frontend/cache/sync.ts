@@ -1,7 +1,6 @@
 /**
- * Cache-first data loading with background refresh.
- * On load: serve from IndexedDB immediately if available,
- * then refresh from server in background.
+ * Cache-first data loading with progressive server fetch.
+ * First page renders in ~1s, remaining pages load in background.
  */
 
 import type {
@@ -17,7 +16,6 @@ import {
   putTags,
   setSyncMeta,
 } from "./db.ts";
-import { diffRecords } from "./diff.ts";
 import { apiGet } from "../utils/api.ts";
 
 export interface CachedData {
@@ -25,16 +23,25 @@ export interface CachedData {
   tags: EnrichedTag[];
 }
 
+export interface SyncCallbacks {
+  /** Called when the first page of data is ready */
+  onFirstPage: (data: InitialDataResponse) => void;
+  /** Called when a subsequent page of bookmarks arrives */
+  onMoreBookmarks: (bookmarks: EnrichedBookmark[]) => void;
+  /** Called when all pages are loaded */
+  onComplete: (allBookmarks: EnrichedBookmark[]) => void;
+}
+
 export interface SyncResult {
-  /** Data to render immediately (from cache or network) */
+  /** Data to render immediately (from cache) */
   immediate: CachedData | null;
-  /** Promise that resolves with full server data when background refresh completes */
-  refresh: Promise<InitialDataResponse & { _unchanged?: boolean }>;
+  /** Promise that resolves when the first server page is loaded */
+  firstPage: Promise<InitialDataResponse>;
 }
 
 /**
  * Load data with cache-first strategy.
- * Returns cached data immediately if available, plus a refresh promise.
+ * Returns cached data immediately if available, plus a first-page promise.
  */
 export async function loadWithCache(): Promise<SyncResult> {
   const [cachedBookmarks, cachedTags] = await Promise.all([
@@ -44,17 +51,59 @@ export async function loadWithCache(): Promise<SyncResult> {
 
   const hasCache = cachedBookmarks !== null && cachedTags !== null;
 
-  const refresh = fetchAndSync(
-    hasCache ? cachedBookmarks : null,
-    hasCache ? cachedTags : null,
-  );
+  const firstPage = fetchFirstPage();
 
   return {
     immediate: hasCache
       ? { bookmarks: cachedBookmarks!, tags: cachedTags! }
       : null,
-    refresh,
+    firstPage,
   };
+}
+
+/**
+ * Fetch the first page of data from the server.
+ */
+async function fetchFirstPage(): Promise<InitialDataResponse> {
+  const response = await apiGet("/api/initial-data");
+  if (!response.ok) {
+    throw new Error("Failed to load initial data");
+  }
+  return response.json();
+}
+
+/**
+ * Progressively load remaining bookmark pages.
+ * Calls onMoreBookmarks for each page, onComplete when done.
+ * Returns the full array of all bookmarks (first page + remaining).
+ */
+export async function loadRemainingPages(
+  firstPageData: InitialDataResponse,
+  onMoreBookmarks: (bookmarks: EnrichedBookmark[]) => void,
+): Promise<EnrichedBookmark[]> {
+  const allBookmarks = [...firstPageData.bookmarks];
+  let bookmarkCursor = firstPageData.bookmarkCursor;
+  let annotationCursor = firstPageData.annotationCursor;
+
+  while (bookmarkCursor) {
+    const params = new URLSearchParams();
+    params.set("bookmarkCursor", bookmarkCursor);
+    if (annotationCursor) params.set("annotationCursor", annotationCursor);
+
+    const response = await apiGet(`/api/initial-data?${params}`);
+    if (!response.ok) break;
+
+    const page = await response.json();
+    if (page.bookmarks?.length > 0) {
+      allBookmarks.push(...page.bookmarks);
+      onMoreBookmarks(page.bookmarks);
+    }
+
+    bookmarkCursor = page.bookmarkCursor;
+    annotationCursor = page.annotationCursor;
+  }
+
+  return allBookmarks;
 }
 
 /**
@@ -76,39 +125,8 @@ export async function checkForChanges(): Promise<boolean> {
   }
 }
 
-/**
- * Fetch fresh data from server.
- * Uses CID diffing to determine if React state update is needed.
- */
-async function fetchAndSync(
-  cachedBookmarks: EnrichedBookmark[] | null,
-  cachedTags: EnrichedTag[] | null,
-): Promise<InitialDataResponse & { _unchanged?: boolean }> {
-  const response = await apiGet("/api/initial-data");
-  if (!response.ok) {
-    throw new Error("Failed to load initial data");
-  }
-
-  const data: InitialDataResponse = await response.json();
-
-  // Write fresh data to cache + update sync hash
-  await writeToCache({ bookmarks: data.bookmarks, tags: data.tags });
-  updateSyncHash();
-
-  // If we had cached data, check if anything actually changed
-  if (cachedBookmarks && cachedTags) {
-    const bookmarkDiff = diffRecords(cachedBookmarks, data.bookmarks);
-    const tagDiff = diffRecords(cachedTags, data.tags);
-    if (bookmarkDiff.isEmpty && tagDiff.isEmpty) {
-      return { ...data, _unchanged: true };
-    }
-  }
-
-  return data;
-}
-
 /** Fire-and-forget sync hash update */
-function updateSyncHash(): void {
+export function updateSyncHash(): void {
   apiGet("/api/sync-check").then(async (res) => {
     if (res.ok) {
       const { hash } = await res.json();

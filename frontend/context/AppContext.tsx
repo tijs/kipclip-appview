@@ -25,7 +25,13 @@ import {
   putBookmark as putBookmarkToCache,
   putTag as putTagToCache,
 } from "../cache/db.ts";
-import { checkForChanges, loadWithCache } from "../cache/sync.ts";
+import {
+  checkForChanges,
+  loadRemainingPages,
+  loadWithCache,
+  updateSyncHash,
+  writeToCache,
+} from "../cache/sync.ts";
 
 // Search helper: case-insensitive match across searchable fields
 function matchesSearch(bookmark: EnrichedBookmark, query: string): boolean {
@@ -224,7 +230,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // Combined initial data loading with cache-first strategy
+  // Combined initial data loading with cache-first + progressive strategy
   async function loadInitialData() {
     try {
       // Open IndexedDB before reading cache (must await to avoid race)
@@ -232,30 +238,50 @@ export function AppProvider({ children }: { children: ReactNode }) {
         await openCacheDb(session.did);
       }
 
-      const { immediate, refresh } = await loadWithCache();
+      const { immediate, firstPage } = await loadWithCache();
 
       if (immediate) {
-        // Cache hit: populate state immediately and return.
-        // dataLoading goes false in App.tsx, UI shows cached data.
+        // Cache hit: show cached data immediately, refresh in background
         setBookmarks(immediate.bookmarks);
         setTags(immediate.tags);
 
-        // Background refresh: update state if data changed on server
-        refresh.then((data) => {
-          if (!data._unchanged) {
-            setBookmarks(data.bookmarks);
-            setTags(data.tags);
-          }
+        // Background: load first page + remaining pages, update state
+        firstPage.then(async (data) => {
           applyServerMeta(data);
+          // Progressively load all pages and replace cache
+          const allBookmarks = await loadRemainingPages(data, () => {});
+          setBookmarks(allBookmarks);
+          setTags(data.tags);
+          await writeToCache({ bookmarks: allBookmarks, tags: data.tags });
+          updateSyncHash();
         }).catch((err) => console.error("Background refresh failed:", err));
         return;
       }
 
-      // No cache: wait for full server fetch (spinner stays visible)
-      const data = await refresh;
+      // No cache: show first page fast, then load remaining in background
+      const data = await firstPage;
       setBookmarks(data.bookmarks);
       setTags(data.tags);
       applyServerMeta(data);
+
+      // If there are more pages, load them progressively
+      if (data.bookmarkCursor) {
+        loadRemainingPages(data, (moreBookmarks) => {
+          setBookmarks((prev) => [...prev, ...moreBookmarks]);
+        }).then(async (allBookmarks) => {
+          // All pages loaded — persist full dataset to cache
+          await writeToCache({ bookmarks: allBookmarks, tags: data.tags });
+          updateSyncHash();
+        }).catch((err) =>
+          console.error("Failed loading remaining pages:", err)
+        );
+      } else {
+        // Only one page — cache it directly
+        writeToCache({ bookmarks: data.bookmarks, tags: data.tags }).catch(
+          () => {},
+        );
+        updateSyncHash();
+      }
     } catch (err) {
       console.error("Failed to load initial data:", err);
       throw err;
