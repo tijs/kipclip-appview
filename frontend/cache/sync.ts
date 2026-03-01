@@ -78,19 +78,25 @@ async function fetchFirstPage(): Promise<InitialDataResponse> {
   return data;
 }
 
+export interface LoadPagesResult {
+  bookmarks: EnrichedBookmark[];
+  /** True when all pages were loaded (cursor exhausted). False if a page failed. */
+  complete: boolean;
+}
+
 /**
  * Progressively load remaining bookmark pages.
- * Calls onMoreBookmarks for each page, onComplete when done.
- * Returns the full array of all bookmarks (first page + remaining).
+ * Returns the full array of all bookmarks (first page + remaining)
+ * and whether loading completed fully.
  */
 export async function loadRemainingPages(
   firstPageData: InitialDataResponse,
-  onMoreBookmarks: (bookmarks: EnrichedBookmark[]) => void,
-): Promise<EnrichedBookmark[]> {
+): Promise<LoadPagesResult> {
   perf.start("remainingPages");
   const allBookmarks = [...firstPageData.bookmarks];
   let bookmarkCursor = firstPageData.bookmarkCursor;
   let annotationCursor = firstPageData.annotationCursor;
+  let complete = true;
 
   while (bookmarkCursor) {
     const params = new URLSearchParams();
@@ -98,12 +104,14 @@ export async function loadRemainingPages(
     if (annotationCursor) params.set("annotationCursor", annotationCursor);
 
     const response = await apiGet(`/api/initial-data?${params}`);
-    if (!response.ok) break;
+    if (!response.ok) {
+      complete = false;
+      break;
+    }
 
     const page = await response.json();
     if (page.bookmarks?.length > 0) {
       allBookmarks.push(...page.bookmarks);
-      onMoreBookmarks(page.bookmarks);
     }
 
     bookmarkCursor = page.bookmarkCursor;
@@ -111,7 +119,7 @@ export async function loadRemainingPages(
   }
 
   perf.end("remainingPages");
-  return allBookmarks;
+  return { bookmarks: allBookmarks, complete };
 }
 
 /**

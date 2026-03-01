@@ -33,19 +33,11 @@ import {
   updateSyncHash,
   writeToCache,
 } from "../cache/sync.ts";
-
-// Search helper: case-insensitive match across searchable fields
-function matchesSearch(bookmark: EnrichedBookmark, query: string): boolean {
-  const q = query.toLowerCase();
-  return (
-    bookmark.title?.toLowerCase().includes(q) ||
-    bookmark.description?.toLowerCase().includes(q) ||
-    bookmark.subject.toLowerCase().includes(q) ||
-    bookmark.note?.toLowerCase().includes(q) ||
-    bookmark.tags?.some((tag) => tag.toLowerCase().includes(q)) ||
-    false
-  );
-}
+import {
+  buildTagIndex,
+  filterByTags,
+  matchesSearch,
+} from "../../shared/bookmark-filters.ts";
 
 const DEFAULT_SETTINGS: UserSettings = {
   instapaperEnabled: false,
@@ -247,39 +239,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setTags(immediate.tags);
         perf.end("firstPaint");
 
-        // Background: load first page + remaining pages, update state
+        // Background: load all pages, only replace if complete
         firstPage.then(async (data) => {
           applyServerMeta(data);
-          // Progressively load all pages and replace cache
-          const allBookmarks = await loadRemainingPages(data, () => {});
-          setBookmarks(allBookmarks);
-          setTags(data.tags);
-          await writeToCache({ bookmarks: allBookmarks, tags: data.tags });
-          updateSyncHash();
+          const result = await loadRemainingPages(data);
+          if (result.complete) {
+            setBookmarks(result.bookmarks);
+            setTags(data.tags);
+            await writeToCache({
+              bookmarks: result.bookmarks,
+              tags: data.tags,
+            });
+            updateSyncHash();
+          }
+          // If incomplete, keep cached data — don't corrupt cache
         }).catch((err) => console.error("Background refresh failed:", err));
         perf.end("loadInitialData");
         return;
       }
 
-      // No cache: show first page fast, then load remaining in background
+      // No cache: load ALL pages before showing anything.
+      // Tags reference bookmarks across all pages, so showing partial
+      // bookmarks with all tags causes tag filtering to show 0 results.
       const data = await firstPage;
-      perf.start("firstPaint");
-      setBookmarks(data.bookmarks);
-      setTags(data.tags);
-      perf.end("firstPaint");
       applyServerMeta(data);
 
-      // If there are more pages, accumulate in background and set once
       if (data.bookmarkCursor) {
-        loadRemainingPages(data, () => {}).then(async (allBookmarks) => {
-          setBookmarks(allBookmarks);
-          await writeToCache({ bookmarks: allBookmarks, tags: data.tags });
+        const result = await loadRemainingPages(data);
+        perf.start("firstPaint");
+        setBookmarks(result.bookmarks);
+        setTags(data.tags);
+        perf.end("firstPaint");
+        if (result.complete) {
+          writeToCache({ bookmarks: result.bookmarks, tags: data.tags }).catch(
+            () => {},
+          );
           updateSyncHash();
-        }).catch((err) =>
-          console.error("Failed loading remaining pages:", err)
-        );
+        }
       } else {
-        // Only one page — cache it directly
+        // Only one page — show and cache directly
+        perf.start("firstPaint");
+        setBookmarks(data.bookmarks);
+        setTags(data.tags);
+        perf.end("firstPaint");
         writeToCache({ bookmarks: data.bookmarks, tags: data.tags }).catch(
           () => {},
         );
@@ -392,27 +394,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   // Pre-normalize tags once when bookmarks change (not on every filter)
-  const bookmarkTagsLower = useMemo(() => {
-    const map = new Map<string, Set<string>>();
-    for (const b of bookmarks) {
-      const lowerTags = new Set(b.tags?.map((t) => t.toLowerCase()) ?? []);
-      map.set(b.uri, lowerTags);
-    }
-    return map;
-  }, [bookmarks]);
+  const tagIndex = useMemo(() => buildTagIndex(bookmarks), [bookmarks]);
 
   // Computed values
   const filteredBookmarks = useMemo(() => {
     perf.start("tagFilter");
-    let result = bookmarks;
-
-    if (selectedTags.size > 0) {
-      const selectedLower = [...selectedTags].map((t) => t.toLowerCase());
-      result = result.filter((b) => {
-        const tags = bookmarkTagsLower.get(b.uri);
-        return tags !== undefined && selectedLower.every((t) => tags.has(t));
-      });
-    }
+    let result = filterByTags(bookmarks, selectedTags, tagIndex);
 
     if (bookmarkSearchQuery.trim()) {
       result = result.filter((b) => matchesSearch(b, bookmarkSearchQuery));
@@ -420,17 +407,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     perf.end("tagFilter");
     return result;
-  }, [bookmarks, bookmarkTagsLower, selectedTags, bookmarkSearchQuery]);
+  }, [bookmarks, tagIndex, selectedTags, bookmarkSearchQuery]);
 
   const readingListBookmarks = useMemo(
     () => {
       const rlLower = preferences.readingListTag.toLowerCase();
       return bookmarks.filter((b) => {
-        const tags = bookmarkTagsLower.get(b.uri);
+        const tags = tagIndex.get(b.uri);
         return tags !== undefined && tags.has(rlLower);
       });
     },
-    [bookmarks, bookmarkTagsLower, preferences.readingListTag],
+    [bookmarks, tagIndex, preferences.readingListTag],
   );
 
   const readingListTags = useMemo(() => {
@@ -445,17 +432,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [readingListBookmarks, preferences.readingListTag]);
 
   const filteredReadingList = useMemo(() => {
-    let result = readingListBookmarks;
-
-    if (readingListSelectedTags.size > 0) {
-      const selectedLower = [...readingListSelectedTags].map((t) =>
-        t.toLowerCase()
-      );
-      result = result.filter((b) => {
-        const tags = bookmarkTagsLower.get(b.uri);
-        return tags !== undefined && selectedLower.every((t) => tags.has(t));
-      });
-    }
+    let result = filterByTags(
+      readingListBookmarks,
+      readingListSelectedTags,
+      tagIndex,
+    );
 
     if (readingListSearchQuery.trim()) {
       result = result.filter((b) => matchesSearch(b, readingListSearchQuery));
@@ -464,7 +445,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return result;
   }, [
     readingListBookmarks,
-    bookmarkTagsLower,
+    tagIndex,
     readingListSelectedTags,
     readingListSearchQuery,
   ]);
