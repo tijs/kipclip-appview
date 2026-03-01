@@ -206,7 +206,7 @@ export function SwipeableRow(
           zIndex: 1,
           transform: `translateX(${offsetX}px)`,
           transition: isAnimating ? "transform 0.25s ease-out" : "none",
-          backgroundColor: "inherit",
+          backgroundColor: "white",
         }}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
