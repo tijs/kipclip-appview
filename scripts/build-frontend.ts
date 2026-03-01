@@ -95,8 +95,13 @@ try {
   // Ensure static directory exists
   await Deno.mkdir("static", { recursive: true });
 
-  // Write bundle with hashed filename
-  await Deno.writeFile(bundlePath, bundleOutput.contents);
+  // Write bundle with hashed filename, fixing sourceMappingURL to match
+  let bundleText = new TextDecoder().decode(bundleOutput.contents);
+  bundleText = bundleText.replace(
+    /\/\/# sourceMappingURL=bundle\.js\.map/,
+    `//# sourceMappingURL=${bundleFileName}.map`,
+  );
+  await Deno.writeTextFile(bundlePath, bundleText);
 
   // Write sourcemap if present
   if (sourcemapOutput) {
