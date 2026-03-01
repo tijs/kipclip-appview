@@ -118,6 +118,10 @@ export async function loadRemainingPages(
     annotationCursor = page.annotationCursor;
   }
 
+  // Pages arrive in cursor order which may not match createdAt order.
+  // Re-sort so newest bookmarks appear first after merging all pages.
+  allBookmarks.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
   perf.end("remainingPages");
   return { bookmarks: allBookmarks, complete };
 }
