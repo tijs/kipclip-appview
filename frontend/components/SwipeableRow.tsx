@@ -152,6 +152,7 @@ export function SwipeableRow(
         position: "relative",
         overflow: "hidden",
         maxHeight: removing ? 0 : 200,
+        borderRadius: "0.5rem",
       }}
       onTransitionEnd={removing
         ? (e) => {
@@ -191,8 +192,11 @@ export function SwipeableRow(
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize: "14px",
-            fontWeight: 600,
+            fontSize: "15px",
+            fontWeight: 400,
+            borderRadius: "0.5rem",
+            margin: "2px 0",
+            letterSpacing: "-0.01em",
           }}
         >
           {state === "deleting" ? "..." : "Delete"}
