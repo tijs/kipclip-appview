@@ -47,7 +47,11 @@ export async function getCachedBookmarks(): Promise<EnrichedBookmark[] | null> {
   if (!db) return null;
   try {
     const all = await db.getAll("bookmarks");
-    return all.length > 0 ? all : null;
+    if (all.length === 0) return null;
+    // IndexedDB returns records in key order (uri), not insertion order.
+    // Re-sort by createdAt descending so newest bookmarks appear first.
+    all.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return all;
   } catch {
     return null;
   }
