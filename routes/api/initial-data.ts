@@ -16,8 +16,7 @@ import {
 } from "../../lib/route-utils.ts";
 import { getUserPreferences } from "../../lib/preferences.ts";
 import { getUserSettings } from "../../lib/settings.ts";
-import { migrateAnnotations } from "../../lib/migration-annotations.ts";
-import { repairMissingFavicons } from "../../lib/repair-favicons.ts";
+import { runPdsMigrations } from "../../lib/pds-migrations.ts";
 import type {
   AnnotationRecord,
   EnrichedBookmark,
@@ -98,17 +97,17 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
         setCookieHeader,
       );
 
-      // Background tasks (fire-and-forget, run after response is sent)
+      // Background migrations (fire-and-forget, run after response is sent)
       // See BACKGROUND-TASKS.md for details on when these can be removed.
       if (annotationsOk && bookmarkRecords.length > 0) {
-        migrateAnnotations(oauthSession, bookmarkRecords, annotationMap)
-          .catch((err) =>
-            console.error("Background annotation migration error:", err)
-          );
-        repairMissingFavicons(oauthSession, bookmarkRecords, annotationMap)
-          .catch((err) =>
-            console.error("Background favicon repair error:", err)
-          );
+        runPdsMigrations({
+          oauthSession,
+          bookmarkRecords,
+          tagRecords,
+          annotationMap,
+        }).catch((err) =>
+          console.error("Background PDS migration error:", err)
+        );
       }
 
       return response;

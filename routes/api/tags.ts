@@ -21,6 +21,8 @@ import type {
   UpdateTagRequest,
   UpdateTagResponse,
 } from "../../shared/types.ts";
+import { tagIncludes, tagsEqual } from "../../shared/tag-utils.ts";
+import { mergeTagDuplicates } from "../../lib/migration-merge-tags.ts";
 
 export function registerTagRoutes(app: App<any>): App<any> {
   // List tags
@@ -78,6 +80,27 @@ export function registerTagRoutes(app: App<any>): App<any> {
         return Response.json(
           { error: "Tag value must be 64 characters or less" },
           { status: 400 },
+        );
+      }
+
+      // Check if a tag with this value already exists (case-insensitive)
+      const existingRecords = await listAllRecords(
+        oauthSession,
+        TAG_COLLECTION,
+      );
+      const existing = existingRecords.find((rec: any) =>
+        tagsEqual(rec.value?.value ?? "", value)
+      );
+      if (existing) {
+        const tag: EnrichedTag = {
+          uri: existing.uri,
+          cid: existing.cid,
+          value: existing.value.value,
+          createdAt: existing.value.createdAt,
+        };
+        return setSessionCookie(
+          Response.json({ success: true, tag } as AddTagResponse),
+          setCookieHeader,
         );
       }
 
@@ -171,7 +194,7 @@ export function registerTagRoutes(app: App<any>): App<any> {
       const currentRecord = await getResponse.json();
       const oldValue = currentRecord.value.value;
 
-      // If value hasn't changed, return success
+      // If value hasn't changed (exact match), return success
       if (oldValue === newValue) {
         const tag: EnrichedTag = {
           uri: currentRecord.uri,
@@ -185,7 +208,20 @@ export function registerTagRoutes(app: App<any>): App<any> {
         );
       }
 
-      // Update bookmarks with the old tag value
+      // Check for case-insensitive collision with another tag
+      const allTagRecords = await listAllRecords(oauthSession, TAG_COLLECTION);
+      const collision = allTagRecords.find((rec: any) =>
+        tagsEqual(rec.value?.value ?? "", newValue) &&
+        rec.uri !== currentRecord.uri
+      );
+      if (collision) {
+        return Response.json(
+          { error: `A tag "${collision.value.value}" already exists` },
+          { status: 409 },
+        );
+      }
+
+      // Update bookmarks with the old tag value (case-insensitive match)
       const bookmarkRecords = await listAllRecords(
         oauthSession,
         BOOKMARK_COLLECTION,
@@ -193,11 +229,13 @@ export function registerTagRoutes(app: App<any>): App<any> {
 
       await Promise.all(
         bookmarkRecords
-          .filter((record: any) => record.value.tags?.includes(oldValue))
+          .filter((record: any) =>
+            tagIncludes(record.value.tags || [], oldValue)
+          )
           .map(async (record: any) => {
             const bookmarkRkey = record.uri.split("/").pop();
             const updatedTags = record.value.tags.map((t: string) =>
-              t === oldValue ? newValue : t
+              tagsEqual(t, oldValue) ? newValue : t
             );
 
             const res = await oauthSession.makeRequest(
@@ -300,7 +338,7 @@ export function registerTagRoutes(app: App<any>): App<any> {
         BOOKMARK_COLLECTION,
       );
       const count = bookmarkRecords.filter((record: any) =>
-        record.value.tags?.includes(tagValue)
+        tagIncludes(record.value.tags || [], tagValue)
       ).length;
 
       return setSessionCookie(
@@ -351,11 +389,13 @@ export function registerTagRoutes(app: App<any>): App<any> {
 
       await Promise.all(
         bookmarkRecords
-          .filter((record: any) => record.value.tags?.includes(tagValue))
+          .filter((record: any) =>
+            tagIncludes(record.value.tags || [], tagValue)
+          )
           .map(async (record: any) => {
             const bookmarkRkey = record.uri.split("/").pop();
             const updatedTags = record.value.tags.filter((t: string) =>
-              t !== tagValue
+              !tagsEqual(t, tagValue)
             );
 
             const res = await oauthSession.makeRequest(
@@ -409,6 +449,32 @@ export function registerTagRoutes(app: App<any>): App<any> {
         error: error.message,
       };
       return Response.json(result, { status: 500 });
+    }
+  });
+
+  // Merge duplicate tags (case-insensitive migration)
+  app = app.post("/api/tags/merge-duplicates", async (ctx) => {
+    try {
+      const { session: oauthSession, setCookieHeader, error } =
+        await getSessionFromRequest(ctx.req);
+      if (!oauthSession) {
+        return createAuthErrorResponse(error);
+      }
+
+      const [tagRecords, bookmarkRecords] = await Promise.all([
+        listAllRecords(oauthSession, TAG_COLLECTION),
+        listAllRecords(oauthSession, BOOKMARK_COLLECTION),
+      ]);
+
+      const result = await mergeTagDuplicates(
+        oauthSession,
+        tagRecords,
+        bookmarkRecords,
+      );
+      return setSessionCookie(Response.json(result), setCookieHeader);
+    } catch (error: any) {
+      console.error("Error merging duplicate tags:", error);
+      return Response.json({ error: error.message }, { status: 500 });
     }
   });
 
