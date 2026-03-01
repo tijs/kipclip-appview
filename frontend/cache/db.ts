@@ -6,6 +6,7 @@
 
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
 import type { EnrichedBookmark, EnrichedTag } from "../../shared/types.ts";
+import { perf } from "../perf.ts";
 
 interface KipclipDB extends DBSchema {
   bookmarks: {
@@ -27,6 +28,7 @@ let dbFailed = false;
 
 export async function openCacheDb(did: string): Promise<void> {
   if (dbFailed) return;
+  perf.start("dbOpen");
   try {
     db = await openDB<KipclipDB>(`kipclip-${did}`, 1, {
       upgrade(database) {
@@ -38,6 +40,7 @@ export async function openCacheDb(did: string): Promise<void> {
   } catch {
     dbFailed = true;
   }
+  perf.end("dbOpen");
 }
 
 export async function getCachedBookmarks(): Promise<EnrichedBookmark[] | null> {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AddBookmark } from "./AddBookmark.tsx";
 import {
+  BookmarkCard,
   getStoredViewMode,
   GridIcon,
   ListIcon,
@@ -12,10 +13,33 @@ import { BookmarkDetail } from "./BookmarkDetail.tsx";
 import { BulkActionToolbar } from "./BulkActionToolbar.tsx";
 import { EditBookmark } from "./EditBookmark.tsx";
 import { OrphanedTagsDialog } from "./OrphanedTagsDialog.tsx";
-import { VirtualBookmarkList } from "./VirtualBookmarkList.tsx";
+import { SwipeableRow } from "./SwipeableRow.tsx";
 import { useApp } from "../context/AppContext.tsx";
 import type { DateFormatOption } from "../../shared/date-format.ts";
 import type { EnrichedBookmark, EnrichedTag } from "../../shared/types.ts";
+
+function useIncrementalRender(total: number, pageSize = 100) {
+  const [visible, setVisible] = useState(pageSize);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!sentinelRef.current || visible >= total) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        setVisible((v) => Math.min(v + pageSize, total));
+      }
+    });
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [visible, total, pageSize]);
+
+  // Reset when total changes significantly (e.g., filter applied)
+  useEffect(() => {
+    setVisible(pageSize);
+  }, [total, pageSize]);
+
+  return { visible, sentinelRef };
+}
 
 /** Find tags from deleted bookmarks that no remaining bookmark uses. */
 function findOrphanedTags(
@@ -56,6 +80,7 @@ export function BookmarkList() {
     setBookmarkSearchQuery,
   } = useApp();
   const dateFormat = preferences.dateFormat as DateFormatOption;
+  const { visible, sentinelRef } = useIncrementalRender(bookmarks.length);
 
   // Data is pre-loaded by App.tsx via loadInitialData(), so no initial loading state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -574,22 +599,67 @@ export function BookmarkList() {
           </div>
         )
         : (
-          <VirtualBookmarkList
-            bookmarks={bookmarks}
-            viewMode={viewMode}
-            dateFormat={dateFormat}
-            isSelectMode={isSelectMode}
-            selectedUris={selectedUris}
-            dragOverBookmark={dragOverBookmark}
-            imageErrors={imageErrors}
-            onBookmarkClick={isSelectMode
-              ? (b) => toggleSelection(b.uri)
-              : (b) => setDetailBookmark(b)}
-            onDragOverBookmark={setDragOverBookmark}
-            onDropTag={handleDropTag}
-            onImageError={handleImageError}
-            onSwipeDelete={handleSwipeDelete}
-          />
+          <>
+            <div
+              className={viewMode === "cards"
+                ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                : "flex flex-col gap-2"}
+            >
+              {bookmarks.slice(0, visible).map((bookmark) => {
+                const card = (
+                  <BookmarkCard
+                    key={bookmark.uri}
+                    bookmark={bookmark}
+                    viewMode={viewMode}
+                    isDragOver={dragOverBookmark === bookmark.uri}
+                    imageError={imageErrors.has(bookmark.uri)}
+                    dateFormat={dateFormat}
+                    isSelectMode={isSelectMode}
+                    isSelected={selectedUris.has(bookmark.uri)}
+                    onClick={() =>
+                      isSelectMode
+                        ? toggleSelection(bookmark.uri)
+                        : setDetailBookmark(bookmark)}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "copy";
+                    }}
+                    onDragEnter={(e) => {
+                      e.preventDefault();
+                      setDragOverBookmark(bookmark.uri);
+                    }}
+                    onDragLeave={(e) => {
+                      e.preventDefault();
+                      if (e.currentTarget === e.target) {
+                        setDragOverBookmark(null);
+                      }
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setDragOverBookmark(null);
+                      const tagValue = e.dataTransfer.getData("text/plain");
+                      if (tagValue) handleDropTag(bookmark.uri, tagValue);
+                    }}
+                    onImageError={() => handleImageError(bookmark.uri)}
+                  />
+                );
+                if (!isSelectMode && viewMode === "list") {
+                  return (
+                    <SwipeableRow
+                      key={bookmark.uri}
+                      onDelete={() => handleSwipeDelete(bookmark)}
+                    >
+                      {card}
+                    </SwipeableRow>
+                  );
+                }
+                return card;
+              })}
+            </div>
+            {visible < bookmarks.length && (
+              <div ref={sentinelRef} className="h-10" />
+            )}
+          </>
         )}
 
       {showAddModal && (

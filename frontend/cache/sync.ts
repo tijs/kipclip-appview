@@ -17,6 +17,7 @@ import {
   setSyncMeta,
 } from "./db.ts";
 import { apiGet } from "../utils/api.ts";
+import { perf } from "../perf.ts";
 
 export interface CachedData {
   bookmarks: EnrichedBookmark[];
@@ -44,10 +45,12 @@ export interface SyncResult {
  * Returns cached data immediately if available, plus a first-page promise.
  */
 export async function loadWithCache(): Promise<SyncResult> {
+  perf.start("cacheRead");
   const [cachedBookmarks, cachedTags] = await Promise.all([
     getCachedBookmarks(),
     getCachedTags(),
   ]);
+  perf.end("cacheRead");
 
   const hasCache = cachedBookmarks !== null && cachedTags !== null;
 
@@ -65,11 +68,14 @@ export async function loadWithCache(): Promise<SyncResult> {
  * Fetch the first page of data from the server.
  */
 async function fetchFirstPage(): Promise<InitialDataResponse> {
+  perf.start("firstPage");
   const response = await apiGet("/api/initial-data");
   if (!response.ok) {
     throw new Error("Failed to load initial data");
   }
-  return response.json();
+  const data = await response.json();
+  perf.end("firstPage");
+  return data;
 }
 
 /**
@@ -81,6 +87,7 @@ export async function loadRemainingPages(
   firstPageData: InitialDataResponse,
   onMoreBookmarks: (bookmarks: EnrichedBookmark[]) => void,
 ): Promise<EnrichedBookmark[]> {
+  perf.start("remainingPages");
   const allBookmarks = [...firstPageData.bookmarks];
   let bookmarkCursor = firstPageData.bookmarkCursor;
   let annotationCursor = firstPageData.annotationCursor;
@@ -103,6 +110,7 @@ export async function loadRemainingPages(
     annotationCursor = page.annotationCursor;
   }
 
+  perf.end("remainingPages");
   return allBookmarks;
 }
 
@@ -139,11 +147,13 @@ export function updateSyncHash(): void {
  * Persist bookmarks + tags to IndexedDB cache.
  */
 export async function writeToCache(data: CachedData): Promise<void> {
+  perf.start("cacheWrite");
   await Promise.all([
     putBookmarks(data.bookmarks),
     putTags(data.tags),
     setSyncMeta("lastSync", new Date().toISOString()),
   ]);
+  perf.end("cacheWrite");
 }
 
 /**

@@ -50,6 +50,10 @@ function joinBookmarksWithAnnotations(
   });
 }
 
+// Track which users have already run migrations this server session.
+// Migrations are one-time data fixes; no need to re-run on every page load.
+const migratedUsers = new Set<string>();
+
 export function registerInitialDataRoutes(app: App<any>): App<any> {
   // Paginated initial data: first call returns tags + settings + first page;
   // subsequent calls (with cursors) return additional bookmark pages.
@@ -118,10 +122,10 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
           setCookieHeader,
         );
 
-        // Background migrations on first page load
-        if (bookmarkPage.records.length > 0) {
-          // Run migrations only when we have all data — fire a full fetch
-          // in background for migration purposes (doesn't block response)
+        // Background migrations: run once per user per server session
+        const userDid = oauthSession.did;
+        if (bookmarkPage.records.length > 0 && !migratedUsers.has(userDid)) {
+          migratedUsers.add(userDid);
           Promise.all([
             listAllRecords(oauthSession, BOOKMARK_COLLECTION),
             listAllRecords(oauthSession, ANNOTATION_COLLECTION),

@@ -18,6 +18,7 @@ import type {
 } from "../../shared/types.ts";
 import { getDateFormat, setDateFormat } from "../../shared/date-format.ts";
 import { apiGet, apiPatch, apiPost, apiPut } from "../utils/api.ts";
+import { perf } from "../perf.ts";
 import {
   deleteBookmarkFromCache,
   deleteTagFromCache,
@@ -63,7 +64,6 @@ interface AppState {
   settings: UserSettings;
   preferences: UserPreferences;
   readingListSelectedTags: Set<string>;
-  loading: boolean;
   bookmarkSearchQuery: string;
   readingListSearchQuery: string;
 }
@@ -141,7 +141,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [readingListSelectedTags, setReadingListSelectedTags] = useState<
     Set<string>
   >(new Set());
-  const [loading, _setLoading] = useState(true);
   const [bookmarkSearchQuery, setBookmarkSearchQuery] = useState(() => {
     const params = new URLSearchParams(globalThis.location.search);
     return params.get("q") || "";
@@ -232,6 +231,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Combined initial data loading with cache-first + progressive strategy
   async function loadInitialData() {
+    perf.start("loadInitialData");
     try {
       // Open IndexedDB before reading cache (must await to avoid race)
       if (session) {
@@ -242,8 +242,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (immediate) {
         // Cache hit: show cached data immediately, refresh in background
+        perf.start("firstPaint");
         setBookmarks(immediate.bookmarks);
         setTags(immediate.tags);
+        perf.end("firstPaint");
 
         // Background: load first page + remaining pages, update state
         firstPage.then(async (data) => {
@@ -255,21 +257,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
           await writeToCache({ bookmarks: allBookmarks, tags: data.tags });
           updateSyncHash();
         }).catch((err) => console.error("Background refresh failed:", err));
+        perf.end("loadInitialData");
         return;
       }
 
       // No cache: show first page fast, then load remaining in background
       const data = await firstPage;
+      perf.start("firstPaint");
       setBookmarks(data.bookmarks);
       setTags(data.tags);
+      perf.end("firstPaint");
       applyServerMeta(data);
 
-      // If there are more pages, load them progressively
+      // If there are more pages, accumulate in background and set once
       if (data.bookmarkCursor) {
-        loadRemainingPages(data, (moreBookmarks) => {
-          setBookmarks((prev) => [...prev, ...moreBookmarks]);
-        }).then(async (allBookmarks) => {
-          // All pages loaded — persist full dataset to cache
+        loadRemainingPages(data, () => {}).then(async (allBookmarks) => {
+          setBookmarks(allBookmarks);
           await writeToCache({ bookmarks: allBookmarks, tags: data.tags });
           updateSyncHash();
         }).catch((err) =>
@@ -285,6 +288,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.error("Failed to load initial data:", err);
       throw err;
+    } finally {
+      perf.end("loadInitialData");
     }
   }
 
@@ -386,33 +391,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setReadingListSelectedTags(new Set());
   }
 
+  // Pre-normalize tags once when bookmarks change (not on every filter)
+  const bookmarkTagsLower = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const b of bookmarks) {
+      const lowerTags = new Set(b.tags?.map((t) => t.toLowerCase()) ?? []);
+      map.set(b.uri, lowerTags);
+    }
+    return map;
+  }, [bookmarks]);
+
   // Computed values
   const filteredBookmarks = useMemo(() => {
+    perf.start("tagFilter");
     let result = bookmarks;
 
     if (selectedTags.size > 0) {
-      result = result.filter((bookmark) =>
-        [...selectedTags].every((tag) =>
-          bookmark.tags?.some((t) => t.toLowerCase() === tag.toLowerCase())
-        )
-      );
+      const selectedLower = [...selectedTags].map((t) => t.toLowerCase());
+      result = result.filter((b) => {
+        const tags = bookmarkTagsLower.get(b.uri);
+        return tags !== undefined && selectedLower.every((t) => tags.has(t));
+      });
     }
 
     if (bookmarkSearchQuery.trim()) {
       result = result.filter((b) => matchesSearch(b, bookmarkSearchQuery));
     }
 
+    perf.end("tagFilter");
     return result;
-  }, [bookmarks, selectedTags, bookmarkSearchQuery]);
+  }, [bookmarks, bookmarkTagsLower, selectedTags, bookmarkSearchQuery]);
 
   const readingListBookmarks = useMemo(
     () => {
       const rlLower = preferences.readingListTag.toLowerCase();
-      return bookmarks.filter((b) =>
-        b.tags?.some((t) => t.toLowerCase() === rlLower)
-      );
+      return bookmarks.filter((b) => {
+        const tags = bookmarkTagsLower.get(b.uri);
+        return tags !== undefined && tags.has(rlLower);
+      });
     },
-    [bookmarks, preferences.readingListTag],
+    [bookmarks, bookmarkTagsLower, preferences.readingListTag],
   );
 
   const readingListTags = useMemo(() => {
@@ -430,11 +448,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let result = readingListBookmarks;
 
     if (readingListSelectedTags.size > 0) {
-      result = result.filter((b) =>
-        [...readingListSelectedTags].every((tag) =>
-          b.tags?.some((t) => t.toLowerCase() === tag.toLowerCase())
-        )
+      const selectedLower = [...readingListSelectedTags].map((t) =>
+        t.toLowerCase()
       );
+      result = result.filter((b) => {
+        const tags = bookmarkTagsLower.get(b.uri);
+        return tags !== undefined && selectedLower.every((t) => tags.has(t));
+      });
     }
 
     if (readingListSearchQuery.trim()) {
@@ -442,7 +462,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     return result;
-  }, [readingListBookmarks, readingListSelectedTags, readingListSearchQuery]);
+  }, [
+    readingListBookmarks,
+    bookmarkTagsLower,
+    readingListSelectedTags,
+    readingListSearchQuery,
+  ]);
 
   // Track which bookmarks are currently being enriched (in-flight requests)
   const enrichingRef = useRef<Set<string>>(new Set());
@@ -506,7 +531,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     settings,
     preferences,
     readingListSelectedTags,
-    loading,
     bookmarkSearchQuery,
     readingListSearchQuery,
     setSession,
