@@ -18,7 +18,7 @@ import { clearAll as clearCache } from "../cache/db.ts";
 type ViewType = "bookmarks" | "reading-list";
 
 export function App() {
-  const { session, setSession, loadInitialData, bookmarks } = useApp();
+  const { session, setSession, loadInitialData } = useApp();
   const [loading, setLoading] = useState(true);
   const [dataLoading, setDataLoading] = useState(false);
   const [currentPath, setCurrentPath] = useState(globalThis.location.pathname);
@@ -127,9 +127,7 @@ export function App() {
     }
   }
 
-  // Show spinner only when session is loading or no data available yet
-  // (cache may have populated bookmarks before server responds)
-  if (loading || (dataLoading && bookmarks.length === 0)) {
+  if (loading || dataLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="spinner"></div>

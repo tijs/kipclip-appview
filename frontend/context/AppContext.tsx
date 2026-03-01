@@ -142,12 +142,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   });
   const [readingListSearchQuery, setReadingListSearchQuery] = useState("");
 
-  // Initialize IndexedDB when session is set
   const setSession = useCallback((s: SessionInfo | null) => {
     setSessionRaw(s);
-    if (s) {
-      openCacheDb(s.did).catch(() => {});
-    }
   }, []);
 
   // Bookmark actions
@@ -231,24 +227,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Combined initial data loading with cache-first strategy
   async function loadInitialData() {
     try {
+      // Open IndexedDB before reading cache (must await to avoid race)
+      if (session) {
+        await openCacheDb(session.did);
+      }
+
       const { immediate, refresh } = await loadWithCache();
 
-      // If we have cached data, render it immediately
       if (immediate) {
+        // Cache hit: populate state immediately and return.
+        // dataLoading goes false in App.tsx, UI shows cached data.
         setBookmarks(immediate.bookmarks);
         setTags(immediate.tags);
+
+        // Background refresh: update state if data changed on server
+        refresh.then((data) => {
+          if (!data._unchanged) {
+            setBookmarks(data.bookmarks);
+            setTags(data.tags);
+          }
+          applyServerMeta(data);
+        }).catch((err) => console.error("Background refresh failed:", err));
+        return;
       }
 
-      // Wait for server refresh (always runs to get settings/preferences)
+      // No cache: wait for full server fetch (spinner stays visible)
       const data = await refresh;
-
-      // Only update bookmarks/tags if data actually changed
-      if (!data._unchanged) {
-        setBookmarks(data.bookmarks);
-        setTags(data.tags);
-      }
-
-      // Always apply settings/preferences from server
+      setBookmarks(data.bookmarks);
+      setTags(data.tags);
       applyServerMeta(data);
     } catch (err) {
       console.error("Failed to load initial data:", err);
