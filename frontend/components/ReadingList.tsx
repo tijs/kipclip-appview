@@ -2,11 +2,14 @@ import { useState } from "react";
 import { useApp } from "../context/AppContext.tsx";
 import { type DateFormatOption, formatDate } from "../../shared/date-format.ts";
 import type { EnrichedBookmark } from "../../shared/types.ts";
+import { useMarkAsRead } from "../hooks/useMarkAsRead.ts";
+import { Toast } from "./Toast.tsx";
 
 function ReadingListCard(
-  { bookmark, dateFormat }: {
+  { bookmark, dateFormat, onMarkAsRead }: {
     bookmark: EnrichedBookmark;
     dateFormat?: DateFormatOption;
+    onMarkAsRead: (bookmark: EnrichedBookmark) => void;
   },
 ) {
   // Extract domain from URL
@@ -27,8 +30,31 @@ function ReadingListCard(
   return (
     <article
       onClick={handleClick}
-      className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden cursor-pointer transition-shadow hover:shadow-md"
+      className="relative group bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden cursor-pointer transition-shadow hover:shadow-md"
     >
+      <button
+        type="button"
+        title="Mark as read"
+        onClick={(e) => {
+          e.stopPropagation();
+          onMarkAsRead(bookmark);
+        }}
+        className="absolute top-3 right-3 z-10 p-1.5 rounded-full bg-white/90 shadow-sm border border-gray-200 text-green-600 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity hover:bg-green-50"
+      >
+        <svg
+          className="w-5 h-5"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M5 13l4 4L19 7"
+          />
+        </svg>
+      </button>
       {bookmark.image && (
         <div className="aspect-[2/1] bg-gray-100 overflow-hidden">
           <img
@@ -219,6 +245,7 @@ export function ReadingList() {
   } = useApp();
   const dateFormat = preferences.dateFormat as DateFormatOption;
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const { markAsRead, undo, pending } = useMarkAsRead();
 
   // If there are no reading list bookmarks at all, show empty state
   if (readingListBookmarks.length === 0) {
@@ -339,12 +366,19 @@ export function ReadingList() {
                     key={bookmark.uri}
                     bookmark={bookmark}
                     dateFormat={dateFormat}
+                    onMarkAsRead={markAsRead}
                   />
                 ))}
               </div>
             )}
         </div>
       </main>
+      {pending && (
+        <Toast
+          message={`"${pending.bookmark.title || "Bookmark"}" marked as read`}
+          action={{ label: "Undo", onClick: undo }}
+        />
+      )}
     </div>
   );
 }
