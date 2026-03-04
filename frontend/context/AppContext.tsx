@@ -38,6 +38,10 @@ import {
   filterByTags,
   matchesSearch,
 } from "../../shared/bookmark-filters.ts";
+import {
+  parseSearchQuery,
+  toggleTagInQuery,
+} from "../../shared/search-query.ts";
 
 const DEFAULT_SETTINGS: UserSettings = {
   instapaperEnabled: false,
@@ -125,7 +129,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setTagsRaw(sortTags(update));
     }
   };
-  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [preferences, setPreferences] = useState<UserPreferences>(
     DEFAULT_PREFERENCES,
@@ -359,21 +362,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Derive selectedTags from search query
+  const parsedQuery = useMemo(
+    () => parseSearchQuery(bookmarkSearchQuery),
+    [bookmarkSearchQuery],
+  );
+  const selectedTags = useMemo(
+    () => new Set(parsedQuery.tags),
+    [parsedQuery.tags],
+  );
+
   // Filter actions
   function toggleTag(tagValue: string) {
-    setSelectedTags((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(tagValue)) {
-        newSet.delete(tagValue);
-      } else {
-        newSet.add(tagValue);
-      }
-      return newSet;
-    });
+    setBookmarkSearchQuery(toggleTagInQuery(bookmarkSearchQuery, tagValue));
   }
 
   function clearFilters() {
-    setSelectedTags(new Set());
+    setBookmarkSearchQuery(parsedQuery.text);
   }
 
   // Reading list filter actions
@@ -401,13 +406,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     perf.start("tagFilter");
     let result = filterByTags(bookmarks, selectedTags, tagIndex);
 
-    if (bookmarkSearchQuery.trim()) {
-      result = result.filter((b) => matchesSearch(b, bookmarkSearchQuery));
+    if (parsedQuery.text.trim()) {
+      result = result.filter((b) => matchesSearch(b, parsedQuery.text));
     }
 
     perf.end("tagFilter");
     return result;
-  }, [bookmarks, tagIndex, selectedTags, bookmarkSearchQuery]);
+  }, [bookmarks, tagIndex, selectedTags, parsedQuery.text]);
 
   const readingListBookmarks = useMemo(
     () => {

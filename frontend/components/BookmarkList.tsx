@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AddBookmark } from "./AddBookmark.tsx";
 import {
   BookmarkCard,
@@ -17,6 +17,7 @@ import { SwipeableRow } from "./SwipeableRow.tsx";
 import { useApp } from "../context/AppContext.tsx";
 import type { DateFormatOption } from "../../shared/date-format.ts";
 import type { EnrichedBookmark, EnrichedTag } from "../../shared/types.ts";
+import { parseSearchQuery } from "../../shared/search-query.ts";
 
 function useIncrementalRender(total: number, pageSize = 100) {
   const [visible, setVisible] = useState(pageSize);
@@ -108,6 +109,38 @@ export function BookmarkList() {
     );
   }, [setBookmarkSearchQuery]);
   useEffect(() => () => clearTimeout(searchTimerRef.current), []);
+
+  // Sync external query changes (e.g. sidebar tag clicks) to local input,
+  // and cancel any pending debounce to prevent stale timer overwrites
+  useEffect(() => {
+    clearTimeout(searchTimerRef.current);
+    setLocalSearchQuery(bookmarkSearchQuery);
+  }, [bookmarkSearchQuery]);
+
+  // Auto-expand mobile search when query becomes non-empty (e.g. sidebar tag click)
+  useEffect(() => {
+    if (bookmarkSearchQuery.trim()) {
+      setMobileSearchOpen(true);
+    }
+  }, [bookmarkSearchQuery]);
+
+  // Parse query for matching tag suggestions
+  const parsedQuery = useMemo(
+    () => parseSearchQuery(bookmarkSearchQuery),
+    [bookmarkSearchQuery],
+  );
+
+  // Matching tags: suggest tags that match the free text portion of the query
+  const matchingTags = useMemo(() => {
+    const text = parsedQuery.text.toLowerCase();
+    if (!text) return [];
+    return availableTags
+      .filter((t) =>
+        t.value.toLowerCase().includes(text) &&
+        !selectedTags.has(t.value.toLowerCase())
+      )
+      .slice(0, 8);
+  }, [parsedQuery.text, availableTags, selectedTags]);
 
   // Orphaned tags prompt
   const [orphanedTags, setOrphanedTags] = useState<EnrichedTag[]>([]);
@@ -459,8 +492,6 @@ export function BookmarkList() {
                   type="button"
                   onClick={() => {
                     setMobileSearchOpen(false);
-                    setLocalSearchQuery("");
-                    setBookmarkSearchQuery("");
                   }}
                   className="p-2 text-gray-500 hover:text-gray-700"
                 >
@@ -576,6 +607,61 @@ export function BookmarkList() {
           </p>
         </div>
       </div>
+
+      {/* Active tag filters and matching tag suggestions */}
+      {(selectedTags.size > 0 || matchingTags.length > 0) && (
+        <div className="mb-4 flex flex-wrap gap-2 items-center">
+          {selectedTags.size > 0 && (
+            <>
+              {availableTags
+                .filter((t) => selectedTags.has(t.value.toLowerCase()))
+                .map((tag) => (
+                  <button
+                    key={tag.uri}
+                    type="button"
+                    onClick={() => toggleTag(tag.value)}
+                    className="px-3 py-1.5 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition flex items-center gap-1.5"
+                  >
+                    {tag.value}
+                    <svg
+                      className="w-3.5 h-3.5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                ))}
+            </>
+          )}
+          {matchingTags.length > 0 && (
+            <>
+              {selectedTags.size > 0 && (
+                <span className="text-gray-300 mx-1">|</span>
+              )}
+              {matchingTags.map((tag) => (
+                <button
+                  key={tag.uri}
+                  type="button"
+                  onClick={() => toggleTag(tag.value)}
+                  className="px-3 py-1.5 text-sm rounded-lg text-gray-700 hover:bg-gray-100 transition"
+                  style={{
+                    border: "1px solid #e5e7eb",
+                  }}
+                >
+                  {tag.value}
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+      )}
 
       {bookmarks.length === 0
         ? (
@@ -699,7 +785,9 @@ export function BookmarkList() {
             for (const uri of deletedTagUris) {
               const tag = orphanedTags.find((t) => t.uri === uri);
               deleteTag(uri);
-              if (tag && selectedTags.has(tag.value)) toggleTag(tag.value);
+              if (tag && selectedTags.has(tag.value.toLowerCase())) {
+                toggleTag(tag.value);
+              }
             }
             setOrphanedTags([]);
           }}

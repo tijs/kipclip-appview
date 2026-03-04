@@ -57,8 +57,11 @@ export function TagSidebar() {
     if (!session || selectedTags.size === 0) return;
 
     try {
-      // Generate share URL
-      const encodedTags = encodeTagsForUrl([...selectedTags]);
+      // Look up original-case tag values for the share URL
+      const originalCaseTags = tags
+        .filter((t) => selectedTags.has(t.value.toLowerCase()))
+        .map((t) => t.value);
+      const encodedTags = encodeTagsForUrl(originalCaseTags);
       const shareUrl =
         `${globalThis.location.origin}/share/${session.did}/${encodedTags}`;
 
@@ -67,7 +70,7 @@ export function TagSidebar() {
         await navigator.share({
           title: "My Kipclip Bookmarks Collection",
           text: `Check out my bookmarks collection tagged with: ${
-            [...selectedTags].join(", ")
+            originalCaseTags.join(", ")
           }`,
           url: shareUrl,
         });
@@ -87,7 +90,7 @@ export function TagSidebar() {
 
   // Shared tag item renderer
   function renderTag(tag: any) {
-    const isSelected = selectedTags.has(tag.value);
+    const isSelected = selectedTags.has(tag.value.toLowerCase());
     return (
       <li
         key={tag.uri}
