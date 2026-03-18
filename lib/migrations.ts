@@ -79,8 +79,6 @@ const MIGRATIONS: Array<{
 ];
 
 export async function runMigrations() {
-  console.log("🔄 Running database migrations...");
-
   try {
     // Create migrations table
     await rawDb.execute({
@@ -104,60 +102,68 @@ export async function runMigrations() {
       }) || [],
     );
 
+    // Check if all migrations are already applied
+    const pending = MIGRATIONS.filter(
+      (m) => !executedVersions.has(m.version),
+    );
+    if (pending.length === 0) {
+      console.log("✅ Database schema up to date");
+      return;
+    }
+
+    console.log(`🔄 Running ${pending.length} pending migration(s)...`);
+
     // Run pending migrations
-    for (const migration of MIGRATIONS) {
-      if (!executedVersions.has(migration.version)) {
-        console.log(
-          `📝 Running migration: ${migration.version} - ${migration.description}`,
-        );
+    for (const migration of pending) {
+      console.log(
+        `📝 Running migration: ${migration.version} - ${migration.description}`,
+      );
 
-        // Split SQL into individual statements (SQLite limitation)
-        const statements = migration.sql
-          .split(";")
-          .map((stmt) => stmt.trim())
-          .filter((stmt) => stmt.length > 0);
+      // Split SQL into individual statements (SQLite limitation)
+      const statements = migration.sql
+        .split(";")
+        .map((stmt) => stmt.trim())
+        .filter((stmt) => stmt.length > 0);
 
-        // Execute each statement
-        let migrationSucceeded = true;
-        for (const statement of statements) {
-          try {
-            await rawDb.execute({
-              sql: statement,
-              args: [],
-            });
-          } catch (error) {
-            // If it's a "table already exists" error, that's fine - continue
-            if (error.message?.includes("already exists")) {
-              console.warn(
-                `⚠️  Table already exists, skipping: ${error.message}`,
-              );
-            } else {
-              // For other errors, mark migration as failed
-              console.error(`❌ Migration statement failed: ${error.message}`);
-              migrationSucceeded = false;
-              throw error;
-            }
+      // Execute each statement
+      let migrationSucceeded = true;
+      for (const statement of statements) {
+        try {
+          await rawDb.execute({
+            sql: statement,
+            args: [],
+          });
+        } catch (error) {
+          // If it's a "table already exists" error, that's fine - continue
+          if (error.message?.includes("already exists")) {
+            console.warn(
+              `⚠️  Table already exists, skipping: ${error.message}`,
+            );
+          } else {
+            // For other errors, mark migration as failed
+            console.error(`❌ Migration statement failed: ${error.message}`);
+            migrationSucceeded = false;
+            throw error;
           }
         }
+      }
 
-        // Only record migration if all statements succeeded
-        if (migrationSucceeded) {
-          // Check if migration was already recorded (could happen on retry)
-          try {
-            await rawDb.execute({
-              sql:
-                "INSERT INTO migrations (version, description) VALUES (?, ?)",
-              args: [migration.version, migration.description],
-            });
-            console.log(`✅ Completed migration: ${migration.version}`);
-          } catch (error) {
-            if (error.message?.includes("UNIQUE constraint")) {
-              console.log(
-                `ℹ️  Migration ${migration.version} already recorded`,
-              );
-            } else {
-              throw error;
-            }
+      // Only record migration if all statements succeeded
+      if (migrationSucceeded) {
+        // Check if migration was already recorded (could happen on retry)
+        try {
+          await rawDb.execute({
+            sql: "INSERT INTO migrations (version, description) VALUES (?, ?)",
+            args: [migration.version, migration.description],
+          });
+          console.log(`✅ Completed migration: ${migration.version}`);
+        } catch (error) {
+          if (error.message?.includes("UNIQUE constraint")) {
+            console.log(
+              `ℹ️  Migration ${migration.version} already recorded`,
+            );
+          } else {
+            throw error;
           }
         }
       }

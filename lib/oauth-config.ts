@@ -65,9 +65,7 @@ export function initOAuth(
     scope: OAUTH_SCOPES,
     storage: new SQLiteStorage(sqliteAdapter(rawDb), {
       tableName: "iron_session_storage", // Match existing table name
-      logger: console,
     }),
-    logger: console,
   });
 
   console.log("OAuth client initialized", {

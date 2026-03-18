@@ -39,7 +39,6 @@ function getSessionManager(): SessionManager {
       cookieSecret: COOKIE_SECRET,
       cookieName: "sid",
       sessionTtl: 60 * 60 * 24 * 14, // 14 days
-      logger: console,
     });
   }
   return sessions;
@@ -175,14 +174,6 @@ export async function getSessionFromRequest(
         },
       };
     }
-
-    // Session found successfully
-    console.debug("[Session] Valid session retrieved", {
-      did: oauthSession.did,
-      url: request.url,
-      hasRefreshCookie: !!cookieResult.setCookieHeader,
-      timestamp: new Date().toISOString(),
-    });
 
     return {
       session: oauthSession,
