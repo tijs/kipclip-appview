@@ -6,8 +6,10 @@ All notable changes to kipclip are documented in this file.
 
 ### Changed
 
-- Incremental sync: only fetch new bookmarks instead of re-paginating the entire collection on each load
-- PDS rate limit awareness: backend forwards rate limit headers, frontend pauses sync when limits are low
+- Incremental sync: only fetch new bookmarks instead of re-paginating the entire
+  collection on each load
+- PDS rate limit awareness: backend forwards rate limit headers, frontend pauses
+  sync when limits are low
 
 ## [0.6.1] - 2026-02-22
 
