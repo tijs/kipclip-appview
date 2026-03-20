@@ -12,9 +12,9 @@
     "jsr:@std/encoding@1": "1.0.10",
     "jsr:@std/encoding@^1.0.10": "1.0.10",
     "jsr:@std/fmt@^1.0.8": "1.0.9",
-    "jsr:@std/fs@^1.0.19": "1.0.22",
+    "jsr:@std/fs@^1.0.19": "1.0.23",
     "jsr:@std/html@^1.0.5": "1.0.5",
-    "jsr:@std/http@^1.0.21": "1.0.24",
+    "jsr:@std/http@^1.0.21": "1.0.25",
     "jsr:@std/internal@^1.0.12": "1.0.12",
     "jsr:@std/json@^1.0.2": "1.0.2",
     "jsr:@std/jsonc@^1.0.2": "1.0.2",
@@ -30,7 +30,7 @@
     "jsr:@tijs/atproto-oauth@2.10.0": "2.10.0",
     "jsr:@tijs/atproto-sessions@2.1.0": "2.1.0",
     "jsr:@tijs/atproto-storage@0.1.1": "0.1.1",
-    "jsr:@tijs/atproto-storage@1.0.0": "1.0.0",
+    "jsr:@tijs/atproto-storage@1.1.0": "1.1.0",
     "jsr:@tijs/oauth-client-deno@5.1.0": "5.1.0",
     "npm:@atproto/syntax@0.3.0": "0.3.0",
     "npm:@atproto/syntax@0.4.0": "0.4.0",
@@ -129,6 +129,12 @@
         "jsr:@std/path@^1.1.4"
       ]
     },
+    "@std/fs@1.0.23": {
+      "integrity": "3ecbae4ce4fee03b180fa710caff36bb5adb66631c46a6460aaad49515565a37",
+      "dependencies": [
+        "jsr:@std/path@^1.1.4"
+      ]
+    },
     "@std/html@1.0.5": {
       "integrity": "4e2d693f474cae8c16a920fa5e15a3b72267b94b84667f11a50c6dd1cb18d35e"
     },
@@ -143,6 +149,9 @@
       "dependencies": [
         "jsr:@std/encoding@^1.0.10"
       ]
+    },
+    "@std/http@1.0.25": {
+      "integrity": "577b4252290af1097132812b339fffdd55fb0f4aeb98ff11bdbf67998aa17193"
     },
     "@std/internal@1.0.12": {
       "integrity": "972a634fd5bc34b242024402972cd5143eac68d8dffaca5eaa4dba30ce17b027"
@@ -192,8 +201,8 @@
     "@tijs/atproto-storage@0.1.1": {
       "integrity": "384643401a7d15915a6fc86b273ba142a1825d5d46b692b0da3405e9f938f8ab"
     },
-    "@tijs/atproto-storage@1.0.0": {
-      "integrity": "a7f03f14ad4846fb9df19c90ac3cb007cfdc8a40df0e1b33314feaeaad439d2e"
+    "@tijs/atproto-storage@1.1.0": {
+      "integrity": "752a671a50179d6a88e4f8df2569029af1328f429921454245850ffc7edb8580"
     },
     "@tijs/oauth-client-deno@5.1.0": {
       "integrity": "ab8b0a6a13030f4730452557dadb9d5b822e44924efcadaf4579befa1883cfa9",
@@ -799,7 +808,7 @@
       "jsr:@std/path@1",
       "jsr:@tijs/atproto-oauth@2.10.0",
       "jsr:@tijs/atproto-sessions@2.1.0",
-      "jsr:@tijs/atproto-storage@1.0.0",
+      "jsr:@tijs/atproto-storage@1.1.0",
       "npm:@libsql/client@0.17.0",
       "npm:@sentry/deno@10.34.0",
       "npm:esbuild@0.27.2",

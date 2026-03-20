@@ -12,6 +12,7 @@ import {
   getSessionFromRequest,
   listAllRecords,
   listOnePage,
+  type RateLimitInfo,
   setSessionCookie,
   TAG_COLLECTION,
 } from "../../lib/route-utils.ts";
@@ -24,6 +25,15 @@ import type {
   EnrichedTag,
   InitialDataResponse,
 } from "../../shared/types.ts";
+
+/** Pick the lower rate limit remaining from two PDS responses. */
+function pickLowestRateLimit(
+  a?: RateLimitInfo,
+  b?: RateLimitInfo,
+): RateLimitInfo | undefined {
+  if (a && b) return a.remaining < b.remaining ? a : b;
+  return a || b;
+}
 
 /** Join bookmark records with an annotation map to produce EnrichedBookmarks. */
 function joinBookmarksWithAnnotations(
@@ -108,6 +118,11 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
           createdAt: record.value.createdAt,
         }));
 
+        const rateLimit = pickLowestRateLimit(
+          bookmarkPage.rateLimit,
+          annotationPage.rateLimit,
+        );
+
         const result: InitialDataResponse = {
           bookmarks,
           tags,
@@ -115,6 +130,7 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
           preferences,
           bookmarkCursor: bookmarkPage.cursor,
           annotationCursor: annotationPage.cursor,
+          rateLimit,
         };
 
         const response = setSessionCookie(
@@ -162,7 +178,9 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
             cursor: annotationCursor,
             reverse: true,
           })
-          : Promise.resolve({ records: [] as any[], cursor: undefined }),
+          : Promise.resolve(
+            { records: [] as any[], cursor: undefined, rateLimit: undefined },
+          ),
       ]);
 
       const annotationMap = new Map<string, AnnotationRecord>();
@@ -176,11 +194,17 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
         annotationMap,
       );
 
+      const rateLimit = pickLowestRateLimit(
+        bookmarkPage.rateLimit,
+        annotationPage.rateLimit,
+      );
+
       const response = setSessionCookie(
         Response.json({
           bookmarks,
           bookmarkCursor: bookmarkPage.cursor,
           annotationCursor: annotationPage.cursor,
+          rateLimit,
         }),
         setCookieHeader,
       );

@@ -88,9 +88,13 @@ export interface LoadPagesResult {
  * Progressively load remaining bookmark pages.
  * Returns the full array of all bookmarks (first page + remaining)
  * and whether loading completed fully.
+ *
+ * When `cachedUris` is provided, stops paginating as soon as an entire page
+ * consists of bookmarks already in the cache (incremental sync).
  */
 export async function loadRemainingPages(
   firstPageData: InitialDataResponse,
+  cachedUris?: Set<string>,
 ): Promise<LoadPagesResult> {
   perf.start("remainingPages");
   const allBookmarks = [...firstPageData.bookmarks];
@@ -98,7 +102,30 @@ export async function loadRemainingPages(
   let annotationCursor = firstPageData.annotationCursor;
   let complete = true;
 
+  // If we have a cache and the first page is entirely known, skip pagination
+  if (cachedUris && bookmarkCursor) {
+    const firstPageAllKnown = firstPageData.bookmarks.length > 0 &&
+      firstPageData.bookmarks.every((b) => cachedUris.has(b.uri));
+    if (firstPageAllKnown) {
+      perf.end("remainingPages");
+      return { bookmarks: allBookmarks, complete: true };
+    }
+  }
+
+  let currentRateLimit = firstPageData.rateLimit;
+
   while (bookmarkCursor) {
+    // Respect PDS rate limits: if remaining is low, wait until reset
+    if (currentRateLimit && currentRateLimit.remaining < 50) {
+      const waitMs = Math.max(0, currentRateLimit.reset * 1000 - Date.now()) +
+        500;
+      console.warn("PDS rate limit low, pausing sync", {
+        remaining: currentRateLimit.remaining,
+        waitMs,
+      });
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
+
     const params = new URLSearchParams();
     params.set("bookmarkCursor", bookmarkCursor);
     if (annotationCursor) params.set("annotationCursor", annotationCursor);
@@ -110,7 +137,22 @@ export async function loadRemainingPages(
     }
 
     const page = await response.json();
+
+    // Update rate limit info for next iteration
+    if (page.rateLimit) {
+      currentRateLimit = page.rateLimit;
+    }
+
     if (page.bookmarks?.length > 0) {
+      // If all bookmarks on this page are already cached, we've caught up
+      if (cachedUris) {
+        const allKnown = page.bookmarks.every(
+          (b: EnrichedBookmark) => cachedUris.has(b.uri),
+        );
+        if (allKnown) {
+          break;
+        }
+      }
       allBookmarks.push(...page.bookmarks);
     }
 

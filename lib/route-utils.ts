@@ -115,6 +115,27 @@ export async function createNewTagRecords(
   ));
 }
 
+/** Rate limit info from PDS response headers */
+export interface RateLimitInfo {
+  remaining: number;
+  reset: number;
+  limit: number;
+}
+
+/** Extract rate limit info from a PDS response */
+function parseRateLimit(res: Response): RateLimitInfo | undefined {
+  const remaining = parseInt(
+    res.headers.get("ratelimit-remaining") ?? "",
+    10,
+  );
+  if (Number.isNaN(remaining)) return undefined;
+  return {
+    remaining,
+    reset: parseInt(res.headers.get("ratelimit-reset") || "0", 10) || 0,
+    limit: parseInt(res.headers.get("ratelimit-limit") || "3000", 10) || 3000,
+  };
+}
+
 /**
  * Fetch a single page of records from an AT Protocol collection.
  * Returns records and an optional cursor for the next page.
@@ -123,7 +144,7 @@ export async function listOnePage(
   oauthSession: any,
   collection: string,
   options?: { cursor?: string; reverse?: boolean; limit?: number },
-): Promise<{ records: any[]; cursor?: string }> {
+): Promise<{ records: any[]; cursor?: string; rateLimit?: RateLimitInfo }> {
   const params = new URLSearchParams({
     repo: oauthSession.did,
     collection,
@@ -138,10 +159,12 @@ export async function listOnePage(
   );
   if (!res.ok) return { records: [] };
 
+  const rateLimit = parseRateLimit(res);
   const data = await res.json();
   return {
     records: data.records || [],
     cursor: data.cursor || undefined,
+    rateLimit,
   };
 }
 

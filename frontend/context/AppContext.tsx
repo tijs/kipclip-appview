@@ -242,15 +242,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setTags(immediate.tags);
         perf.end("firstPaint");
 
-        // Background: load all pages, only replace if complete
+        // Build a set of cached URIs for incremental sync
+        const cachedUris = new Set(immediate.bookmarks.map((b) => b.uri));
+
+        // Background: incrementally load only new pages, merge with cache
         firstPage.then(async (data) => {
           applyServerMeta(data);
-          const result = await loadRemainingPages(data);
+          const result = await loadRemainingPages(data, cachedUris);
           if (result.complete) {
-            setBookmarks(result.bookmarks);
+            // Merge: new bookmarks from server + cached bookmarks not re-fetched.
+            // Deletions are handled separately: sync-check hash on tab refocus
+            // detects changes and triggers a full reload.
+            const fetchedUris = new Set(result.bookmarks.map((b) => b.uri));
+            const kept = immediate.bookmarks.filter(
+              (b) => !fetchedUris.has(b.uri),
+            );
+            const merged = [...result.bookmarks, ...kept].sort(
+              (a, b) => b.createdAt.localeCompare(a.createdAt),
+            );
+            setBookmarks(merged);
             setTags(data.tags);
             await writeToCache({
-              bookmarks: result.bookmarks,
+              bookmarks: merged,
               tags: data.tags,
             });
             updateSyncHash();

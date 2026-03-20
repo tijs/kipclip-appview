@@ -191,6 +191,8 @@ export interface InitialDataResponse {
   bookmarkCursor?: string;
   /** Cursor for next page of annotations (absent when all loaded) */
   annotationCursor?: string;
+  /** PDS rate limit info (forwarded from upstream) */
+  rateLimit?: { remaining: number; reset: number; limit: number };
 }
 
 // Import types
