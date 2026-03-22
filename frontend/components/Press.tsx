@@ -17,9 +17,9 @@ const assets = [
     description: "Circular mascot avatar for profile images and icons",
   },
   {
-    name: "Wordmark (SVG)",
+    name: "Logo (SVG)",
     filename: "kipclip.svg",
-    description: "kipclip wordmark logo in vector format",
+    description: "kipclip logo in vector format",
   },
 ];
 
