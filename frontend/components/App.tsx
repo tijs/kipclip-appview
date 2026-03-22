@@ -12,6 +12,7 @@ import { SharedBookmarks } from "./SharedBookmarks.tsx";
 import { Settings } from "./Settings.tsx";
 import { ReadingList } from "./ReadingList.tsx";
 import { Support } from "./Support.tsx";
+import { Press } from "./Press.tsx";
 import { useApp } from "../context/AppContext.tsx";
 import { clearAll as clearCache } from "../cache/db.ts";
 
@@ -102,6 +103,10 @@ export function App() {
 
   if (currentPath === "/support") {
     return <Support />;
+  }
+
+  if (currentPath === "/press") {
+    return <Press />;
   }
 
   if (currentPath === "/create-account") {
