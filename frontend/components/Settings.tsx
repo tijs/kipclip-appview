@@ -41,10 +41,12 @@ export function Settings() {
   // Sync local state when settings/preferences from context change
   useEffect(() => {
     setReadingListTag(preferences.readingListTag);
+    setDateFormatState(preferences.dateFormat as DateFormatOption);
     setInstapaperEnabled(settings.instapaperEnabled);
     setInstapaperUsername(settings.instapaperUsername || "");
   }, [
     preferences.readingListTag,
+    preferences.dateFormat,
     settings.instapaperEnabled,
     settings.instapaperUsername,
   ]);
