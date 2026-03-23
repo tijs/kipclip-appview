@@ -12,19 +12,19 @@ const assets = [
     description: "Full mascot illustration on transparent background",
   },
   {
-    name: "Avatar",
+    name: "Kip",
     filename: "kip-vignette.png",
-    description: "Circular mascot avatar for profile images and icons",
+    description: "Kip mascot portrait",
   },
   {
-    name: "Avatar B&W (PNG)",
+    name: "Kip B&W (PNG)",
     filename: "kip-vignette-bw.png",
-    description: "Black and white mascot avatar",
+    description: "Black and white Kip mascot portrait",
   },
   {
-    name: "Avatar B&W (SVG)",
+    name: "Kip B&W (SVG)",
     filename: "kip-vignette-bw.svg",
-    description: "Black and white mascot avatar in vector format",
+    description: "Black and white Kip mascot portrait in vector format",
   },
   {
     name: "Logo (SVG)",
