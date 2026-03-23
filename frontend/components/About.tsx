@@ -1,3 +1,5 @@
+import { Footer } from "./Footer.tsx";
+
 export function About() {
   return (
     <div className="min-h-screen bg-gray-50">
@@ -154,6 +156,8 @@ export function About() {
           </div>
         </section>
       </main>
+
+      <Footer />
     </div>
   );
 }

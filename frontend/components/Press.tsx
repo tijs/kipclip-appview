@@ -1,3 +1,5 @@
+import { Footer } from "./Footer.tsx";
+
 const CDN = "https://cdn.kipclip.com";
 
 const assets = [
@@ -277,6 +279,8 @@ export function Press() {
           </p>
         </section>
       </main>
+
+      <Footer />
     </div>
   );
 }

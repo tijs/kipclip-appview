@@ -13,6 +13,8 @@ import { Settings } from "./Settings.tsx";
 import { ReadingList } from "./ReadingList.tsx";
 import { Support } from "./Support.tsx";
 import { Press } from "./Press.tsx";
+import { PrivacyPolicy } from "./PrivacyPolicy.tsx";
+import { TermsOfUse } from "./TermsOfUse.tsx";
 import { useApp } from "../context/AppContext.tsx";
 import { clearAll as clearCache } from "../cache/db.ts";
 
@@ -107,6 +109,14 @@ export function App() {
 
   if (currentPath === "/press") {
     return <Press />;
+  }
+
+  if (currentPath === "/privacy") {
+    return <PrivacyPolicy />;
+  }
+
+  if (currentPath === "/terms") {
+    return <TermsOfUse />;
   }
 
   if (currentPath === "/create-account") {
