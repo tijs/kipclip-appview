@@ -177,6 +177,23 @@ export function FAQ() {
                 collection page.
               </p>
             </div>
+
+            <div>
+              <h4 className="text-xl font-bold text-gray-800 mb-2">
+                How do I support kipclip?
+              </h4>
+              <p className="text-gray-700">
+                kipclip is free to use. If you'd like to help keep it running
+                and fund future development, visit the{" "}
+                <a
+                  href="/support"
+                  className="underline hover:text-gray-800"
+                >
+                  support page
+                </a>{" "}
+                to learn how you can contribute.
+              </p>
+            </div>
           </div>
         </section>
 
