@@ -1,6 +1,14 @@
+import { useEffect } from "react";
 import { Footer } from "./Footer.tsx";
 
 export function FAQ() {
+  useEffect(() => {
+    const hash = globalThis.location.hash;
+    if (hash) {
+      const el = document.querySelector(hash);
+      if (el) el.scrollIntoView({ behavior: "smooth" });
+    }
+  }, []);
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow-sm">
@@ -38,7 +46,7 @@ export function FAQ() {
         </section>
 
         {/* Section 1: Using kipclip */}
-        <section>
+        <section id="using-kipclip">
           <h3
             className="text-2xl font-bold mb-4"
             style={{ color: "var(--coral)" }}
@@ -198,7 +206,7 @@ export function FAQ() {
         </section>
 
         {/* Section 2: How the technology works */}
-        <section>
+        <section id="how-the-technology-works">
           <h3
             className="text-2xl font-bold mb-2"
             style={{ color: "var(--coral)" }}
@@ -334,6 +342,23 @@ export function FAQ() {
                 and Eurosky are popular providers — and more are being
                 developed. You can create an account with any provider and use
                 it across all Atmosphere apps including kipclip.
+              </p>
+            </div>
+
+            <div>
+              <h4 className="text-xl font-bold text-gray-800 mb-2">
+                How does supporter status work?
+              </h4>
+              <p className="text-gray-700">
+                Visit the{" "}
+                <a
+                  href="/support"
+                  className="underline hover:text-gray-800"
+                >
+                  support page
+                </a>{" "}
+                to learn how supporter status works and how it can unlock extra
+                features on kipclip.
               </p>
             </div>
           </div>
