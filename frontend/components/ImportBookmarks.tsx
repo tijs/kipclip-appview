@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { useApp } from "../context/AppContext.tsx";
+import { apiFetch, apiPost } from "../utils/api.ts";
 import type {
   ImportPrepareResponse,
   ImportProcessResponse,
@@ -46,7 +47,7 @@ export function ImportBookmarks() {
       formData.append("file", selectedFile);
 
       // Step 1: Prepare — parse, dedup, create job
-      const prepareRes = await fetch("/api/import", {
+      const prepareRes = await apiFetch("/api/import", {
         method: "POST",
         body: formData,
       });
@@ -94,9 +95,7 @@ export function ImportBookmarks() {
 
       while (!done && iterations < maxIterations) {
         iterations++;
-        const processRes = await fetch(`/api/import/${jobId}/process`, {
-          method: "POST",
-        });
+        const processRes = await apiPost(`/api/import/${jobId}/process`);
         const process: ImportProcessResponse = await processRes.json();
 
         if (!processRes.ok || !process.success) {

@@ -73,6 +73,7 @@ export function SharedBookmarks({ did, encodedTags }: SharedBookmarksProps) {
     setLoading(true);
     setError(null);
     try {
+      // Public endpoint — use raw fetch to avoid apiFetch's 401 redirect
       const response = await fetch(`/api/share/${did}/${encodedTags}`);
       if (!response.ok) {
         const data = await response.json();

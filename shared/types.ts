@@ -193,6 +193,8 @@ export interface InitialDataResponse {
   annotationCursor?: string;
   /** PDS rate limit info (forwarded from upstream) */
   rateLimit?: { remaining: number; reset: number; limit: number };
+  /** Sync hash for change detection (avoids extra /api/sync-check call) */
+  syncHash?: string;
 }
 
 // Import types

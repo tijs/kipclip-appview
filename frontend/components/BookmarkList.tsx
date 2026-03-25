@@ -15,6 +15,7 @@ import { EditBookmark } from "./EditBookmark.tsx";
 import { OrphanedTagsDialog } from "./OrphanedTagsDialog.tsx";
 import { SwipeableRow } from "./SwipeableRow.tsx";
 import { useApp } from "../context/AppContext.tsx";
+import { apiDelete, apiPatch } from "../utils/api.ts";
 import type { DateFormatOption } from "../../shared/date-format.ts";
 import type { EnrichedBookmark, EnrichedTag } from "../../shared/types.ts";
 import { parseSearchQuery } from "../../shared/search-query.ts";
@@ -75,7 +76,7 @@ export function BookmarkList() {
     deleteBookmark,
     deleteTag,
     toggleTag,
-    loadBookmarks: loadBookmarksFromContext,
+    refreshData,
     loadTags,
     bookmarkSearchQuery,
     setBookmarkSearchQuery,
@@ -257,11 +258,11 @@ export function BookmarkList() {
     };
   }, [isPulling, pullDistance, isRefreshing, isSelectMode]);
 
-  // Manual refresh (for pull-to-refresh and retry button)
+  // Manual refresh (for pull-to-refresh, refresh button, and retry button)
   async function loadBookmarks() {
     setError(null);
     try {
-      await loadBookmarksFromContext();
+      await refreshData();
     } catch (err: any) {
       setError(err.message);
     }
@@ -317,12 +318,8 @@ export function BookmarkList() {
       const newTags = [...(bookmark.tags || []), tagValue];
 
       // Update via API
-      const response = await fetch(`/api/bookmarks/${rkey}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ tags: newTags }),
+      const response = await apiPatch(`/api/bookmarks/${rkey}`, {
+        tags: newTags,
       });
 
       if (!response.ok) {
@@ -351,9 +348,7 @@ export function BookmarkList() {
     const rkey = bookmark.uri.split("/").pop();
     if (!rkey) throw new Error("Invalid bookmark URI");
 
-    const response = await fetch(`/api/bookmarks/${rkey}`, {
-      method: "DELETE",
-    });
+    const response = await apiDelete(`/api/bookmarks/${rkey}`);
     if (!response.ok) throw new Error("Failed to delete bookmark");
 
     handleBookmarkDeleted(bookmark.uri);
@@ -465,6 +460,28 @@ export function BookmarkList() {
                 <ListIcon active={viewMode === "list"} />
               </button>
             </div>
+            <button
+              type="button"
+              onClick={loadBookmarks}
+              disabled={isRefreshing}
+              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-lg transition"
+              aria-label="Refresh bookmarks"
+              title="Refresh bookmarks"
+            >
+              <svg
+                className={`w-5 h-5 ${isRefreshing ? "animate-spin" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+            </button>
             <input
               type="text"
               placeholder="Search bookmarks..."

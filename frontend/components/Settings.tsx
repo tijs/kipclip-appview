@@ -5,6 +5,7 @@ import {
   type DateFormatOption,
   setDateFormat,
 } from "../../shared/date-format.ts";
+import { apiPost } from "../utils/api.ts";
 import { ImportBookmarks } from "./ImportBookmarks.tsx";
 import type { MergeTagDuplicatesResponse } from "../../shared/types.ts";
 
@@ -64,7 +65,7 @@ export function Settings() {
     setMergeResult(null);
     setMergeError(null);
     try {
-      const res = await fetch("/api/tags/merge-duplicates", { method: "POST" });
+      const res = await apiPost("/api/tags/merge-duplicates");
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Failed to merge duplicates");

@@ -13,19 +13,10 @@ export async function apiFetch(
 ): Promise<Response> {
   const response = await fetch(url, options);
 
-  // If we get a 401, the session has expired
+  // If we get a 401, the session has expired — redirect to login
   if (response.status === 401) {
     console.warn("Session expired, redirecting to login");
-
-    // Clear any local session state
-    try {
-      // Trigger a page reload which will check session and show login
-      globalThis.location.href = "/";
-    } catch (error) {
-      console.error("Failed to redirect after session expiry:", error);
-    }
-
-    // Return the response anyway for consistency
+    globalThis.location.href = "/";
     return response;
   }
 

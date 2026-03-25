@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { EnrichedTag } from "../../shared/types.ts";
+import { apiPost } from "../utils/api.ts";
 
 interface AddTagProps {
   onClose: () => void;
@@ -19,13 +20,7 @@ export function AddTag({ onClose, onTagAdded }: AddTagProps) {
     setError(null);
 
     try {
-      const response = await fetch("/api/tags", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ value: value.trim() }),
-      });
+      const response = await apiPost("/api/tags", { value: value.trim() });
 
       if (!response.ok) {
         const data = await response.json();

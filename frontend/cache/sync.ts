@@ -24,15 +24,6 @@ export interface CachedData {
   tags: EnrichedTag[];
 }
 
-export interface SyncCallbacks {
-  /** Called when the first page of data is ready */
-  onFirstPage: (data: InitialDataResponse) => void;
-  /** Called when a subsequent page of bookmarks arrives */
-  onMoreBookmarks: (bookmarks: EnrichedBookmark[]) => void;
-  /** Called when all pages are loaded */
-  onComplete: (allBookmarks: EnrichedBookmark[]) => void;
-}
-
 export interface SyncResult {
   /** Data to render immediately (from cache) */
   immediate: CachedData | null;
@@ -62,20 +53,6 @@ export async function loadWithCache(): Promise<SyncResult> {
       : null,
     firstPage,
   };
-}
-
-/**
- * Fetch the first page of data from the server.
- */
-async function fetchFirstPage(): Promise<InitialDataResponse> {
-  perf.start("firstPage");
-  const response = await apiGet("/api/initial-data");
-  if (!response.ok) {
-    throw new Error("Failed to load initial data");
-  }
-  const data = await response.json();
-  perf.end("firstPage");
-  return data;
 }
 
 export interface LoadPagesResult {
@@ -187,14 +164,21 @@ export async function checkForChanges(): Promise<boolean> {
   }
 }
 
-/** Fire-and-forget sync hash update */
-export function updateSyncHash(): void {
-  apiGet("/api/sync-check").then(async (res) => {
-    if (res.ok) {
-      const { hash } = await res.json();
-      await setSyncMeta("lastSyncHash", hash);
-    }
-  }).catch(() => {});
+/** Save a sync hash to IndexedDB (from initial-data response). */
+export function saveSyncHash(hash: string): void {
+  setSyncMeta("lastSyncHash", hash).catch(() => {});
+}
+
+/** Fetch the first page of data from the server (exported for refreshData). */
+export async function fetchFirstPage(): Promise<InitialDataResponse> {
+  perf.start("firstPage");
+  const response = await apiGet("/api/initial-data");
+  if (!response.ok) {
+    throw new Error("Failed to load initial data");
+  }
+  const data = await response.json();
+  perf.end("firstPage");
+  return data;
 }
 
 /**
@@ -208,11 +192,4 @@ export async function writeToCache(data: CachedData): Promise<void> {
     setSyncMeta("lastSync", new Date().toISOString()),
   ]);
   perf.end("cacheWrite");
-}
-
-/**
- * Mark cache as stale (forces eager refresh on next load).
- */
-export async function invalidateCache(): Promise<void> {
-  await setSyncMeta("lastSyncHash", "");
 }

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useDateFormat } from "../hooks/useDateFormat.ts";
 import type { EnrichedBookmark, EnrichedTag } from "../../shared/types.ts";
+import { apiDelete, apiPatch, apiPost } from "../utils/api.ts";
 import { TagInput } from "./TagInput.tsx";
 
 interface EditBookmarkProps {
@@ -47,11 +48,7 @@ export function EditBookmark({
 
       // Create tag records for new tags (parallel, non-blocking)
       const tagPromises = newTags.map((tagValue) =>
-        fetch("/api/tags", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ value: tagValue }),
-        }).catch((err) =>
+        apiPost("/api/tags", { value: tagValue }).catch((err) =>
           console.error(`Failed to create tag record for "${tagValue}":`, err)
         )
       );
@@ -59,16 +56,12 @@ export function EditBookmark({
       // Start tag creation and bookmark update in parallel
       const rkey = bookmark.uri.split("/").pop();
       const [response] = await Promise.all([
-        fetch(`/api/bookmarks/${rkey}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            tags,
-            title,
-            url,
-            description,
-            note: note.trim() || undefined,
-          }),
+        apiPatch(`/api/bookmarks/${rkey}`, {
+          tags,
+          title,
+          url,
+          description,
+          note: note.trim() || undefined,
         }),
         ...tagPromises,
       ]);
@@ -101,9 +94,7 @@ export function EditBookmark({
 
     try {
       const rkey = bookmark.uri.split("/").pop();
-      const response = await fetch(`/api/bookmarks/${rkey}`, {
-        method: "DELETE",
-      });
+      const response = await apiDelete(`/api/bookmarks/${rkey}`);
 
       if (!response.ok) {
         throw new Error("Failed to delete bookmark");

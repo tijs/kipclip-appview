@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { EnrichedTag } from "../../shared/types.ts";
 import { useApp } from "../context/AppContext.tsx";
+import { apiDelete, apiGet, apiPut } from "../utils/api.ts";
 
 interface EditTagProps {
   tag: EnrichedTag;
@@ -42,13 +43,7 @@ export function EditTag(
     setError(null);
 
     try {
-      const response = await fetch(`/api/tags/${rkey}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ value: newValue }),
-      });
+      const response = await apiPut(`/api/tags/${rkey}`, { value: newValue });
 
       if (!response.ok) {
         const data = await response.json();
@@ -77,7 +72,7 @@ export function EditTag(
 
     try {
       // First, fetch usage count
-      const usageResponse = await fetch(`/api/tags/${rkey}/usage`);
+      const usageResponse = await apiGet(`/api/tags/${rkey}/usage`);
       if (!usageResponse.ok) {
         throw new Error("Failed to check tag usage");
       }
@@ -100,9 +95,7 @@ export function EditTag(
       }
 
       // Delete the tag (backend will remove from bookmarks)
-      const deleteResponse = await fetch(`/api/tags/${rkey}`, {
-        method: "DELETE",
-      });
+      const deleteResponse = await apiDelete(`/api/tags/${rkey}`);
 
       if (!deleteResponse.ok) {
         const data = await deleteResponse.json();

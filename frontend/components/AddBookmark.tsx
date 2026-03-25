@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { EnrichedBookmark, EnrichedTag } from "../../shared/types.ts";
 import { getBaseUrl } from "../../shared/url-utils.ts";
 import { useApp } from "../context/AppContext.tsx";
+import { apiPost } from "../utils/api.ts";
 import { DuplicateWarning } from "./DuplicateWarning.tsx";
 import { TagInput } from "./TagInput.tsx";
 
@@ -36,10 +37,9 @@ export function AddBookmark({
     setError(null);
 
     try {
-      const response = await fetch("/api/bookmarks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url.trim(), tags }),
+      const response = await apiPost("/api/bookmarks", {
+        url: url.trim(),
+        tags,
       });
 
       if (!response.ok) {

@@ -16,6 +16,7 @@ import { Press } from "./Press.tsx";
 import { PrivacyPolicy } from "./PrivacyPolicy.tsx";
 import { TermsOfUse } from "./TermsOfUse.tsx";
 import { useApp } from "../context/AppContext.tsx";
+import { apiPost } from "../utils/api.ts";
 import { clearAll as clearCache } from "../cache/db.ts";
 
 type ViewType = "bookmarks" | "reading-list";
@@ -82,7 +83,7 @@ export function App() {
 
   async function handleLogout() {
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
+      await apiPost("/api/auth/logout");
       await clearCache();
       setSession(null);
     } catch (error) {

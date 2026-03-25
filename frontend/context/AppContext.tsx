@@ -1,7 +1,6 @@
 import {
   createContext,
   type ReactNode,
-  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -28,9 +27,10 @@ import {
 } from "../cache/db.ts";
 import {
   checkForChanges,
+  fetchFirstPage,
   loadRemainingPages,
   loadWithCache,
-  updateSyncHash,
+  saveSyncHash,
   writeToCache,
 } from "../cache/sync.ts";
 import {
@@ -83,7 +83,9 @@ interface AppContextValue extends AppState {
   loadTags: () => Promise<void>;
 
   // Combined initial data loading (avoids token refresh race condition)
-  loadInitialData: () => Promise<void>;
+  loadInitialData: (knownChanged?: boolean) => Promise<void>;
+  // Force a full refresh (bypasses cache, fetches all pages)
+  refreshData: () => Promise<void>;
 
   // Filter actions
   toggleTag: (tagValue: string) => void;
@@ -115,7 +117,7 @@ interface AppContextValue extends AppState {
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [session, setSessionRaw] = useState<SessionInfo | null>(null);
+  const [session, setSession] = useState<SessionInfo | null>(null);
   const [bookmarks, setBookmarks] = useState<EnrichedBookmark[]>([]);
   const [tags, setTagsRaw] = useState<EnrichedTag[]>([]);
   const sortTags = (t: EnrichedTag[]) =>
@@ -141,10 +143,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return params.get("q") || "";
   });
   const [readingListSearchQuery, setReadingListSearchQuery] = useState("");
-
-  const setSession = useCallback((s: SessionInfo | null) => {
-    setSessionRaw(s);
-  }, []);
 
   // Bookmark actions
   async function loadBookmarks() {
@@ -224,8 +222,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // Combined initial data loading with cache-first + progressive strategy
-  async function loadInitialData() {
+  // Combined initial data loading with cache-first + incremental strategy.
+  // When knownChanged is true (from tab-refocus handler), skips the hash check.
+  async function loadInitialData(knownChanged?: boolean) {
     perf.start("loadInitialData");
     try {
       // Open IndexedDB before reading cache (must await to avoid race)
@@ -242,34 +241,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setTags(immediate.tags);
         perf.end("firstPaint");
 
-        // Build a set of cached URIs for incremental sync
         const cachedUris = new Set(immediate.bookmarks.map((b) => b.uri));
 
-        // Background: incrementally load only new pages, merge with cache
-        firstPage.then(async (data) => {
-          applyServerMeta(data);
-          const result = await loadRemainingPages(data, cachedUris);
-          if (result.complete) {
-            // Merge: new bookmarks from server + cached bookmarks not re-fetched.
-            // Deletions are handled separately: sync-check hash on tab refocus
-            // detects changes and triggers a full reload.
-            const fetchedUris = new Set(result.bookmarks.map((b) => b.uri));
-            const kept = immediate.bookmarks.filter(
-              (b) => !fetchedUris.has(b.uri),
-            );
-            const merged = [...result.bookmarks, ...kept].sort(
-              (a, b) => b.createdAt.localeCompare(a.createdAt),
-            );
-            setBookmarks(merged);
-            setTags(data.tags);
-            await writeToCache({
-              bookmarks: merged,
-              tags: data.tags,
-            });
-            updateSyncHash();
-          }
-          // If incomplete, keep cached data — don't corrupt cache
-        }).catch((err) => console.error("Background refresh failed:", err));
+        // Background: check sync hash (unless caller already checked),
+        // then incremental sync for new bookmarks only.
+        const changedPromise = knownChanged
+          ? Promise.resolve(true)
+          : checkForChanges();
+
+        Promise.all([firstPage, changedPromise]).then(
+          async ([data, changed]) => {
+            applyServerMeta(data);
+
+            if (!changed) {
+              return;
+            }
+
+            // Incremental sync: fetch newest pages, stop at known records
+            const result = await loadRemainingPages(data, cachedUris);
+            if (result.complete) {
+              const fetchedUris = new Set(result.bookmarks.map((b) => b.uri));
+              const kept = immediate.bookmarks.filter(
+                (b) => !fetchedUris.has(b.uri),
+              );
+              const merged = [...result.bookmarks, ...kept].sort(
+                (a, b) => b.createdAt.localeCompare(a.createdAt),
+              );
+              setBookmarks(merged);
+              setTags(data.tags);
+              await writeToCache({ bookmarks: merged, tags: data.tags });
+              if (data.syncHash) saveSyncHash(data.syncHash);
+            }
+            // If incomplete, keep cached data — don't corrupt cache
+          },
+        ).catch((err) => console.error("Background refresh failed:", err));
         perf.end("loadInitialData");
         return;
       }
@@ -280,34 +285,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const data = await firstPage;
       applyServerMeta(data);
 
-      if (data.bookmarkCursor) {
-        const result = await loadRemainingPages(data);
-        perf.start("firstPaint");
-        setBookmarks(result.bookmarks);
-        setTags(data.tags);
-        perf.end("firstPaint");
-        if (result.complete) {
-          writeToCache({ bookmarks: result.bookmarks, tags: data.tags }).catch(
-            () => {},
-          );
-          updateSyncHash();
-        }
-      } else {
-        // Only one page — show and cache directly
-        perf.start("firstPaint");
-        setBookmarks(data.bookmarks);
-        setTags(data.tags);
-        perf.end("firstPaint");
-        writeToCache({ bookmarks: data.bookmarks, tags: data.tags }).catch(
+      const result = await loadRemainingPages(data);
+      perf.start("firstPaint");
+      setBookmarks(result.bookmarks);
+      setTags(data.tags);
+      perf.end("firstPaint");
+      if (result.complete) {
+        writeToCache({ bookmarks: result.bookmarks, tags: data.tags }).catch(
           () => {},
         );
-        updateSyncHash();
+        if (data.syncHash) saveSyncHash(data.syncHash);
       }
     } catch (err) {
       console.error("Failed to load initial data:", err);
       throw err;
     } finally {
       perf.end("loadInitialData");
+    }
+  }
+
+  // Manual refresh: full fetch from server, bypassing incremental sync.
+  // Guarded against concurrent calls to protect PDS rate limits.
+  const refreshInFlightRef = useRef(false);
+  async function refreshData() {
+    if (refreshInFlightRef.current) return;
+    refreshInFlightRef.current = true;
+    try {
+      const data = await fetchFirstPage();
+      applyServerMeta(data);
+      const result = await loadRemainingPages(data);
+      if (result.complete) {
+        setBookmarks(result.bookmarks);
+        setTags(data.tags);
+        await writeToCache({ bookmarks: result.bookmarks, tags: data.tags });
+        if (data.syncHash) saveSyncHash(data.syncHash);
+      }
+    } finally {
+      refreshInFlightRef.current = false;
     }
   }
 
@@ -324,7 +338,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       checkForChanges().then((changed) => {
         if (changed) {
-          loadInitialData().catch((err) =>
+          loadInitialData(true).catch((err) =>
             console.error("Tab-refocus refresh failed:", err)
           );
         }
@@ -544,6 +558,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     deleteTag,
     loadTags,
     loadInitialData,
+    refreshData,
     toggleTag,
     clearFilters,
     updateSettings,
