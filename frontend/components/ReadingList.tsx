@@ -3,7 +3,6 @@ import { useApp } from "../context/AppContext.tsx";
 import { type DateFormatOption, formatDate } from "../../shared/date-format.ts";
 import type { EnrichedBookmark } from "../../shared/types.ts";
 import { useMarkAsRead } from "../hooks/useMarkAsRead.ts";
-import { faviconUrl } from "../utils/favicon.ts";
 import { Toast } from "./Toast.tsx";
 
 function ReadingListCard(
@@ -79,12 +78,17 @@ function ReadingListCard(
           </p>
         )}
         <div className="flex items-center gap-2 text-sm text-gray-500">
-          <img
-            src={faviconUrl(bookmark.url)}
-            alt=""
-            className="w-4 h-4"
-            loading="lazy"
-          />
+          {bookmark.favicon && (
+            <img
+              src={bookmark.favicon}
+              alt=""
+              className="w-4 h-4"
+              loading="lazy"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = "none";
+              }}
+            />
+          )}
           <span>{domain}</span>
           <span className="text-gray-300">|</span>
           <span>{formattedDate}</span>
