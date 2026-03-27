@@ -51,9 +51,13 @@ export async function openCacheDb(did: string): Promise<void> {
     } else {
       console.warn("IndexedDB open timed out, proceeding without cache");
       dbFailed = true;
+      // Clear sync hash — cache and hash must stay in sync.
+      // Without cache, a stale hash would skip needed server fetches.
+      clearSyncHash();
     }
   } catch {
     dbFailed = true;
+    clearSyncHash();
   }
   perf.end("dbOpen");
 }
@@ -143,6 +147,15 @@ export async function deleteTagFromCache(uri: string): Promise<void> {
   if (!db) return;
   try {
     await db.delete("tags", uri);
+  } catch {
+    // silently ignore
+  }
+}
+
+/** Clear sync hash so next load does a full server check. */
+function clearSyncHash(): void {
+  try {
+    localStorage.removeItem("kipclip-sync-lastSyncHash");
   } catch {
     // silently ignore
   }

@@ -287,8 +287,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
               log("bg: merged=", merged.length, "b, updating UI");
               setBookmarks(merged);
               setTags(data.tags);
-              await writeToCache({ bookmarks: merged, tags: data.tags });
-              if (data.syncHash) saveSyncHash(data.syncHash);
+              // Only save hash after cache write succeeds — keeps them in sync.
+              // If cache fails, missing hash forces full sync next time.
+              try {
+                await writeToCache({ bookmarks: merged, tags: data.tags });
+                if (data.syncHash) saveSyncHash(data.syncHash);
+              } catch {
+                log("bg: cache write failed, skipping hash save");
+              }
             }
             // If incomplete, keep cached data — don't corrupt cache
           },
@@ -316,10 +322,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setTags(data.tags);
       perf.end("firstPaint");
       if (result.complete) {
-        writeToCache({ bookmarks: result.bookmarks, tags: data.tags }).catch(
-          () => {},
-        );
-        if (data.syncHash) saveSyncHash(data.syncHash);
+        // Only save hash after cache write succeeds — keeps them in sync.
+        try {
+          await writeToCache({ bookmarks: result.bookmarks, tags: data.tags });
+          if (data.syncHash) saveSyncHash(data.syncHash);
+        } catch {
+          log("cache write failed, skipping hash save");
+        }
       }
     } catch (err) {
       console.error("Failed to load initial data:", err);
