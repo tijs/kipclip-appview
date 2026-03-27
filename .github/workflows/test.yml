@@ -20,10 +20,16 @@ jobs:
         run: deno lint
       - name: Audit dependencies
         run: deno audit
-      - name: Run tests
-        run: deno task test
+      - name: Run tests with coverage
+        run: deno test --allow-all --coverage=coverage/
         env:
           # Use remote Turso client in CI (avoids local file creation)
           # Tests use MemoryStorage, so no actual DB connection needed
           TURSO_DATABASE_URL: libsql://test.turso.io
           TURSO_AUTH_TOKEN: test-token
+      - name: Generate coverage report
+        run: deno coverage coverage/ --lcov > coverage.lcov
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.lcov
