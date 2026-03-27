@@ -25,8 +25,26 @@ interface KipclipDB extends DBSchema {
 let db: IDBPDatabase<KipclipDB> | null = null;
 let dbFailed = false;
 
+// One-time migration: clear stale cache/hash from before the sync fix.
+// Previous versions could save the hash without writing the cache,
+// leaving IndexedDB stale while change detection said "no changes".
+const CACHE_VERSION = "2";
+function migrateIfNeeded(): boolean {
+  try {
+    if (localStorage.getItem("kipclip-cache-version") === CACHE_VERSION) {
+      return false;
+    }
+    clearSyncHash();
+    localStorage.setItem("kipclip-cache-version", CACHE_VERSION);
+    return true; // needs cache clear after DB opens
+  } catch {
+    return false;
+  }
+}
+
 export async function openCacheDb(did: string): Promise<void> {
   if (dbFailed) return;
+  const needsClear = migrateIfNeeded();
   perf.start("dbOpen");
   try {
     // Open at whatever version exists (no version = no upgrade = no blocked event).
@@ -54,6 +72,17 @@ export async function openCacheDb(did: string): Promise<void> {
       db = result;
       if (elapsed > 1000) {
         console.log(`[sync] IndexedDB opened in ${elapsed}ms`);
+      }
+      if (needsClear) {
+        console.log("[sync] one-time cache reset for sync fix");
+        try {
+          const tx = db.transaction(["bookmarks", "tags"], "readwrite");
+          tx.objectStore("bookmarks").clear();
+          tx.objectStore("tags").clear();
+          await tx.done;
+        } catch {
+          // If clear fails, proceed — loadWithCache will get null from empty stores
+        }
       }
     } else {
       console.warn(
