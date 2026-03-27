@@ -207,7 +207,8 @@ export function TagSidebar() {
         style={{ backgroundColor: "var(--sidebar-bg)" }}
         className="md:hidden w-full sticky top-0 z-10 border-b border-gray-200"
       >
-        <div className="flex items-center gap-3 px-3 py-3 overflow-x-auto">
+        {/* Tag scroll row */}
+        <div className="flex items-center gap-2 px-3 py-2 overflow-x-auto">
           <h2 className="text-sm font-bold text-gray-800 flex-shrink-0">
             Tags
             <span className="font-normal text-gray-500 ml-1">
@@ -231,44 +232,10 @@ export function TagSidebar() {
                 {tags.map(renderTag)}
               </ul>
             )}
-          {selectedTags.size > 0 && (
-            <>
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="flex-shrink-0 px-3 py-1 text-xs bg-gray-200 hover:bg-gray-300 rounded-lg transition text-gray-700 font-medium"
-                title="Clear all filters"
-              >
-                Clear filters
-              </button>
-              <button
-                type="button"
-                onClick={handleShareFiltered}
-                className="flex-shrink-0 px-3 py-1 text-xs rounded-lg transition text-white font-medium flex items-center gap-1"
-                style={{ backgroundColor: "var(--coral)" }}
-                title="Share these filtered bookmarks"
-              >
-                <svg
-                  className="w-3 h-3"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
-                  />
-                </svg>
-                Share
-              </button>
-            </>
-          )}
           <button
             type="button"
             onClick={() => setShowAddModal(true)}
-            className="flex-shrink-0 ml-auto p-2 hover:bg-gray-100 rounded-lg transition text-gray-600"
+            className="flex-shrink-0 ml-auto p-1.5 hover:bg-gray-100 rounded-lg transition text-gray-600"
             title="Create tag"
           >
             <svg
@@ -286,6 +253,47 @@ export function TagSidebar() {
             </svg>
           </button>
         </div>
+        {/* Action row: appears when tags are selected */}
+        {selectedTags.size > 0 && (
+          <div className="flex items-center gap-2 px-3 py-2 border-t border-gray-100">
+            <span className="text-xs text-gray-500 flex-shrink-0">
+              {selectedTags.size} {selectedTags.size === 1 ? "tag" : "tags"}{" "}
+              selected
+            </span>
+            <div className="flex items-center gap-2 ml-auto">
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="px-3 py-1.5 text-xs bg-gray-200 hover:bg-gray-300 rounded-lg transition text-gray-700 font-medium"
+                title="Clear all filters"
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={handleShareFiltered}
+                className="px-3 py-1.5 text-xs rounded-lg transition text-white font-medium flex items-center gap-1.5"
+                style={{ backgroundColor: "var(--coral)" }}
+                title="Share these filtered bookmarks"
+              >
+                <svg
+                  className="w-3.5 h-3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+                  />
+                </svg>
+                Share collection
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Desktop: Vertical sidebar */}
