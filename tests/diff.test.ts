@@ -127,8 +127,9 @@ Deno.test("diffFirstPage returns empty when server has no bookmarks", () => {
 Deno.test("diffFirstPage handles bulk additions (entirely new first page)", () => {
   const cached = buildCidMap([makeBookmark("old-1"), makeBookmark("old-2")]);
   // Server returns 100 new records, none matching cache
-  const server = Array.from({ length: 100 }, (_, i) =>
-    makeBookmark(`new-${i}`)
+  const server = Array.from(
+    { length: 100 },
+    (_, i) => makeBookmark(`new-${i}`),
   );
 
   const result = diffFirstPage(server, cached);

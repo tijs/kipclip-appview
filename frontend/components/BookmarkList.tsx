@@ -77,6 +77,7 @@ export function BookmarkList() {
     deleteTag,
     toggleTag,
     refreshData,
+    isSyncing,
     loadTags,
     bookmarkSearchQuery,
     setBookmarkSearchQuery,
@@ -469,7 +470,9 @@ export function BookmarkList() {
               title="Refresh bookmarks"
             >
               <svg
-                className={`w-5 h-5 ${isRefreshing ? "animate-spin" : ""}`}
+                className={`w-5 h-5 ${
+                  isRefreshing || isSyncing ? "animate-spin" : ""
+                }`}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"

@@ -24,10 +24,10 @@ import {
   getCachedBookmarks,
   getCachedTags,
   openCacheDb,
-  putBookmarks,
   putBookmark as putBookmarkToCache,
-  putTags,
+  putBookmarks,
   putTag as putTagToCache,
+  putTags,
   upsertBookmarks,
 } from "../cache/db.ts";
 import {
@@ -275,6 +275,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           applyServerMeta(data);
           setTags(data.tags);
           putTags(data.tags).catch(() => {});
+
+          // All bookmarks deleted on another device → clear local cache
+          if (data.bookmarks.length === 0 && !data.bookmarkCursor) {
+            setBookmarks([]);
+            putBookmarks([]).catch(() => {});
+            return;
+          }
 
           const cachedMap = buildCidMap(cachedBookmarks);
           const { additions, updates } = diffFirstPage(
