@@ -232,6 +232,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (session) {
         await openCacheDb(session.did);
       }
+      console.log("[loadInitialData] cache DB opened");
 
       const { immediate, firstPage } = await loadWithCache();
       console.log(

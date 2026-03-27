@@ -30,13 +30,32 @@ export async function openCacheDb(did: string): Promise<void> {
   if (dbFailed) return;
   perf.start("dbOpen");
   try {
-    db = await openDB<KipclipDB>(`kipclip-${did}`, 1, {
-      upgrade(database) {
-        database.createObjectStore("bookmarks", { keyPath: "uri" });
-        database.createObjectStore("tags", { keyPath: "uri" });
-        database.createObjectStore("meta", { keyPath: "key" });
+    // Race against a timeout — Safari can hang on indexedDB.open()
+    const opened = openDB<KipclipDB>(`kipclip-${did}`, 2, {
+      upgrade(database, oldVersion) {
+        if (oldVersion < 1) {
+          database.createObjectStore("bookmarks", { keyPath: "uri" });
+          database.createObjectStore("tags", { keyPath: "uri" });
+        }
+        if (oldVersion < 2) {
+          database.createObjectStore("meta", { keyPath: "key" });
+        }
+      },
+      blocked() {
+        // Another tab has an older version open — don't wait, skip cache
+        console.warn("IndexedDB blocked by another tab");
       },
     });
+    const timeout = new Promise<null>((resolve) =>
+      setTimeout(() => resolve(null), 3000)
+    );
+    const result = await Promise.race([opened, timeout]);
+    if (result) {
+      db = result;
+    } else {
+      console.warn("IndexedDB open timed out, proceeding without cache");
+      dbFailed = true;
+    }
   } catch {
     dbFailed = true;
   }
