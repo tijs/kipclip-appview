@@ -1,7 +1,7 @@
 ---
 title: "refactor: Simplify sync to first-page diff"
 type: refactor
-status: active
+status: completed
 date: 2026-03-27
 origin: docs/brainstorms/2026-03-27-simplified-sync-brainstorm.md
 ---
@@ -119,42 +119,42 @@ Tags are a small collection (tens of records). Always full-fetch via
 
 ### Core sync
 
-- [ ] Tab focus fetches first page and merges new/changed bookmarks into cache
-- [ ] Tab focus never triggers full re-pagination
-- [ ] Same-device mutations still work via optimistic updates
-- [ ] Tags are fully refreshed on every tab-focus sync
-- [ ] Refresh icon animates during ALL sync/background work
+- [x] Tab focus fetches first page and merges new/changed bookmarks into cache
+- [x] Tab focus never triggers full re-pagination
+- [x] Same-device mutations still work via optimistic updates
+- [x] Tags are fully refreshed on every tab-focus sync
+- [x] Refresh icon animates during ALL sync/background work
 
 ### Manual refresh
 
-- [ ] Pull-to-refresh / refresh button triggers full paginated refresh
-- [ ] Pagination pauses when PDS rate limit is low
-- [ ] Progress indicator shows during refresh ("Syncing... 1200/3000")
-- [ ] Cache is fully replaced on completion (catches deletions)
+- [x] Pull-to-refresh / refresh button triggers full paginated refresh
+- [x] Pagination pauses when PDS rate limit is low
+- [x] Progress indicator shows during refresh ("Syncing... 1200/3000")
+- [x] Cache is fully replaced on completion (catches deletions)
 
 ### Cold start
 
-- [ ] First visit renders first page immediately (no blank screen)
-- [ ] Remaining pages load in background with rate-limit respect
-- [ ] Loading indicator shows while background pagination is in progress
-- [ ] Cache is populated on completion
+- [x] First visit renders first page immediately (no blank screen)
+- [x] Remaining pages load in background with rate-limit respect
+- [x] Loading indicator shows while background pagination is in progress
+- [x] Cache is populated on completion
 
 ### Cleanup
 
-- [ ] `/api/sync-check` endpoint removed
-- [ ] `computeSyncHash()` removed
-- [ ] `checkForChanges()` removed
-- [ ] `saveSyncHash()` / `getSyncMeta("lastSyncHash")` removed
-- [ ] `loadWithCache()` / `SyncResult` type simplified or removed
-- [ ] Sync hash localStorage keys removed
-- [ ] Cache version migration code removed (no longer needed)
-- [ ] `[sync]` debug logging removed from AppContext.tsx and sync.ts
+- [x] `/api/sync-check` endpoint removed
+- [x] `computeSyncHash()` removed
+- [x] `checkForChanges()` removed
+- [x] `saveSyncHash()` / `getSyncMeta("lastSyncHash")` removed
+- [x] `loadWithCache()` / `SyncResult` type simplified or removed
+- [x] Sync hash localStorage keys removed
+- [x] Cache version migration code removed (no longer needed)
+- [x] `[sync]` debug logging removed from AppContext.tsx and sync.ts
 
 ### Race condition fix
 
-- [ ] Concurrent mutation + background sync does not overwrite optimistic
+- [x] Concurrent mutation + background sync does not overwrite optimistic
       updates
-- [ ] Merge uses current React state (via ref), not stale cache snapshot
+- [x] Merge uses current React state (via ref), not stale cache snapshot
 
 ## Implementation Phases
 
@@ -162,39 +162,39 @@ Tags are a small collection (tens of records). Always full-fetch via
 
 **Files:** `frontend/cache/db.ts`, new `frontend/cache/diff.ts`
 
-- [ ] Add `getCachedBookmarkMap(): Promise<Map<string, {uri, cid}>>` to db.ts —
+- [x] Add `getCachedBookmarkMap(): Promise<Map<string, {uri, cid}>>` to db.ts —
       returns URI→CID map for diffing (or reuse `getCachedBookmarks()` and build
       map in caller)
-- [ ] Add `upsertBookmarks(bookmarks: EnrichedBookmark[]): Promise<void>` to
+- [x] Add `upsertBookmarks(bookmarks: EnrichedBookmark[]): Promise<void>` to
       db.ts — adds/updates without clearing the store
-- [ ] Create `diffFirstPage(server, cached)` function that returns
+- [x] Create `diffFirstPage(server, cached)` function that returns
       `{additions: EnrichedBookmark[], updates: EnrichedBookmark[]}` by
       comparing URI+CID tuples
-- [ ] Add tests for diff function: additions, edits, no changes, bulk additions,
+- [x] Add tests for diff function: additions, edits, no changes, bulk additions,
       empty cache, empty server response
 
 ### Phase 2: Simplify tab-focus sync
 
 **Files:** `frontend/context/AppContext.tsx`, `frontend/cache/sync.ts`
 
-- [ ] Replace `loadInitialData` with simpler flow: fetch first page → diff →
+- [x] Replace `loadInitialData` with simpler flow: fetch first page → diff →
       upsert cache → merge into current state (via ref)
-- [ ] Tab-focus handler calls the same function (no separate `checkForChanges`)
-- [ ] Fix race condition: merge against current `bookmarks` ref, not stale
+- [x] Tab-focus handler calls the same function (no separate `checkForChanges`)
+- [x] Fix race condition: merge against current `bookmarks` ref, not stale
       snapshot
-- [ ] Add `isSyncing` state for refresh icon animation
-- [ ] Keep 60s debounce on tab-focus sync
+- [x] Add `isSyncing` state for refresh icon animation
+- [x] Keep 60s debounce on tab-focus sync
 
 ### Phase 3: Rate-limit-aware background pagination
 
 **Files:** `frontend/cache/sync.ts`, `frontend/context/AppContext.tsx`
 
-- [ ] Extract `paginateAll(firstPageData)` function that fetches all remaining
+- [x] Extract `paginateAll(firstPageData)` function that fetches all remaining
       pages with rate-limit-aware pausing
-- [ ] Add `syncProgress` state: `{current: number, total: number} | null`
-- [ ] Wire up to manual refresh trigger (pull-to-refresh + refresh button)
-- [ ] On completion: clear-and-replace entire cache (full reconciliation)
-- [ ] Wire up cold-start path: render first page immediately, paginate in
+- [x] Add `syncProgress` state: `{current: number, total: number} | null`
+- [x] Wire up to manual refresh trigger (pull-to-refresh + refresh button)
+- [x] On completion: clear-and-replace entire cache (full reconciliation)
+- [x] Wire up cold-start path: render first page immediately, paginate in
       background, update state as pages arrive
 
 ### Phase 4: Remove dead code
@@ -202,28 +202,28 @@ Tags are a small collection (tens of records). Always full-fetch via
 **Files:** `routes/api/initial-data.ts`, `frontend/cache/sync.ts`,
 `frontend/cache/db.ts`, `frontend/context/AppContext.tsx`, `shared/types.ts`
 
-- [ ] Remove `/api/sync-check` endpoint
-- [ ] Remove `computeSyncHash()` from initial-data.ts
-- [ ] Remove extra `listOnePage(TAG_COLLECTION)` call (line 124) that was only
+- [x] Remove `/api/sync-check` endpoint
+- [x] Remove `computeSyncHash()` from initial-data.ts
+- [x] Remove extra `listOnePage(TAG_COLLECTION)` call (line 124) that was only
       for sync hash — saves 1 PDS call per first-page load
-- [ ] Remove `syncHash` field from `InitialDataResponse` type
-- [ ] Remove `checkForChanges()`, `saveSyncHash()` from sync.ts
-- [ ] Remove `getSyncMeta` / `setSyncMeta` if no longer used
-- [ ] Remove sync hash localStorage keys and `clearSyncHash()` from db.ts
-- [ ] Remove `CACHE_VERSION` migration code from db.ts
-- [ ] Remove `[sync]` debug console.log statements
-- [ ] Remove todo `001-pending-p1-sync-check-unbounded-tag-pagination.md`
+- [x] Remove `syncHash` field from `InitialDataResponse` type
+- [x] Remove `checkForChanges()`, `saveSyncHash()` from sync.ts
+- [x] Remove `getSyncMeta` / `setSyncMeta` if no longer used
+- [x] Remove sync hash localStorage keys and `clearSyncHash()` from db.ts
+- [x] Remove `CACHE_VERSION` migration code from db.ts
+- [x] Remove `[sync]` debug console.log statements
+- [x] Remove todo `001-pending-p1-sync-check-unbounded-tag-pagination.md`
       (problem eliminated)
 
 ### Phase 5: UI feedback
 
 **Files:** `frontend/components/BookmarkList.tsx`, `frontend/components/App.tsx`
 
-- [ ] Animate refresh icon when `isSyncing` is true
-- [ ] Show progress bar/text during manual refresh and cold-start pagination
-- [ ] Show "Loading more bookmarks..." below list during cold-start background
+- [x] Animate refresh icon when `isSyncing` is true
+- [x] Show progress bar/text during manual refresh and cold-start pagination
+- [x] Show "Loading more bookmarks..." below list during cold-start background
       pagination
-- [ ] Handle zero-bookmarks edge case (server returns empty → clear cache)
+- [x] Handle zero-bookmarks edge case (server returns empty → clear cache)
 
 ## Edge Cases
 
