@@ -1,5 +1,6 @@
 import { type DateFormatOption, formatDate } from "../../shared/date-format.ts";
 import type { EnrichedBookmark } from "../../shared/types.ts";
+import { faviconUrl } from "../utils/favicon.ts";
 
 type ViewMode = "cards" | "list";
 
@@ -150,18 +151,12 @@ function ListView(
 ) {
   return (
     <div className="flex items-center gap-3 min-w-0">
-      {bookmark.favicon
-        ? (
-          <img
-            src={bookmark.favicon}
-            alt=""
-            className="w-5 h-5 shrink-0 rounded"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
-          />
-        )
-        : <div className="w-5 h-5 shrink-0 rounded bg-gray-200" />}
+      <img
+        src={faviconUrl(bookmark.url)}
+        alt=""
+        className="w-5 h-5 shrink-0 rounded"
+        loading="lazy"
+      />
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 min-w-0">
