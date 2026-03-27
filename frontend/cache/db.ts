@@ -2,6 +2,9 @@
  * IndexedDB cache layer for kipclip.
  * Caches bookmarks and tags per-user using the `idb` wrapper.
  * All methods silently no-op if IndexedDB is unavailable (e.g. private browsing).
+ *
+ * Sync metadata (hashes, timestamps) uses localStorage instead of IndexedDB
+ * to avoid version migration issues in Safari.
  */
 
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
@@ -17,10 +20,6 @@ interface KipclipDB extends DBSchema {
     key: string;
     value: EnrichedTag;
   };
-  meta: {
-    key: string;
-    value: { key: string; value: string };
-  };
 }
 
 let db: IDBPDatabase<KipclipDB> | null = null;
@@ -31,18 +30,16 @@ export async function openCacheDb(did: string): Promise<void> {
   perf.start("dbOpen");
   try {
     // Race against a timeout — Safari can hang on indexedDB.open()
-    const opened = openDB<KipclipDB>(`kipclip-${did}`, 2, {
-      upgrade(database, oldVersion) {
-        if (oldVersion < 1) {
+    const opened = openDB<KipclipDB>(`kipclip-${did}`, 1, {
+      upgrade(database) {
+        if (!database.objectStoreNames.contains("bookmarks")) {
           database.createObjectStore("bookmarks", { keyPath: "uri" });
-          database.createObjectStore("tags", { keyPath: "uri" });
         }
-        if (oldVersion < 2) {
-          database.createObjectStore("meta", { keyPath: "key" });
+        if (!database.objectStoreNames.contains("tags")) {
+          database.createObjectStore("tags", { keyPath: "uri" });
         }
       },
       blocked() {
-        // Another tab has an older version open — don't wait, skip cache
         console.warn("IndexedDB blocked by another tab");
       },
     });
@@ -152,32 +149,42 @@ export async function deleteTagFromCache(uri: string): Promise<void> {
   }
 }
 
-export async function getSyncMeta(key: string): Promise<string | null> {
-  if (!db) return null;
+/** Sync metadata stored in localStorage (avoids IndexedDB version migrations). */
+export function getSyncMeta(key: string): Promise<string | null> {
   try {
-    const entry = await db.get("meta", key);
-    return entry?.value ?? null;
+    return Promise.resolve(localStorage.getItem(`kipclip-sync-${key}`));
   } catch {
-    return null;
+    return Promise.resolve(null);
   }
 }
 
-export async function setSyncMeta(key: string, value: string): Promise<void> {
-  if (!db) return;
+export function setSyncMeta(key: string, value: string): Promise<void> {
   try {
-    await db.put("meta", { key, value });
+    localStorage.setItem(`kipclip-sync-${key}`, value);
   } catch {
     // silently ignore
   }
+  return Promise.resolve();
 }
 
 export async function clearAll(): Promise<void> {
+  try {
+    // Clear localStorage sync metadata
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith("kipclip-sync-")) keysToRemove.push(key);
+    }
+    keysToRemove.forEach((k) => localStorage.removeItem(k));
+  } catch {
+    // silently ignore
+  }
+
   if (!db) return;
   try {
-    const tx = db.transaction(["bookmarks", "tags", "meta"], "readwrite");
+    const tx = db.transaction(["bookmarks", "tags"], "readwrite");
     tx.objectStore("bookmarks").clear();
     tx.objectStore("tags").clear();
-    tx.objectStore("meta").clear();
     await tx.done;
   } catch {
     // silently ignore
