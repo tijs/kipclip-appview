@@ -1,6 +1,6 @@
 /**
- * Cache-first data loading with progressive server fetch.
- * First page renders in ~1s, remaining pages load in background.
+ * Server data fetching and background pagination.
+ * Used by AppContext for initial load, tab-focus sync, and manual refresh.
  */
 
 import type {
@@ -8,86 +8,36 @@ import type {
   EnrichedTag,
   InitialDataResponse,
 } from "../../shared/types.ts";
-import {
-  getCachedBookmarks,
-  getCachedTags,
-  getSyncMeta,
-  putBookmarks,
-  putTags,
-  setSyncMeta,
-} from "./db.ts";
+import { putBookmarks, putTags } from "./db.ts";
 import { apiGet } from "../utils/api.ts";
 import { perf } from "../perf.ts";
 
-export interface CachedData {
+interface CachedData {
   bookmarks: EnrichedBookmark[];
   tags: EnrichedTag[];
 }
 
-export interface SyncResult {
-  /** Data to render immediately (from cache) */
-  immediate: CachedData | null;
-  /** Promise that resolves when the first server page is loaded */
-  firstPage: Promise<InitialDataResponse>;
-}
-
-/**
- * Load data with cache-first strategy.
- * Returns cached data immediately if available, plus a first-page promise.
- */
-export async function loadWithCache(): Promise<SyncResult> {
-  perf.start("cacheRead");
-  const [cachedBookmarks, cachedTags] = await Promise.all([
-    getCachedBookmarks(),
-    getCachedTags(),
-  ]);
-  perf.end("cacheRead");
-
-  const hasCache = cachedBookmarks !== null && cachedTags !== null;
-
-  const firstPage = fetchFirstPage();
-
-  return {
-    immediate: hasCache
-      ? { bookmarks: cachedBookmarks!, tags: cachedTags! }
-      : null,
-    firstPage,
-  };
-}
-
-export interface LoadPagesResult {
+interface LoadPagesResult {
   bookmarks: EnrichedBookmark[];
   /** True when all pages were loaded (cursor exhausted). False if a page failed. */
   complete: boolean;
 }
 
 /**
- * Progressively load remaining bookmark pages.
+ * Progressively load remaining bookmark pages after the first page.
  * Returns the full array of all bookmarks (first page + remaining)
  * and whether loading completed fully.
  *
- * When `cachedUris` is provided, stops paginating as soon as an entire page
- * consists of bookmarks already in the cache (incremental sync).
+ * Respects PDS rate limits: pauses when remaining calls drop below 50.
  */
 export async function loadRemainingPages(
   firstPageData: InitialDataResponse,
-  cachedUris?: Set<string>,
 ): Promise<LoadPagesResult> {
   perf.start("remainingPages");
   const allBookmarks = [...firstPageData.bookmarks];
   let bookmarkCursor = firstPageData.bookmarkCursor;
   let annotationCursor = firstPageData.annotationCursor;
   let complete = true;
-
-  // If we have a cache and the first page is entirely known, skip pagination
-  if (cachedUris && bookmarkCursor) {
-    const firstPageAllKnown = firstPageData.bookmarks.length > 0 &&
-      firstPageData.bookmarks.every((b) => cachedUris.has(b.uri));
-    if (firstPageAllKnown) {
-      perf.end("remainingPages");
-      return { bookmarks: allBookmarks, complete: true };
-    }
-  }
 
   let currentRateLimit = firstPageData.rateLimit;
 
@@ -109,29 +59,21 @@ export async function loadRemainingPages(
 
     const response = await apiGet(`/api/initial-data?${params}`);
     if (!response.ok) {
-      const body = await response.text().catch(() => "");
-      console.warn(`[sync] page fetch failed: ${response.status} ${body}`);
+      console.warn(
+        `Page fetch failed: ${response.status}`,
+        await response.text().catch(() => ""),
+      );
       complete = false;
       break;
     }
 
     const page = await response.json();
 
-    // Update rate limit info for next iteration
     if (page.rateLimit) {
       currentRateLimit = page.rateLimit;
     }
 
     if (page.bookmarks?.length > 0) {
-      // If all bookmarks on this page are already cached, we've caught up
-      if (cachedUris) {
-        const allKnown = page.bookmarks.every(
-          (b: EnrichedBookmark) => cachedUris.has(b.uri),
-        );
-        if (allKnown) {
-          break;
-        }
-      }
       allBookmarks.push(...page.bookmarks);
     }
 
@@ -139,7 +81,6 @@ export async function loadRemainingPages(
     annotationCursor = page.annotationCursor;
   }
 
-  // Pages arrive in cursor order which may not match createdAt order.
   // Re-sort so newest bookmarks appear first after merging all pages.
   allBookmarks.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
@@ -147,34 +88,7 @@ export async function loadRemainingPages(
   return { bookmarks: allBookmarks, complete };
 }
 
-/**
- * Lightweight check using sync-check endpoint.
- * Returns true if data has changed since last sync hash.
- */
-export async function checkForChanges(): Promise<boolean> {
-  try {
-    const lastHash = await getSyncMeta("lastSyncHash");
-    if (!lastHash) return true;
-
-    const response = await apiGet("/api/sync-check");
-    if (!response.ok) {
-      console.warn(`[sync] sync-check failed: ${response.status}`);
-      return true;
-    }
-
-    const { hash } = await response.json();
-    return hash !== lastHash;
-  } catch {
-    return true;
-  }
-}
-
-/** Save a sync hash to IndexedDB (from initial-data response). */
-export function saveSyncHash(hash: string): void {
-  setSyncMeta("lastSyncHash", hash).catch(() => {});
-}
-
-/** Fetch the first page of data from the server (exported for refreshData). */
+/** Fetch the first page of data from the server. */
 export async function fetchFirstPage(): Promise<InitialDataResponse> {
   perf.start("firstPage");
   const response = await apiGet("/api/initial-data");
@@ -189,15 +103,12 @@ export async function fetchFirstPage(): Promise<InitialDataResponse> {
   return data;
 }
 
-/**
- * Persist bookmarks + tags to IndexedDB cache.
- */
+/** Persist bookmarks + tags to IndexedDB cache (clear-and-replace). */
 export async function writeToCache(data: CachedData): Promise<void> {
   perf.start("cacheWrite");
   await Promise.all([
     putBookmarks(data.bookmarks),
     putTags(data.tags),
-    setSyncMeta("lastSync", new Date().toISOString()),
   ]);
   perf.end("cacheWrite");
 }

@@ -26,30 +26,6 @@ import type {
   InitialDataResponse,
 } from "../../shared/types.ts";
 
-/** Compute a sync hash from first-page bookmark and tag CIDs + cursors. */
-async function computeSyncHash(
-  bookmarkRecords: any[],
-  bookmarkCursor: string | undefined,
-  tagRecords: any[],
-  tagCursor: string | undefined,
-): Promise<string> {
-  const hashInput = [
-    ...bookmarkRecords.map((r: any) => r.cid),
-    bookmarkCursor || "",
-    ...tagRecords.map((r: any) => r.cid),
-    tagCursor || "",
-  ].join("|");
-
-  const hashBuffer = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(hashInput),
-  );
-  return Array.from(
-    new Uint8Array(hashBuffer),
-    (b) => b.toString(16).padStart(2, "0"),
-  ).join("").slice(0, 16);
-}
-
 /** Pick the lower rate limit remaining from two PDS responses. */
 function pickLowestRateLimit(
   a?: RateLimitInfo,
@@ -85,7 +61,6 @@ function joinBookmarksWithAnnotations(
 }
 
 // Track which users have already run migrations this server session.
-// Migrations are one-time data fixes; no need to re-run on every page load.
 const migratedUsers = new Set<string>();
 
 export function registerInitialDataRoutes(app: App<any>): App<any> {
@@ -109,19 +84,17 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
 
       if (isFirstPage) {
         // First page: fetch tags + settings + first page bookmarks/annotations
-        // Plus a single tag page for sync hash (all in parallel, ~5 PDS requests)
+        // (~4 PDS requests in parallel)
         const [
           bookmarkPage,
           annotationPage,
           tagRecords,
-          tagPage,
           settings,
           preferences,
         ] = await Promise.all([
           listOnePage(oauthSession, BOOKMARK_COLLECTION, { reverse: true }),
           listOnePage(oauthSession, ANNOTATION_COLLECTION, { reverse: true }),
           listAllRecords(oauthSession, TAG_COLLECTION),
-          listOnePage(oauthSession, TAG_COLLECTION),
           getUserSettings(oauthSession.did),
           getUserPreferences(oauthSession),
         ]);
@@ -149,13 +122,6 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
           annotationPage.rateLimit,
         );
 
-        const syncHash = await computeSyncHash(
-          bookmarkPage.records,
-          bookmarkPage.cursor,
-          tagPage.records,
-          tagPage.cursor,
-        );
-
         const result: InitialDataResponse = {
           bookmarks,
           tags,
@@ -164,7 +130,6 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
           bookmarkCursor: bookmarkPage.cursor,
           annotationCursor: annotationPage.cursor,
           rateLimit,
-          syncHash,
         };
 
         const response = setSessionCookie(
@@ -245,39 +210,6 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
       return response;
     } catch (error: any) {
       console.error("Error fetching initial data:", error);
-      return Response.json({ error: error.message }, { status: 500 });
-    }
-  });
-
-  // Lightweight sync-check: hash first page of CIDs to detect changes
-  app = app.get("/api/sync-check", async (ctx) => {
-    try {
-      const { session: oauthSession, setCookieHeader, error } =
-        await getSessionFromRequest(ctx.req);
-
-      if (!oauthSession) {
-        return createAuthErrorResponse(error);
-      }
-
-      const [bookmarkPage, tagPage] = await Promise.all([
-        listOnePage(oauthSession, BOOKMARK_COLLECTION, { reverse: true }),
-        listOnePage(oauthSession, TAG_COLLECTION),
-      ]);
-
-      const hash = await computeSyncHash(
-        bookmarkPage.records,
-        bookmarkPage.cursor,
-        tagPage.records,
-        tagPage.cursor,
-      );
-
-      const response = setSessionCookie(
-        Response.json({ hash }),
-        setCookieHeader,
-      );
-      return response;
-    } catch (error: any) {
-      console.error("Error in sync-check:", error);
       return Response.json({ error: error.message }, { status: 500 });
     }
   });
