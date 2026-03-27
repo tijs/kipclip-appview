@@ -226,14 +226,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // When knownChanged is true (from tab-refocus handler), skips the hash check.
   async function loadInitialData(knownChanged?: boolean) {
     perf.start("loadInitialData");
+    const log = (...args: unknown[]) => console.log("[sync]", ...args);
 
     try {
       // Open IndexedDB before reading cache (must await to avoid race)
       if (session) {
         await openCacheDb(session.did);
       }
+      log("db opened");
 
       const { immediate, firstPage } = await loadWithCache();
+      log(
+        "cache:",
+        immediate
+          ? `HIT ${immediate.bookmarks.length}b/${immediate.tags.length}t`
+          : "MISS",
+      );
 
       if (immediate) {
         // Cache hit: show cached data immediately, refresh in background
@@ -252,6 +260,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         Promise.all([firstPage, changedPromise]).then(
           async ([data, changed]) => {
+            log("bg: changed=", changed, "server=", data.bookmarks.length, "b");
             applyServerMeta(data);
 
             if (!changed) {
@@ -260,6 +269,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
             // Incremental sync: fetch newest pages, stop at known records
             const result = await loadRemainingPages(data, cachedUris);
+            log(
+              "bg: pages done, complete=",
+              result.complete,
+              "total=",
+              result.bookmarks.length,
+              "b",
+            );
             if (result.complete) {
               const fetchedUris = new Set(result.bookmarks.map((b) => b.uri));
               const kept = immediate.bookmarks.filter(
@@ -268,6 +284,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               const merged = [...result.bookmarks, ...kept].sort(
                 (a, b) => b.createdAt.localeCompare(a.createdAt),
               );
+              log("bg: merged=", merged.length, "b, updating UI");
               setBookmarks(merged);
               setTags(data.tags);
               await writeToCache({ bookmarks: merged, tags: data.tags });
@@ -281,12 +298,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       // No cache: load ALL pages before showing anything.
-      // Tags reference bookmarks across all pages, so showing partial
-      // bookmarks with all tags causes tag filtering to show 0 results.
+      log("no cache, fetching all pages...");
       const data = await firstPage;
+      log("firstPage:", data.bookmarks.length, "b,", data.tags.length, "t");
       applyServerMeta(data);
 
       const result = await loadRemainingPages(data);
+      log(
+        "all pages: complete=",
+        result.complete,
+        "total=",
+        result.bookmarks.length,
+        "b",
+      );
       perf.start("firstPaint");
       setBookmarks(result.bookmarks);
       setTags(data.tags);
@@ -301,6 +325,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       console.error("Failed to load initial data:", err);
       throw err;
     } finally {
+      log("done");
       perf.end("loadInitialData");
     }
   }
