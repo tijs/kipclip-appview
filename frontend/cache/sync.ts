@@ -109,6 +109,8 @@ export async function loadRemainingPages(
 
     const response = await apiGet(`/api/initial-data?${params}`);
     if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      console.warn(`[sync] page fetch failed: ${response.status} ${body}`);
       complete = false;
       break;
     }
@@ -155,7 +157,10 @@ export async function checkForChanges(): Promise<boolean> {
     if (!lastHash) return true;
 
     const response = await apiGet("/api/sync-check");
-    if (!response.ok) return true;
+    if (!response.ok) {
+      console.warn(`[sync] sync-check failed: ${response.status}`);
+      return true;
+    }
 
     const { hash } = await response.json();
     return hash !== lastHash;
@@ -174,7 +179,10 @@ export async function fetchFirstPage(): Promise<InitialDataResponse> {
   perf.start("firstPage");
   const response = await apiGet("/api/initial-data");
   if (!response.ok) {
-    throw new Error("Failed to load initial data");
+    const body = await response.text().catch(() => "");
+    throw new Error(
+      `Failed to load initial data: ${response.status} ${body}`,
+    );
   }
   const data = await response.json();
   perf.end("firstPage");
