@@ -37,6 +37,11 @@ static/bundle.*.js
 static/bundle.*.js.map
 static/manifest.json
 
+# Working documents
+docs/brainstorms/
+docs/plans/
+todos/
+
 # Beans issue tracking
 .beans/
 .beans.yml
