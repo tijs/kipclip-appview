@@ -154,6 +154,22 @@ export async function putTags(tags: EnrichedTag[]): Promise<void> {
   }
 }
 
+/** Upsert bookmarks without clearing the store (for incremental sync). */
+export async function upsertBookmarks(
+  bookmarks: EnrichedBookmark[],
+): Promise<void> {
+  if (!db || bookmarks.length === 0) return;
+  try {
+    const tx = db.transaction("bookmarks", "readwrite");
+    for (const b of bookmarks) {
+      tx.store.put(b);
+    }
+    await tx.done;
+  } catch {
+    // silently ignore
+  }
+}
+
 export async function putBookmark(bookmark: EnrichedBookmark): Promise<void> {
   if (!db) return;
   try {
