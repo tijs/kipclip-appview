@@ -2,9 +2,6 @@
  * IndexedDB cache layer for kipclip.
  * Caches bookmarks and tags per-user using the `idb` wrapper.
  * All methods silently no-op if IndexedDB is unavailable (e.g. private browsing).
- *
- * Sync metadata (hashes, timestamps) uses localStorage instead of IndexedDB
- * to avoid version migration issues in Safari.
  */
 
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
@@ -25,31 +22,12 @@ interface KipclipDB extends DBSchema {
 let db: IDBPDatabase<KipclipDB> | null = null;
 let dbFailed = false;
 
-// One-time migration: clear stale cache/hash from before the sync fix.
-// Previous versions could save the hash without writing the cache,
-// leaving IndexedDB stale while change detection said "no changes".
-const CACHE_VERSION = "2";
-function migrateIfNeeded(): boolean {
-  try {
-    if (localStorage.getItem("kipclip-cache-version") === CACHE_VERSION) {
-      return false;
-    }
-    clearSyncHash();
-    localStorage.setItem("kipclip-cache-version", CACHE_VERSION);
-    return true; // needs cache clear after DB opens
-  } catch {
-    return false;
-  }
-}
-
 export async function openCacheDb(did: string): Promise<void> {
   if (dbFailed) return;
-  const needsClear = migrateIfNeeded();
   perf.start("dbOpen");
   try {
     // Open at whatever version exists (no version = no upgrade = no blocked event).
-    // Only triggers upgrade for brand-new databases (creates at v1).
-    // Existing v1 or v2 databases open without any migration.
+    // Only triggers upgrade for brand-new databases.
     const opened = openDB<KipclipDB>(`kipclip-${did}`, undefined, {
       upgrade(database) {
         if (!database.objectStoreNames.contains("bookmarks")) {
@@ -61,7 +39,6 @@ export async function openCacheDb(did: string): Promise<void> {
       },
     });
     // 10s timeout — Safari can be slow opening large databases.
-    // A slow DB open is still cheaper than re-fetching 3000+ bookmarks.
     const timeout = new Promise<null>((resolve) =>
       setTimeout(() => resolve(null), 10_000)
     );
@@ -71,31 +48,16 @@ export async function openCacheDb(did: string): Promise<void> {
     if (result) {
       db = result;
       if (elapsed > 1000) {
-        console.log(`[sync] IndexedDB opened in ${elapsed}ms`);
-      }
-      if (needsClear) {
-        console.log("[sync] one-time cache reset for sync fix");
-        try {
-          const tx = db.transaction(["bookmarks", "tags"], "readwrite");
-          tx.objectStore("bookmarks").clear();
-          tx.objectStore("tags").clear();
-          await tx.done;
-        } catch {
-          // If clear fails, proceed — loadWithCache will get null from empty stores
-        }
+        console.warn(`IndexedDB opened in ${elapsed}ms`);
       }
     } else {
       console.warn(
         `IndexedDB open timed out after ${elapsed}ms, proceeding without cache`,
       );
       dbFailed = true;
-      // Clear sync hash — cache and hash must stay in sync.
-      // Without cache, a stale hash would skip needed server fetches.
-      clearSyncHash();
     }
   } catch {
     dbFailed = true;
-    clearSyncHash();
   }
   perf.end("dbOpen");
 }
@@ -124,6 +86,7 @@ export async function getCachedTags(): Promise<EnrichedTag[] | null> {
   }
 }
 
+/** Replace all bookmarks in cache (clear-and-replace for full refresh). */
 export async function putBookmarks(
   bookmarks: EnrichedBookmark[],
 ): Promise<void> {
@@ -140,6 +103,7 @@ export async function putBookmarks(
   }
 }
 
+/** Replace all tags in cache (clear-and-replace). */
 export async function putTags(tags: EnrichedTag[]): Promise<void> {
   if (!db) return;
   try {
@@ -206,46 +170,7 @@ export async function deleteTagFromCache(uri: string): Promise<void> {
   }
 }
 
-/** Clear sync hash so next load does a full server check. */
-function clearSyncHash(): void {
-  try {
-    localStorage.removeItem("kipclip-sync-lastSyncHash");
-  } catch {
-    // silently ignore
-  }
-}
-
-/** Sync metadata stored in localStorage (avoids IndexedDB version migrations). */
-export function getSyncMeta(key: string): Promise<string | null> {
-  try {
-    return Promise.resolve(localStorage.getItem(`kipclip-sync-${key}`));
-  } catch {
-    return Promise.resolve(null);
-  }
-}
-
-export function setSyncMeta(key: string, value: string): Promise<void> {
-  try {
-    localStorage.setItem(`kipclip-sync-${key}`, value);
-  } catch {
-    // silently ignore
-  }
-  return Promise.resolve();
-}
-
 export async function clearAll(): Promise<void> {
-  try {
-    // Clear localStorage sync metadata
-    const keysToRemove: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key?.startsWith("kipclip-sync-")) keysToRemove.push(key);
-    }
-    keysToRemove.forEach((k) => localStorage.removeItem(k));
-  } catch {
-    // silently ignore
-  }
-
   if (!db) return;
   try {
     const tx = db.transaction(["bookmarks", "tags"], "readwrite");
