@@ -12,12 +12,12 @@ import { putBookmarks, putTags } from "./db.ts";
 import { apiGet } from "../utils/api.ts";
 import { perf } from "../perf.ts";
 
-export interface CachedData {
+interface CachedData {
   bookmarks: EnrichedBookmark[];
   tags: EnrichedTag[];
 }
 
-export interface LoadPagesResult {
+interface LoadPagesResult {
   bookmarks: EnrichedBookmark[];
   /** True when all pages were loaded (cursor exhausted). False if a page failed. */
   complete: boolean;

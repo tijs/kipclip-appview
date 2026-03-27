@@ -35,7 +35,7 @@ import {
   loadRemainingPages,
   writeToCache,
 } from "../cache/sync.ts";
-import { buildCidMap, diffFirstPage } from "../cache/diff.ts";
+import { mergeFirstPageDiff } from "../cache/diff.ts";
 import {
   buildTagIndex,
   filterByTags,
@@ -110,7 +110,6 @@ interface AppContextValue extends AppState {
 
   // Sync state
   isSyncing: boolean;
-  syncProgress: { current: number; total: number } | null;
 
   // Computed values
   totalBookmarks: number;
@@ -151,9 +150,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   });
   const [readingListSearchQuery, setReadingListSearchQuery] = useState("");
   const [isSyncing, setIsSyncing] = useState(false);
-  const [syncProgress, setSyncProgress] = useState<
-    { current: number; total: number } | null
-  >(null);
 
   // Ref to current bookmarks for race-condition-safe merging during sync.
   const bookmarksRef = useRef<EnrichedBookmark[]>([]);
@@ -283,23 +279,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
             return;
           }
 
-          const cachedMap = buildCidMap(cachedBookmarks);
-          const { additions, updates } = diffFirstPage(
+          const result = mergeFirstPageDiff(
             data.bookmarks,
-            cachedMap,
+            bookmarksRef.current,
           );
-
-          if (additions.length > 0 || updates.length > 0) {
-            // Merge into current state (via ref to avoid race with mutations)
-            const changed = [...additions, ...updates];
-            const changedUris = new Set(changed.map((b) => b.uri));
-            const current = bookmarksRef.current;
-            const merged = [
-              ...changed,
-              ...current.filter((b) => !changedUris.has(b.uri)),
-            ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-            setBookmarks(merged);
-            upsertBookmarks(changed).catch(() => {});
+          if (result) {
+            setBookmarks(result.merged);
+            upsertBookmarks(result.changed).catch(() => {});
           }
         } catch {
           // First-page fetch failed — keep cache as-is, retry on next focus
@@ -357,7 +343,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } finally {
       refreshInFlightRef.current = false;
       setIsSyncing(false);
-      setSyncProgress(null);
     }
   }
 
@@ -383,22 +368,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setTags(data.tags);
           putTags(data.tags).catch(() => {});
 
-          const cachedMap = buildCidMap(bookmarksRef.current);
-          const { additions, updates } = diffFirstPage(
+          const result = mergeFirstPageDiff(
             data.bookmarks,
-            cachedMap,
+            bookmarksRef.current,
           );
-
-          if (additions.length > 0 || updates.length > 0) {
-            const changed = [...additions, ...updates];
-            const changedUris = new Set(changed.map((b) => b.uri));
-            const current = bookmarksRef.current;
-            const merged = [
-              ...changed,
-              ...current.filter((b) => !changedUris.has(b.uri)),
-            ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-            setBookmarks(merged);
-            upsertBookmarks(changed).catch(() => {});
+          if (result) {
+            setBookmarks(result.merged);
+            upsertBookmarks(result.changed).catch(() => {});
           }
         } catch {
           // Fetch failed — keep current state, retry on next focus
@@ -631,7 +607,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setBookmarkSearchQuery,
     setReadingListSearchQuery,
     isSyncing,
-    syncProgress,
     totalBookmarks: bookmarks.length,
     totalReadingList: readingListBookmarks.length,
     filteredBookmarks,

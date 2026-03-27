@@ -1,10 +1,14 @@
 /**
  * Tests for first-page diff logic.
- * Tests diffFirstPage and buildCidMap as pure functions.
+ * Tests diffFirstPage, buildCidMap, and mergeFirstPageDiff as pure functions.
  */
 
 import { assertEquals } from "@std/assert";
-import { buildCidMap, diffFirstPage } from "../frontend/cache/diff.ts";
+import {
+  buildCidMap,
+  diffFirstPage,
+  mergeFirstPageDiff,
+} from "../frontend/cache/diff.ts";
 import type { EnrichedBookmark } from "../shared/types.ts";
 
 function makeBookmark(
@@ -153,4 +157,35 @@ Deno.test("diffFirstPage ignores cached records missing from server", () => {
   assertEquals(result.additions.length, 0);
   assertEquals(result.updates.length, 0);
   // "c" is simply not mentioned — it stays in cache as-is
+});
+
+// ============================================================================
+// mergeFirstPageDiff
+
+Deno.test("mergeFirstPageDiff returns null when nothing changed", () => {
+  const current = [makeBookmark("a"), makeBookmark("b")];
+  const server = [makeBookmark("a"), makeBookmark("b")];
+  assertEquals(mergeFirstPageDiff(server, current), null);
+});
+
+Deno.test("mergeFirstPageDiff merges additions and preserves existing", () => {
+  const current = [makeBookmark("a"), makeBookmark("b")];
+  const server = [makeBookmark("c"), makeBookmark("a"), makeBookmark("b")];
+
+  const result = mergeFirstPageDiff(server, current);
+  assertEquals(result !== null, true);
+  assertEquals(result!.changed.length, 1);
+  assertEquals(result!.changed[0].uri, server[0].uri);
+  assertEquals(result!.merged.length, 3);
+});
+
+Deno.test("mergeFirstPageDiff merges updates in place", () => {
+  const current = [makeBookmark("a"), makeBookmark("b")];
+  const server = [makeBookmark("a", "new-cid"), makeBookmark("b")];
+
+  const result = mergeFirstPageDiff(server, current);
+  assertEquals(result !== null, true);
+  assertEquals(result!.changed.length, 1);
+  assertEquals(result!.changed[0].cid, "new-cid");
+  assertEquals(result!.merged.length, 2);
 });

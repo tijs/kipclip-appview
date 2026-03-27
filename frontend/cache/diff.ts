@@ -48,3 +48,23 @@ export function buildCidMap(
   }
   return map;
 }
+
+/**
+ * Diff server bookmarks against current state and merge changes.
+ * Returns the merged array and changed records, or null if nothing changed.
+ */
+export function mergeFirstPageDiff(
+  serverBookmarks: EnrichedBookmark[],
+  currentBookmarks: EnrichedBookmark[],
+): { merged: EnrichedBookmark[]; changed: EnrichedBookmark[] } | null {
+  const cachedMap = buildCidMap(currentBookmarks);
+  const { additions, updates } = diffFirstPage(serverBookmarks, cachedMap);
+  if (additions.length === 0 && updates.length === 0) return null;
+  const changed = [...additions, ...updates];
+  const changedUris = new Set(changed.map((b) => b.uri));
+  const merged = [
+    ...changed,
+    ...currentBookmarks.filter((b) => !changedUris.has(b.uri)),
+  ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return { merged, changed };
+}
