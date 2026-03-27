@@ -24,7 +24,7 @@ jobs:
         run: deno test --allow-all --unstable-kv --coverage=coverage/ tests/
         env:
           KIPCLIP_TESTING: "1"
-          TURSO_DATABASE_URL: file::memory:
+          TURSO_DATABASE_URL: "file::memory:"
           COOKIE_SECRET: test-cookie-secret-32-characters-minimum
           ENCRYPTION_KEY: test-encryption-key-for-unit-tests-only-minimum-32-chars
       - name: Generate coverage report
