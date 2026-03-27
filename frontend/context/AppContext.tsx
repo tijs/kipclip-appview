@@ -83,7 +83,7 @@ interface AppContextValue extends AppState {
   loadTags: () => Promise<void>;
 
   // Combined initial data loading (avoids token refresh race condition)
-  loadInitialData: (knownChanged?: boolean) => Promise<void>;
+  loadInitialData: () => Promise<void>;
   // Force a full refresh (bypasses cache, fetches all pages)
   refreshData: () => Promise<void>;
 
@@ -223,8 +223,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   // Combined initial data loading with cache-first + incremental strategy.
-  // When knownChanged is true (from tab-refocus handler), skips the hash check.
-  async function loadInitialData(knownChanged?: boolean) {
+  async function loadInitialData() {
     perf.start("loadInitialData");
     const log = (...args: unknown[]) => console.log("[sync]", ...args);
 
@@ -252,53 +251,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         const cachedUris = new Set(immediate.bookmarks.map((b) => b.uri));
 
-        // Background: check sync hash (unless caller already checked),
-        // then incremental sync for new bookmarks only.
-        const changedPromise = knownChanged
-          ? Promise.resolve(true)
-          : checkForChanges();
+        // Background: compare first page from server against cache.
+        // No separate sync-check call needed — firstPage is already in flight.
+        // If all first-page bookmarks are in cache, nothing changed.
+        firstPage.then(async (data) => {
+          applyServerMeta(data);
 
-        Promise.all([firstPage, changedPromise]).then(
-          async ([data, changed]) => {
-            log("bg: changed=", changed, "server=", data.bookmarks.length, "b");
-            applyServerMeta(data);
+          const hasNew = data.bookmarks.some((b) => !cachedUris.has(b.uri));
+          log(
+            "bg: server=",
+            data.bookmarks.length,
+            "b, hasNew=",
+            hasNew,
+          );
 
-            if (!changed) {
-              return;
-            }
+          if (!hasNew) {
+            return;
+          }
 
-            // Incremental sync: fetch newest pages, stop at known records
-            const result = await loadRemainingPages(data, cachedUris);
-            log(
-              "bg: pages done, complete=",
-              result.complete,
-              "total=",
-              result.bookmarks.length,
-              "b",
+          // Incremental sync: fetch newest pages, stop at known records
+          const result = await loadRemainingPages(data, cachedUris);
+          log(
+            "bg: pages done, complete=",
+            result.complete,
+            "total=",
+            result.bookmarks.length,
+            "b",
+          );
+          if (result.complete) {
+            const fetchedUris = new Set(result.bookmarks.map((b) => b.uri));
+            const kept = immediate.bookmarks.filter(
+              (b) => !fetchedUris.has(b.uri),
             );
-            if (result.complete) {
-              const fetchedUris = new Set(result.bookmarks.map((b) => b.uri));
-              const kept = immediate.bookmarks.filter(
-                (b) => !fetchedUris.has(b.uri),
-              );
-              const merged = [...result.bookmarks, ...kept].sort(
-                (a, b) => b.createdAt.localeCompare(a.createdAt),
-              );
-              log("bg: merged=", merged.length, "b, updating UI");
-              setBookmarks(merged);
-              setTags(data.tags);
-              // Only save hash after cache write succeeds — keeps them in sync.
-              // If cache fails, missing hash forces full sync next time.
-              try {
-                await writeToCache({ bookmarks: merged, tags: data.tags });
-                if (data.syncHash) saveSyncHash(data.syncHash);
-              } catch {
-                log("bg: cache write failed, skipping hash save");
-              }
+            const merged = [...result.bookmarks, ...kept].sort(
+              (a, b) => b.createdAt.localeCompare(a.createdAt),
+            );
+            log("bg: merged=", merged.length, "b, updating UI");
+            setBookmarks(merged);
+            setTags(data.tags);
+            try {
+              await writeToCache({ bookmarks: merged, tags: data.tags });
+              if (data.syncHash) saveSyncHash(data.syncHash);
+            } catch {
+              log("bg: cache write failed, skipping hash save");
             }
-            // If incomplete, keep cached data — don't corrupt cache
-          },
-        ).catch((err) => console.error("Background refresh failed:", err));
+          }
+        }).catch((err) => console.error("Background refresh failed:", err));
         perf.end("loadInitialData");
         return;
       }
@@ -373,7 +371,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       checkForChanges().then((changed) => {
         if (changed) {
-          loadInitialData(true).catch((err) =>
+          loadInitialData().catch((err) =>
             console.error("Tab-refocus refresh failed:", err)
           );
         }
