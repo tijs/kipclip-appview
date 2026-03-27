@@ -42,14 +42,23 @@ export async function openCacheDb(did: string): Promise<void> {
         }
       },
     });
+    // 10s timeout — Safari can be slow opening large databases.
+    // A slow DB open is still cheaper than re-fetching 3000+ bookmarks.
     const timeout = new Promise<null>((resolve) =>
-      setTimeout(() => resolve(null), 3000)
+      setTimeout(() => resolve(null), 10_000)
     );
+    const start = Date.now();
     const result = await Promise.race([opened, timeout]);
+    const elapsed = Date.now() - start;
     if (result) {
       db = result;
+      if (elapsed > 1000) {
+        console.log(`[sync] IndexedDB opened in ${elapsed}ms`);
+      }
     } else {
-      console.warn("IndexedDB open timed out, proceeding without cache");
+      console.warn(
+        `IndexedDB open timed out after ${elapsed}ms, proceeding without cache`,
+      );
       dbFailed = true;
       // Clear sync hash — cache and hash must stay in sync.
       // Without cache, a stale hash would skip needed server fetches.
