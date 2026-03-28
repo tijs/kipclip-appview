@@ -257,7 +257,8 @@ export function TagSidebar() {
         {selectedTags.size > 0 && (
           <div className="flex items-center gap-2 px-3 py-2 border-t border-gray-100">
             <span className="text-xs text-gray-500 flex-shrink-0">
-              {selectedTags.size} {selectedTags.size === 1 ? "tag" : "tags"}{" "}
+              {selectedTags.size} {selectedTags.size === 1 ? "tag" : "tags"}
+              {" "}
               selected
             </span>
             <div className="flex items-center gap-2 ml-auto">
