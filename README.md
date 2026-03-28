@@ -1,6 +1,6 @@
 # kipclip
 
-[![Test](https://github.com/tijs/kipclip-appview/workflows/Test/badge.svg)](https://github.com/tijs/kipclip-appview/actions/workflows/test.yml)
+[![Test](https://github.com/tijs/kipclip-appview/actions/workflows/test.yml/badge.svg)](https://github.com/tijs/kipclip-appview/actions/workflows/test.yml)
 [![codecov](https://codecov.io/gh/tijs/kipclip-appview/graph/badge.svg)](https://codecov.io/gh/tijs/kipclip-appview)
 
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/tijsteulings/tip)
