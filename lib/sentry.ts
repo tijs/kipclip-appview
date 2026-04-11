@@ -17,6 +17,24 @@ if (SENTRY_DSN) {
     enabled: true,
     // Sample rate for performance monitoring (0 = disabled)
     tracesSampleRate: 0,
+    beforeSend(event, hint) {
+      const error = hint?.originalException;
+      // Skip expected HTTP errors (404, 405) — mostly bots/scanners
+      if (error instanceof Error && error.name === "HttpError") {
+        const msg = error.message;
+        if (msg === "Not Found" || msg === "Method Not Allowed") {
+          return null;
+        }
+      }
+      // Skip transient DNS resolution failures (Deno Deploy infra issue)
+      if (
+        error instanceof Error &&
+        error.message?.includes("ENOTFOUND")
+      ) {
+        return null;
+      }
+      return event;
+    },
   });
   console.log("✅ Sentry error tracking initialized");
 } else if (isProduction) {
