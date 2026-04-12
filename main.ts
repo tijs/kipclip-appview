@@ -24,6 +24,7 @@ import { registerInitialDataRoutes } from "./routes/api/initial-data.ts";
 import { registerSettingsRoutes } from "./routes/api/settings.ts";
 import { registerBulkRoutes } from "./routes/api/bulk.ts";
 import { registerImportRoutes } from "./routes/api/import.ts";
+import { registerMigrateHexRkeysRoute } from "./routes/api/migrate-hex-rkeys.ts";
 import { registerPreferencesRoutes } from "./routes/api/preferences.ts";
 import { registerShareApiRoutes } from "./routes/api/share.ts";
 import { registerTagRoutes } from "./routes/api/tags.ts";
@@ -104,6 +105,9 @@ app = registerBulkRoutes(app);
 
 // Import API routes
 app = registerImportRoutes(app);
+
+// One-time migration: hex rkeys → TIDs
+app = registerMigrateHexRkeysRoute(app);
 
 // Tag API routes
 app = registerTagRoutes(app);
