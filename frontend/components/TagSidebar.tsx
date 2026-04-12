@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { toast } from "sonner";
 import { AddTag } from "./AddTag.tsx";
 import { EditTag } from "./EditTag.tsx";
 import { useApp } from "../context/AppContext.tsx";
@@ -41,16 +42,19 @@ export function TagSidebar() {
   function handleTagAdded(tag: any) {
     addTag(tag);
     setShowAddModal(false);
+    toast("Tag created");
   }
 
   function handleTagUpdated(updatedTag: any) {
     updateTag(updatedTag);
     setEditingTag(null);
+    toast("Tag updated");
   }
 
   function handleTagDeleted(tagUri: string) {
     deleteTag(tagUri);
     setEditingTag(null);
+    toast("Tag deleted");
   }
 
   async function handleShareFiltered() {

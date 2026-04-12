@@ -29,19 +29,25 @@ interface LoadPagesResult {
  * and whether loading completed fully.
  *
  * Respects PDS rate limits: pauses when remaining calls drop below 50.
+ * Optional onProgress callback reports page numbers as they load.
  */
 export async function loadRemainingPages(
   firstPageData: InitialDataResponse,
+  onProgress?: (page: number) => void,
 ): Promise<LoadPagesResult> {
   perf.start("remainingPages");
   const allBookmarks = [...firstPageData.bookmarks];
   let bookmarkCursor = firstPageData.bookmarkCursor;
   let annotationCursor = firstPageData.annotationCursor;
   let complete = true;
+  let pageNumber = 1; // First page already loaded
 
   let currentRateLimit = firstPageData.rateLimit;
 
   while (bookmarkCursor) {
+    pageNumber++;
+    onProgress?.(pageNumber);
+
     // Respect PDS rate limits: if remaining is low, wait until reset
     if (currentRateLimit && currentRateLimit.remaining < 50) {
       const waitMs = Math.max(0, currentRateLimit.reset * 1000 - Date.now()) +

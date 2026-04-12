@@ -19,7 +19,8 @@
     "html-entities": "npm:html-entities@2.6.0",
     "react": "npm:react@19.2.3",
     "react-dom": "npm:react-dom@19.2.3",
-    "react-dom/client": "npm:react-dom@19.2.3/client"
+    "react-dom/client": "npm:react-dom@19.2.3/client",
+    "sonner": "npm:sonner@2"
   },
   "compilerOptions": {
     "noImplicitAny": false,

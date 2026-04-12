@@ -36,6 +36,7 @@ import {
   writeToCache,
 } from "../cache/sync.ts";
 import { mergeFirstPageDiff } from "../cache/diff.ts";
+import { toast } from "sonner";
 import {
   buildTagIndex,
   filterByTags,
@@ -45,6 +46,26 @@ import {
   parseSearchQuery,
   toggleTagInQuery,
 } from "../../shared/search-query.ts";
+
+const STALE_SESSION_MS = 60 * 60 * 1000; // 1 hour
+
+function isSessionStale(did: string): boolean {
+  try {
+    const raw = localStorage.getItem(`kipclip-last-visit-${did}`);
+    if (!raw) return true; // First visit = treat as stale
+    return Date.now() - Number(raw) > STALE_SESSION_MS;
+  } catch {
+    return true; // localStorage unavailable = treat as stale
+  }
+}
+
+function markSessionVisited(did: string) {
+  try {
+    localStorage.setItem(`kipclip-last-visit-${did}`, String(Date.now()));
+  } catch {
+    // localStorage unavailable (private browsing) — ignore
+  }
+}
 
 const DEFAULT_SETTINGS: UserSettings = {
   instapaperEnabled: false,
@@ -88,7 +109,7 @@ interface AppContextValue extends AppState {
   // Combined initial data loading (avoids token refresh race condition)
   loadInitialData: () => Promise<void>;
   // Force a full refresh (bypasses cache, fetches all pages)
-  refreshData: () => Promise<void>;
+  refreshData: (toastId?: string | number) => Promise<void>;
 
   // Filter actions
   toggleTag: (tagValue: string) => void;
@@ -265,30 +286,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setBookmarks(cachedBookmarks);
         setTags(cachedTags);
 
-        // Background: fetch first page and diff against cache
-        try {
-          const data = await fetchFirstPage();
-          applyServerMeta(data);
-          setTags(data.tags);
-          putTags(data.tags).catch(() => {});
-
-          // All bookmarks deleted on another device → clear local cache
-          if (data.bookmarks.length === 0 && !data.bookmarkCursor) {
-            setBookmarks([]);
-            putBookmarks([]).catch(() => {});
-            return;
+        if (session && isSessionStale(session.did)) {
+          // Stale session: full refresh in background (keeps cached data visible)
+          const toastId = toast("Syncing bookmarks...");
+          try {
+            await refreshData(toastId);
+            markSessionVisited(session.did);
+          } catch (err) {
+            console.warn("Stale session refresh failed:", err);
+            toast.error("Sync failed — showing cached data", { id: toastId });
           }
+        } else {
+          // Fresh session: first-page diff
+          try {
+            const data = await fetchFirstPage();
+            applyServerMeta(data);
+            setTags(data.tags);
+            putTags(data.tags).catch(() => {});
 
-          const result = mergeFirstPageDiff(
-            data.bookmarks,
-            bookmarksRef.current,
-          );
-          if (result) {
-            setBookmarks(result.merged);
-            upsertBookmarks(result.changed).catch(() => {});
+            // All bookmarks deleted on another device → clear local cache
+            if (data.bookmarks.length === 0 && !data.bookmarkCursor) {
+              setBookmarks([]);
+              putBookmarks([]).catch(() => {});
+              if (session) markSessionVisited(session.did);
+              return;
+            }
+
+            const result = mergeFirstPageDiff(
+              data.bookmarks,
+              bookmarksRef.current,
+            );
+            if (result) {
+              setBookmarks(result.merged);
+              upsertBookmarks(result.changed).catch(() => {});
+              toast(
+                `${result.changed.length} bookmark${
+                  result.changed.length === 1 ? "" : "s"
+                } updated`,
+              );
+            }
+            if (session) markSessionVisited(session.did);
+          } catch (err) {
+            console.warn("Background first-page diff failed:", err);
           }
-        } catch {
-          // First-page fetch failed — keep cache as-is, retry on next focus
         }
       } else {
         // Cache miss (cold start): fetch first page, render, paginate rest
@@ -314,6 +354,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           // Only one page — write directly
           await writeToCache({ bookmarks: data.bookmarks, tags: data.tags });
         }
+        if (session) markSessionVisited(session.did);
       }
     } catch (err) {
       console.error("Failed to load initial data:", err);
@@ -326,19 +367,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Manual refresh: full fetch from server with rate-limit-aware pagination.
   // Guarded against concurrent calls to protect PDS rate limits.
+  // Optional toastId allows callers to update an existing toast with progress.
   const refreshInFlightRef = useRef(false);
-  async function refreshData() {
+  async function refreshData(toastId?: string | number) {
     if (refreshInFlightRef.current) return;
     refreshInFlightRef.current = true;
     setIsSyncing(true);
     try {
+      const previousCount = bookmarksRef.current.length;
       const data = await fetchFirstPage();
       applyServerMeta(data);
-      const result = await loadRemainingPages(data);
+      const result = await loadRemainingPages(data, (page) => {
+        if (toastId) {
+          toast(`Syncing bookmarks... (page ${page})`, { id: toastId });
+        }
+      });
       if (result.complete) {
         setBookmarks(result.bookmarks);
         setTags(data.tags);
         await writeToCache({ bookmarks: result.bookmarks, tags: data.tags });
+        if (session) markSessionVisited(session.did);
+        const diff = result.bookmarks.length - previousCount;
+        if (toastId) {
+          if (diff > 0) {
+            toast.success(
+              `Synced — ${diff} new bookmark${diff === 1 ? "" : "s"}`,
+              { id: toastId },
+            );
+          } else {
+            toast.success("Bookmarks up to date", { id: toastId });
+          }
+        }
       }
     } finally {
       refreshInFlightRef.current = false;
@@ -348,7 +407,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Tab re-focus: fetch first page and diff against cache (debounced 60s).
   // No separate sync-check — the diff itself detects changes.
-  const lastSyncCheckRef = useRef(0);
+  const lastSyncCheckRef = useRef(Date.now());
   useEffect(() => {
     if (!session) return;
 
@@ -375,18 +434,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (result) {
             setBookmarks(result.merged);
             upsertBookmarks(result.changed).catch(() => {});
+            toast(
+              `${result.changed.length} bookmark${
+                result.changed.length === 1 ? "" : "s"
+              } updated`,
+            );
           }
-        } catch {
-          // Fetch failed — keep current state, retry on next focus
+          if (session) markSessionVisited(session.did);
+        } catch (err) {
+          console.warn("Tab-focus sync failed:", err);
         } finally {
           setIsSyncing(false);
         }
       })();
     }
 
+    function handlePageShow(e: PageTransitionEvent) {
+      if (e.persisted) handleVisibilityChange();
+    }
+
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () =>
+    globalThis.addEventListener("pageshow", handlePageShow);
+    return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      globalThis.removeEventListener("pageshow", handlePageShow);
+    };
   }, [session]);
 
   // Settings actions

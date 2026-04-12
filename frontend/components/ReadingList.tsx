@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useApp } from "../context/AppContext.tsx";
 import { type DateFormatOption, formatDate } from "../../shared/date-format.ts";
 import type { EnrichedBookmark } from "../../shared/types.ts";
 import { useMarkAsRead } from "../hooks/useMarkAsRead.ts";
-import { Toast } from "./Toast.tsx";
+import { toast } from "sonner";
 
 function ReadingListCard(
   { bookmark, dateFormat, onMarkAsRead }: {
@@ -247,6 +247,18 @@ export function ReadingList() {
   const dateFormat = preferences.dateFormat as DateFormatOption;
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const { markAsRead, undo, pending } = useMarkAsRead();
+  const prevPendingRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const pendingUri = pending?.bookmark.uri ?? null;
+    if (pendingUri && pendingUri !== prevPendingRef.current) {
+      toast(`"${pending!.bookmark.title || "Bookmark"}" marked as read`, {
+        action: { label: "Undo", onClick: undo },
+        duration: 5000,
+      });
+    }
+    prevPendingRef.current = pendingUri;
+  }, [pending, undo]);
 
   // If there are no reading list bookmarks at all, show empty state
   if (readingListBookmarks.length === 0) {
@@ -374,12 +386,6 @@ export function ReadingList() {
             )}
         </div>
       </main>
-      {pending && (
-        <Toast
-          message={`"${pending.bookmark.title || "Bookmark"}" marked as read`}
-          action={{ label: "Undo", onClick: undo }}
-        />
-      )}
     </div>
   );
 }

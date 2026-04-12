@@ -85,6 +85,13 @@ export function App() {
     try {
       await apiPost("/api/auth/logout");
       await clearCache();
+      if (session?.did) {
+        try {
+          localStorage.removeItem(`kipclip-last-visit-${session.did}`);
+        } catch {
+          // localStorage unavailable — ignore
+        }
+      }
       setSession(null);
     } catch (error) {
       console.error("Failed to logout:", error);

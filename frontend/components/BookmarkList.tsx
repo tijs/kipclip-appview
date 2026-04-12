@@ -16,6 +16,7 @@ import { OrphanedTagsDialog } from "./OrphanedTagsDialog.tsx";
 import { SwipeableRow } from "./SwipeableRow.tsx";
 import { useApp } from "../context/AppContext.tsx";
 import { apiDelete, apiPatch } from "../utils/api.ts";
+import { toast } from "sonner";
 import type { DateFormatOption } from "../../shared/date-format.ts";
 import type { EnrichedBookmark, EnrichedTag } from "../../shared/types.ts";
 import { parseSearchQuery } from "../../shared/search-query.ts";
@@ -262,10 +263,12 @@ export function BookmarkList() {
   // Manual refresh (for pull-to-refresh, refresh button, and retry button)
   async function loadBookmarks() {
     setError(null);
+    const toastId = toast("Refreshing bookmarks...");
     try {
-      await refreshData();
+      await refreshData(toastId);
     } catch (err: any) {
       setError(err.message);
+      toast.error("Refresh failed", { id: toastId });
     }
   }
 
@@ -276,6 +279,7 @@ export function BookmarkList() {
     if (detailBookmark?.uri === bookmark.uri) {
       setDetailBookmark(bookmark);
     }
+    toast("Bookmark updated");
   }
 
   function handleBookmarkDeleted(uri: string) {
@@ -289,11 +293,13 @@ export function BookmarkList() {
       const orphaned = findOrphanedTags([deleted], remaining, availableTags);
       if (orphaned.length > 0) setOrphanedTags(orphaned);
     }
+    toast("Bookmark deleted");
   }
 
   function handleBookmarkAdded(bookmark: EnrichedBookmark) {
     addBookmark(bookmark);
     setShowAddModal(false);
+    toast("Bookmark saved");
   }
 
   async function handleDropTag(bookmarkUri: string, tagValue: string) {
@@ -333,7 +339,7 @@ export function BookmarkList() {
       updateBookmark(data.bookmark);
     } catch (err: any) {
       console.error("Failed to add tag to bookmark:", err);
-      alert(`Failed to add tag: ${err.message}`);
+      toast.error(`Failed to add tag: ${err.message}`);
     }
   }
 

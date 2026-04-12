@@ -1,4 +1,5 @@
 import { createRoot } from "react-dom/client";
+import { Toaster } from "sonner";
 import { App } from "./components/App.tsx";
 import { AppProvider } from "./context/AppContext.tsx";
 
@@ -20,6 +21,17 @@ if (typeof document !== "undefined") {
   root.render(
     <AppProvider>
       <App />
+      <Toaster
+        position="bottom-center"
+        duration={3500}
+        toastOptions={{
+          style: {
+            background: "#1f2937",
+            color: "#fff",
+            border: "none",
+          },
+        }}
+      />
     </AppProvider>,
   );
 }

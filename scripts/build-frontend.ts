@@ -70,6 +70,7 @@ try {
       "react": "https://esm.sh/react@19",
       "react-dom/client": "https://esm.sh/react-dom@19/client",
       "idb": "https://esm.sh/idb@8",
+      "sonner": "https://esm.sh/sonner@2?external=react,react-dom",
     },
     metafile: true,
   });
