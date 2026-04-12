@@ -286,48 +286,50 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setBookmarks(cachedBookmarks);
         setTags(cachedTags);
 
-        if (session && isSessionStale(session.did)) {
-          // Stale session: full refresh in background (keeps cached data visible)
-          const toastId = toast("Syncing bookmarks...");
-          try {
-            await refreshData(toastId);
-            markSessionVisited(session.did);
-          } catch (err) {
-            console.warn("Stale session refresh failed:", err);
-            toast.error("Sync failed — showing cached data", { id: toastId });
-          }
-        } else {
-          // Fresh session: first-page diff
-          try {
-            const data = await fetchFirstPage();
-            applyServerMeta(data);
-            setTags(data.tags);
-            putTags(data.tags).catch(() => {});
+        // Background: fetch first page and diff against cache.
+        // Same logic for stale and fresh sessions — only difference is toast.
+        // newestFirst: true uses a cursor trick to get newest TID bookmarks on
+        // page 1 (needed because old imported hex rkeys would otherwise dominate).
+        const isStale = session ? isSessionStale(session.did) : false;
+        const toastId = isStale ? toast("Syncing bookmarks...") : undefined;
+        try {
+          const data = await fetchFirstPage({ newestFirst: true });
+          applyServerMeta(data);
+          setTags(data.tags);
+          putTags(data.tags).catch(() => {});
 
-            // All bookmarks deleted on another device → clear local cache
-            if (data.bookmarks.length === 0 && !data.bookmarkCursor) {
-              setBookmarks([]);
-              putBookmarks([]).catch(() => {});
-              if (session) markSessionVisited(session.did);
-              return;
-            }
-
-            const result = mergeFirstPageDiff(
-              data.bookmarks,
-              bookmarksRef.current,
-            );
-            if (result) {
-              setBookmarks(result.merged);
-              upsertBookmarks(result.changed).catch(() => {});
-              toast(
-                `${result.changed.length} bookmark${
-                  result.changed.length === 1 ? "" : "s"
-                } updated`,
-              );
-            }
+          // All bookmarks deleted on another device → clear local cache
+          if (data.bookmarks.length === 0 && !data.bookmarkCursor) {
+            setBookmarks([]);
+            putBookmarks([]).catch(() => {});
             if (session) markSessionVisited(session.did);
-          } catch (err) {
-            console.warn("Background first-page diff failed:", err);
+            if (toastId) toast.success("Bookmarks synced", { id: toastId });
+            return;
+          }
+
+          const result = mergeFirstPageDiff(
+            data.bookmarks,
+            bookmarksRef.current,
+          );
+          if (result) {
+            setBookmarks(result.merged);
+            upsertBookmarks(result.changed).catch(() => {});
+            const msg = `${result.changed.length} bookmark${
+              result.changed.length === 1 ? "" : "s"
+            } updated`;
+            if (toastId) {
+              toast.success(msg, { id: toastId });
+            } else {
+              toast(msg);
+            }
+          } else if (toastId) {
+            toast.success("Bookmarks up to date", { id: toastId });
+          }
+          if (session) markSessionVisited(session.did);
+        } catch (err) {
+          console.warn("Background first-page diff failed:", err);
+          if (toastId) {
+            toast.error("Sync failed — showing cached data", { id: toastId });
           }
         }
       } else {
@@ -422,7 +424,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       (async () => {
         setIsSyncing(true);
         try {
-          const data = await fetchFirstPage();
+          const data = await fetchFirstPage({ newestFirst: true });
           applyServerMeta(data);
           setTags(data.tags);
           putTags(data.tags).catch(() => {});

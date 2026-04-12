@@ -25,6 +25,7 @@ import type {
   EnrichedTag,
   InitialDataResponse,
 } from "../../shared/types.ts";
+import { newestTidCursor } from "../../lib/tid.ts";
 
 /** Pick the lower rate limit remaining from two PDS responses. */
 function pickLowestRateLimit(
@@ -85,6 +86,20 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
       if (isFirstPage) {
         // First page: fetch tags + settings + first page bookmarks/annotations
         // (~4 PDS requests in parallel)
+        //
+        // newestFirst mode: old imported bookmarks have hex rkeys (0xxx-fxxx)
+        // while new bookmarks use standard AT Protocol TIDs (3xxx). The PDS
+        // sorts by rkey lexicographically, so TIDs land in the middle of the
+        // hex range — neither reverse:true nor default order puts new bookmarks
+        // on page 1. Using a dynamically-generated TID cursor (slightly in the
+        // future) with default descending order starts just past the newest
+        // possible TID, giving us newest bookmarks first.
+        // This mode is used for first-page diff checks only (not full loads).
+        const newestFirst = url.searchParams.get("newestFirst") === "true";
+        const firstPageOpts = newestFirst
+          ? { cursor: newestTidCursor() }
+          : { reverse: true };
+
         const [
           bookmarkPage,
           annotationPage,
@@ -92,8 +107,8 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
           settings,
           preferences,
         ] = await Promise.all([
-          listOnePage(oauthSession, BOOKMARK_COLLECTION, { reverse: true }),
-          listOnePage(oauthSession, ANNOTATION_COLLECTION, { reverse: true }),
+          listOnePage(oauthSession, BOOKMARK_COLLECTION, firstPageOpts),
+          listOnePage(oauthSession, ANNOTATION_COLLECTION, firstPageOpts),
           listAllRecords(oauthSession, TAG_COLLECTION),
           getUserSettings(oauthSession.did),
           getUserPreferences(oauthSession),

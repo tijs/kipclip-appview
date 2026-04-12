@@ -94,10 +94,18 @@ export async function loadRemainingPages(
   return { bookmarks: allBookmarks, complete };
 }
 
-/** Fetch the first page of data from the server. */
-export async function fetchFirstPage(): Promise<InitialDataResponse> {
+/**
+ * Fetch the first page of data from the server.
+ * When newestFirst is true, the API returns the newest bookmarks (by TID rkey)
+ * on page 1. Use this for first-page diff checks. For full loads that will
+ * paginate through all records, use newestFirst=false (default).
+ */
+export async function fetchFirstPage(
+  options?: { newestFirst?: boolean },
+): Promise<InitialDataResponse> {
   perf.start("firstPage");
-  const response = await apiGet("/api/initial-data");
+  const params = options?.newestFirst ? "?newestFirst=true" : "";
+  const response = await apiGet(`/api/initial-data${params}`);
   if (!response.ok) {
     const body = await response.text().catch(() => "");
     throw new Error(

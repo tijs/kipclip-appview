@@ -18,6 +18,7 @@ import {
   TAG_COLLECTION,
 } from "../../lib/route-utils.ts";
 import { getBaseUrl } from "../../shared/url-utils.ts";
+import { generateTidForTimestamp } from "../../lib/tid.ts";
 import {
   deduplicateTagsCaseInsensitive,
   resolveTagCasing,
@@ -290,12 +291,17 @@ export function registerImportRoutes(app: App<any>): App<any> {
       const MAX_WRITES = 10;
 
       // Group writes per bookmark so we can track imported/failed per bookmark
+      const usedRkeys = new Set<string>();
       const bookmarkWrites: {
         bookmark: typeof chunk.bookmarks[0];
         ops: any[];
       }[] = chunk.bookmarks.map((b) => {
-        const rkey = crypto.randomUUID().replace(/-/g, "").slice(0, 13);
         const createdAt = b.createdAt || new Date().toISOString();
+        let rkey = generateTidForTimestamp(new Date(createdAt));
+        while (usedRkeys.has(rkey)) {
+          rkey = generateTidForTimestamp(new Date(createdAt));
+        }
+        usedRkeys.add(rkey);
         const bookmarkUri = `at://${did}/${BOOKMARK_COLLECTION}/${rkey}`;
 
         const ops: any[] = [
