@@ -10,34 +10,6 @@
 
 const B32_CHARSET = "234567abcdefghijklmnopqrstuvwxyz";
 
-let lastTimestamp = 0n;
-let clockId = 0;
-
-/**
- * Generate a TID for the current time.
- * Guarantees monotonically increasing values even when called multiple
- * times within the same microsecond (bumps clockId).
- */
-export function generateTid(): string {
-  let timestampUs = BigInt(Date.now()) * 1000n;
-
-  if (timestampUs <= lastTimestamp) {
-    // Same or earlier microsecond — increment clockId to stay unique
-    clockId++;
-    if (clockId >= 1024) {
-      // Clock ID overflow — bump timestamp
-      timestampUs = lastTimestamp + 1n;
-      clockId = 0;
-    }
-    timestampUs = lastTimestamp;
-  } else {
-    clockId = 0;
-  }
-  lastTimestamp = timestampUs;
-
-  return encodeTid(timestampUs, clockId);
-}
-
 /**
  * Generate a TID for a specific timestamp (e.g. imported bookmark dates).
  * Uses a random clock ID to avoid collisions between imports.

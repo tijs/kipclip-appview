@@ -84,17 +84,9 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
       const isFirstPage = !bookmarkCursor;
 
       if (isFirstPage) {
-        // First page: fetch tags + settings + first page bookmarks/annotations
-        // (~4 PDS requests in parallel)
-        //
-        // newestFirst mode: old imported bookmarks have hex rkeys (0xxx-fxxx)
-        // while new bookmarks use standard AT Protocol TIDs (3xxx). The PDS
-        // sorts by rkey lexicographically, so TIDs land in the middle of the
-        // hex range — neither reverse:true nor default order puts new bookmarks
-        // on page 1. Using a dynamically-generated TID cursor (slightly in the
-        // future) with default descending order starts just past the newest
-        // possible TID, giving us newest bookmarks first.
-        // This mode is used for first-page diff checks only (not full loads).
+        // First page: fetch tags + settings + first page bookmarks/annotations.
+        // newestFirst uses a future TID cursor so newest bookmarks appear on
+        // page 1 even when old hex rkeys would otherwise dominate the sort.
         const newestFirst = url.searchParams.get("newestFirst") === "true";
         const firstPageOpts = newestFirst
           ? { cursor: newestTidCursor() }

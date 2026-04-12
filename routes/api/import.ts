@@ -298,7 +298,7 @@ export function registerImportRoutes(app: App<any>): App<any> {
       }[] = chunk.bookmarks.map((b) => {
         const createdAt = b.createdAt || new Date().toISOString();
         let rkey = generateTidForTimestamp(new Date(createdAt));
-        while (usedRkeys.has(rkey)) {
+        for (let attempt = 0; usedRkeys.has(rkey) && attempt < 50; attempt++) {
           rkey = generateTidForTimestamp(new Date(createdAt));
         }
         usedRkeys.add(rkey);
