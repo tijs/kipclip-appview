@@ -172,7 +172,12 @@ export function Save() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+      <div
+        className="flex items-center justify-center min-h-screen"
+        style={{
+          background: "linear-gradient(135deg, var(--cream) 0%, #e8f4f5 100%)",
+        }}
+      >
         <div className="spinner"></div>
       </div>
     );
@@ -185,7 +190,12 @@ export function Save() {
       )
     }`;
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50 p-4">
+      <div
+        className="flex items-center justify-center min-h-screen p-4"
+        style={{
+          background: "linear-gradient(135deg, var(--cream) 0%, #e8f4f5 100%)",
+        }}
+      >
         <div className="bg-white rounded-lg max-w-md w-full p-8 shadow-lg text-center">
           <div className="mb-6">
             <img
@@ -214,7 +224,12 @@ export function Save() {
 
   if (saved) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50 p-4">
+      <div
+        className="flex items-center justify-center min-h-screen p-4"
+        style={{
+          background: "linear-gradient(135deg, var(--cream) 0%, #e8f4f5 100%)",
+        }}
+      >
         <div className="bg-white rounded-lg max-w-md w-full p-8 shadow-lg text-center">
           <div className="mb-6">
             <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -261,7 +276,12 @@ export function Save() {
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-50 p-4">
+    <div
+      className="flex items-center justify-center min-h-screen p-4"
+      style={{
+        background: "linear-gradient(135deg, var(--cream) 0%, #e8f4f5 100%)",
+      }}
+    >
       <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-lg">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">

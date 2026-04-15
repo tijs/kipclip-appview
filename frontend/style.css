@@ -3,6 +3,10 @@
 :root {
   --cream: #f5f1e8;
   --coral: #e66456;
+  --coral-50: #fef2f1;
+  --coral-100: #fde0dd;
+  --coral-200: #f9bab4;
+  --coral-700: #d45546;
   --teal: #5b8a8f;
   --orange: #f4a261;
   --dark-gray: #2d3748;
@@ -128,6 +132,26 @@ body {
   max-height: 0 !important;
   opacity: 0;
   overflow: hidden;
+}
+
+/* Coral selection states (hover needs CSS, can't do inline) */
+.coral-selected {
+  background-color: var(--coral);
+  color: white;
+}
+
+.coral-selected:hover {
+  background-color: var(--coral-700);
+}
+
+/* Mobile tag bar scroll fade indicator */
+.tag-scroll-fade {
+  mask-image: linear-gradient(to right, black calc(100% - 2rem), transparent);
+  -webkit-mask-image: linear-gradient(
+    to right,
+    black calc(100% - 2rem),
+    transparent
+  );
 }
 
 /* Actor typeahead autocomplete - kipclip themed */

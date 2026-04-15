@@ -519,7 +519,7 @@ export function BookmarkList() {
                   onClick={() => {
                     setMobileSearchOpen(false);
                   }}
-                  className="p-2 text-gray-500 hover:text-gray-700"
+                  className="p-2 text-gray-500 hover:text-gray-700 min-w-[44px] min-h-[44px] flex items-center justify-center"
                 >
                   <svg
                     className="w-5 h-5"
@@ -561,7 +561,7 @@ export function BookmarkList() {
                             setViewMode(
                               viewMode === "cards" ? "list" : "cards",
                             )}
-                          className="p-2 text-gray-500 hover:text-gray-700"
+                          className="p-2 text-gray-500 hover:text-gray-700 min-w-[44px] min-h-[44px] flex items-center justify-center"
                           aria-label="Toggle view"
                         >
                           {viewMode === "cards"
@@ -571,7 +571,7 @@ export function BookmarkList() {
                         <button
                           type="button"
                           onClick={() => setMobileSearchOpen(true)}
-                          className="p-2 text-gray-500 hover:text-gray-700"
+                          className="p-2 text-gray-500 hover:text-gray-700 min-w-[44px] min-h-[44px] flex items-center justify-center"
                         >
                           <svg
                             className="w-5 h-5"
@@ -591,7 +591,7 @@ export function BookmarkList() {
                           <button
                             type="button"
                             onClick={() => setIsSelectMode(true)}
-                            className="p-2 text-gray-500 hover:text-gray-700"
+                            className="p-2 text-gray-500 hover:text-gray-700 min-w-[44px] min-h-[44px] flex items-center justify-center"
                             aria-label="Select bookmarks"
                           >
                             <svg
@@ -646,7 +646,7 @@ export function BookmarkList() {
                     key={tag.uri}
                     type="button"
                     onClick={() => toggleTag(tag.value)}
-                    className="px-3 py-1.5 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition flex items-center gap-1.5"
+                    className="px-3 py-1.5 text-sm rounded-lg coral-selected transition flex items-center gap-1.5"
                   >
                     {tag.value}
                     <svg
@@ -714,8 +714,13 @@ export function BookmarkList() {
           <>
             <div
               className={viewMode === "cards"
-                ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                ? "grid gap-4"
                 : "flex flex-col gap-2"}
+              style={viewMode === "cards"
+                ? {
+                  gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                }
+                : undefined}
             >
               {bookmarks.slice(0, visible).map((bookmark) => {
                 const card = (

@@ -134,7 +134,7 @@ export function SharedBookmarks({ did, encodedTags }: SharedBookmarksProps) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="spinner"></div>
       </div>
     );
@@ -142,7 +142,7 @@ export function SharedBookmarks({ did, encodedTags }: SharedBookmarksProps) {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="text-center py-20 px-4">
           <div className="mb-6">
             <span className="text-6xl">⚠️</span>
@@ -164,7 +164,7 @@ export function SharedBookmarks({ did, encodedTags }: SharedBookmarksProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen">
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="mb-8">
@@ -174,7 +174,8 @@ export function SharedBookmarks({ did, encodedTags }: SharedBookmarksProps) {
               href={`https://bsky.app/profile/${handle}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+              className="font-semibold hover:underline"
+              style={{ color: "var(--coral)" }}
             >
               {handle}
             </a>
@@ -187,7 +188,11 @@ export function SharedBookmarks({ did, encodedTags }: SharedBookmarksProps) {
             {tags.map((tag) => (
               <span
                 key={tag}
-                className="px-3 py-1 text-sm rounded-full bg-blue-100 text-blue-700 font-medium"
+                className="px-3 py-1 text-sm rounded-full font-medium"
+                style={{
+                  backgroundColor: "var(--coral-100)",
+                  color: "var(--coral-700)",
+                }}
               >
                 {tag}
               </span>
@@ -211,7 +216,12 @@ export function SharedBookmarks({ did, encodedTags }: SharedBookmarksProps) {
             </div>
           )
           : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div
+              className="grid gap-4"
+              style={{
+                gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+              }}
+            >
               {bookmarks.map((bookmark) => (
                 <div
                   key={bookmark.uri}
@@ -334,7 +344,8 @@ export function SharedBookmarks({ did, encodedTags }: SharedBookmarksProps) {
             Create your own bookmark collection at{" "}
             <a
               href="/"
-              className="text-blue-600 hover:underline font-medium"
+              className="hover:underline font-medium"
+              style={{ color: "var(--coral)" }}
             >
               kipclip.com
             </a>

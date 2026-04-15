@@ -84,34 +84,12 @@ function ExternalOption({
   );
 }
 
+import { PageShell } from "./PageShell.tsx";
+
 export function CreateAccount() {
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <a href="/" className="flex items-center gap-2">
-            <img
-              src="https://res.cloudinary.com/dru3aznlk/image/upload/v1760692589/kip-vignette_h2jwct.png"
-              alt="Kip logo"
-              className="w-8 h-8"
-            />
-            <h1
-              className="text-2xl font-bold"
-              style={{ color: "var(--coral)" }}
-            >
-              kipclip
-            </h1>
-          </a>
-          <a
-            href="/"
-            className="text-gray-600 hover:text-gray-800 text-sm font-medium"
-          >
-            Back to Home
-          </a>
-        </div>
-      </header>
-
-      <main className="max-w-lg mx-auto px-4 py-12">
+    <PageShell backLabel="Back to Home">
+      <div className="max-w-lg mx-auto">
         <div className="text-center mb-8">
           <h2 className="text-3xl font-bold text-gray-800 mb-3">
             Create your free Atmosphere account
@@ -275,7 +253,7 @@ export function CreateAccount() {
             </a>
           </p>
         </div>
-      </main>
-    </div>
+      </div>
+    </PageShell>
   );
 }

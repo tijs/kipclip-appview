@@ -56,7 +56,7 @@ function ReadingListCard(
         </svg>
       </button>
       {bookmark.image && (
-        <div className="aspect-[2/1] bg-gray-100 overflow-hidden">
+        <div className="aspect-[2/1] bg-gray-100 overflow-hidden max-h-40">
           <img
             src={bookmark.image}
             alt=""
@@ -68,12 +68,12 @@ function ReadingListCard(
           />
         </div>
       )}
-      <div className="p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2">
+      <div className="p-4">
+        <h3 className="text-base font-semibold text-gray-900 mb-1.5 line-clamp-2">
           {bookmark.title || domain}
         </h3>
         {bookmark.description && (
-          <p className="text-gray-600 text-sm mb-4 line-clamp-3">
+          <p className="text-gray-600 text-sm mb-3 line-clamp-3">
             {bookmark.description}
           </p>
         )}
@@ -156,10 +156,14 @@ function ReadingListTagSidebar() {
                   key={tag}
                   onClick={() => toggleReadingListTag(tag)}
                   className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${
-                    isSelected
-                      ? "bg-blue-50 text-blue-700"
-                      : "text-gray-700 hover:bg-gray-100"
+                    isSelected ? "" : "text-gray-700 hover:bg-gray-100"
                   }`}
+                  style={isSelected
+                    ? {
+                      backgroundColor: "var(--coral-50)",
+                      color: "var(--coral-700)",
+                    }
+                    : {}}
                 >
                   {isSelected && (
                     <svg
@@ -211,10 +215,14 @@ function ReadingListTagSidebar() {
                 key={tag}
                 onClick={() => toggleReadingListTag(tag)}
                 className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm transition-colors ${
-                  isSelected
-                    ? "bg-blue-100 text-blue-700"
-                    : "bg-gray-100 text-gray-700"
+                  isSelected ? "" : "bg-gray-100 text-gray-700"
                 }`}
+                style={isSelected
+                  ? {
+                    backgroundColor: "var(--coral-100)",
+                    color: "var(--coral-700)",
+                  }
+                  : {}}
               >
                 {tag}
               </button>

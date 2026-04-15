@@ -99,9 +99,7 @@ export function TagSidebar() {
       <li
         key={tag.uri}
         className={`group flex items-center justify-between gap-2 px-3 py-2 rounded-lg transition text-sm whitespace-nowrap flex-shrink-0 cursor-pointer ${
-          isSelected
-            ? "bg-blue-600 text-white hover:bg-blue-700"
-            : "text-gray-700 hover:bg-gray-100"
+          isSelected ? "coral-selected" : "text-gray-700 hover:bg-gray-100"
         }`}
         title={`Created ${formatDate(tag.createdAt)}`}
         onClick={() => {
@@ -134,7 +132,7 @@ export function TagSidebar() {
               setEditingTag(tag);
             }}
             className={`opacity-0 group-hover:opacity-100 transition p-1 rounded flex-shrink-0 ${
-              isSelected ? "hover:bg-blue-500" : "hover:bg-gray-200"
+              isSelected ? "hover:bg-gray-200/30" : "hover:bg-gray-200"
             }`}
             title="Edit tag"
           >
@@ -179,7 +177,7 @@ export function TagSidebar() {
               }
             }}
             className={`opacity-0 group-hover:opacity-100 transition p-1 rounded cursor-grab active:cursor-grabbing flex-shrink-0 ${
-              isSelected ? "hover:bg-blue-500" : "hover:bg-gray-200"
+              isSelected ? "hover:bg-gray-200/30" : "hover:bg-gray-200"
             }`}
             title="Drag to bookmark to tag it"
           >
@@ -212,7 +210,7 @@ export function TagSidebar() {
         className="md:hidden w-full sticky top-0 z-10 border-b border-gray-200"
       >
         {/* Tag scroll row */}
-        <div className="flex items-center gap-2 px-3 py-2 overflow-x-auto">
+        <div className="flex items-center gap-2 px-3 py-2 overflow-x-auto tag-scroll-fade">
           <h2 className="text-sm font-bold text-gray-800 flex-shrink-0">
             Tags
             <span className="font-normal text-gray-500 ml-1">
@@ -239,7 +237,7 @@ export function TagSidebar() {
           <button
             type="button"
             onClick={() => setShowAddModal(true)}
-            className="flex-shrink-0 ml-auto p-1.5 hover:bg-gray-100 rounded-lg transition text-gray-600"
+            className="flex-shrink-0 ml-auto p-1.5 hover:bg-gray-100 rounded-lg transition text-gray-600 min-w-[44px] min-h-[44px] flex items-center justify-center"
             title="Create tag"
           >
             <svg

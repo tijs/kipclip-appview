@@ -190,9 +190,16 @@ export function ImportBookmarks() {
             </p>
           </div>
         </div>
-        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-2">
+        <div
+          className="p-3 rounded-lg flex items-start gap-2"
+          style={{
+            backgroundColor: "var(--coral-50)",
+            border: "1px solid var(--coral-200)",
+          }}
+        >
           <svg
-            className="w-4 h-4 text-blue-600 mt-0.5 shrink-0"
+            className="w-4 h-4 mt-0.5 shrink-0"
+            style={{ color: "var(--coral)" }}
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -204,12 +211,12 @@ export function ImportBookmarks() {
               d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20 10 10 0 000-20z"
             />
           </svg>
-          <p className="text-sm text-blue-800">
+          <p className="text-sm" style={{ color: "var(--coral-700)" }}>
             Bookmarks on AT Protocol are public. Anything you import can be seen
             by anyone.{" "}
             <a
               href="/about#how-it-works"
-              className="underline hover:text-blue-900"
+              className="underline hover:opacity-80"
             >
               Learn how it works
             </a>.
@@ -298,9 +305,17 @@ export function ImportBookmarks() {
 
         {/* Preparing state */}
         {importState.status === "preparing" && (
-          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-blue-800 font-medium">Preparing import...</p>
-            <p className="text-sm text-blue-700 mt-1">
+          <div
+            className="mt-4 p-4 rounded-lg"
+            style={{
+              backgroundColor: "var(--coral-50)",
+              border: "1px solid var(--coral-200)",
+            }}
+          >
+            <p className="font-medium" style={{ color: "var(--coral-700)" }}>
+              Preparing import...
+            </p>
+            <p className="text-sm mt-1" style={{ color: "var(--coral-700)" }}>
               Parsing file and checking for duplicates
             </p>
           </div>
@@ -308,17 +323,26 @@ export function ImportBookmarks() {
 
         {/* Progress bar during importing */}
         {importState.status === "importing" && (
-          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div
+            className="mt-4 p-4 rounded-lg"
+            style={{
+              backgroundColor: "var(--coral-50)",
+              border: "1px solid var(--coral-200)",
+            }}
+          >
             <div className="flex justify-between items-center mb-2">
-              <p className="text-blue-800 font-medium">
+              <p className="font-medium" style={{ color: "var(--coral-700)" }}>
                 Importing bookmarks...
               </p>
-              <p className="text-sm text-blue-700">
+              <p className="text-sm" style={{ color: "var(--coral-700)" }}>
                 {importState.imported + importState.failed} /{" "}
                 {importState.toImport}
               </p>
             </div>
-            <div className="w-full bg-blue-200 rounded-full h-2.5">
+            <div
+              className="w-full rounded-full h-2.5"
+              style={{ backgroundColor: "var(--coral-200)" }}
+            >
               <div
                 className="h-2.5 rounded-full transition-all duration-300"
                 style={{
@@ -332,7 +356,10 @@ export function ImportBookmarks() {
                 }}
               />
             </div>
-            <ul className="text-sm text-blue-700 mt-2 space-y-0.5">
+            <ul
+              className="text-sm mt-2 space-y-0.5"
+              style={{ color: "var(--coral-700)" }}
+            >
               <li>{importState.imported} imported</li>
               {importState.skipped > 0 && (
                 <li>{importState.skipped} skipped (duplicates)</li>

@@ -59,7 +59,7 @@ export function UserMenu({ handle, onLogout }: UserMenuProps) {
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="md:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
+        className="md:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
         aria-expanded={isOpen}
         aria-haspopup="true"
         aria-label="Menu"

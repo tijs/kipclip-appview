@@ -116,7 +116,7 @@ export function BulkTagModal({
               selectedTags.length === 0
                 ? "bg-gray-300 cursor-not-allowed"
                 : mode === "add"
-                ? "bg-blue-600 hover:bg-blue-700"
+                ? "coral-selected"
                 : "bg-red-600 hover:bg-red-700"
             }`}
           >

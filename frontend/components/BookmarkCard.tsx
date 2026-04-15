@@ -218,10 +218,11 @@ export function BookmarkCard(
     onImageError,
   }: BookmarkCardProps,
 ) {
-  const selectedClass = isSelected ? "border-2 border-blue-500 bg-blue-50" : "";
-  const dragOverClass = !isSelectMode && isDragOver
-    ? "border-2 border-blue-500 bg-blue-50"
-    : "";
+  const selectedClass = isSelected ? "border-2" : "";
+  const dragOverClass = !isSelectMode && isDragOver ? "border-2" : "";
+  const highlightStyle = isSelected || (!isSelectMode && isDragOver)
+    ? { borderColor: "var(--coral)", backgroundColor: "var(--coral-50)" }
+    : {};
 
   const className = viewMode === "cards"
     ? `card transition-all cursor-pointer relative ${
@@ -235,6 +236,7 @@ export function BookmarkCard(
     <div
       data-bookmark-card
       className={className}
+      style={highlightStyle}
       onClick={onClick}
       onDragOver={isSelectMode ? undefined : onDragOver}
       onDragEnter={isSelectMode ? undefined : onDragEnter}
@@ -248,7 +250,8 @@ export function BookmarkCard(
             checked={isSelected}
             onChange={onClick as any}
             onClick={(e) => e.stopPropagation()}
-            className="w-5 h-5 rounded border-gray-300 text-blue-600 cursor-pointer"
+            className="w-5 h-5 rounded border-gray-300 cursor-pointer"
+            style={{ accentColor: "var(--coral)" }}
             aria-label={`Select ${bookmark.title || bookmark.subject}`}
           />
         </div>
@@ -270,7 +273,8 @@ export function BookmarkCard(
                 checked={isSelected}
                 onChange={onClick as any}
                 onClick={(e) => e.stopPropagation()}
-                className="w-5 h-5 shrink-0 rounded border-gray-300 text-blue-600 cursor-pointer"
+                className="w-5 h-5 shrink-0 rounded border-gray-300 cursor-pointer"
+                style={{ accentColor: "var(--coral)" }}
                 aria-label={`Select ${bookmark.title || bookmark.subject}`}
               />
             )}

@@ -114,7 +114,7 @@ export function BulkActionToolbar({
   return (
     <>
       <div
-        className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 bg-white rounded-xl shadow-lg border border-gray-200 px-4 py-3 flex items-center gap-3 animate-slide-up"
+        className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 bg-white rounded-xl shadow-lg border border-gray-200 px-4 py-3 flex items-center gap-2 sm:gap-3 flex-wrap max-w-[calc(100vw-2rem)] animate-slide-up"
         role="toolbar"
         aria-label="Bulk actions"
       >
@@ -126,19 +126,20 @@ export function BulkActionToolbar({
           {selectedCount} selected
         </span>
 
-        <div className="w-px h-6 bg-gray-200" />
+        <div className="w-px h-6 bg-gray-200 hidden sm:block" />
 
         {/* Select all / Deselect all */}
         <button
           type="button"
           onClick={allSelected ? onDeselectAll : onSelectAll}
-          className="text-sm text-blue-600 hover:text-blue-800 whitespace-nowrap"
+          className="text-sm whitespace-nowrap"
+          style={{ color: "var(--coral)" }}
           disabled={isLoading}
         >
           {allSelected ? "Deselect All" : "Select All"}
         </button>
 
-        <div className="w-px h-6 bg-gray-200" />
+        <div className="w-px h-6 bg-gray-200 hidden sm:block" />
 
         {/* Action buttons */}
         <button
@@ -204,7 +205,7 @@ export function BulkActionToolbar({
 
         {error && (
           <>
-            <div className="w-px h-6 bg-gray-200" />
+            <div className="w-px h-6 bg-gray-200 hidden sm:block" />
             <span className="text-sm text-red-600">{error}</span>
           </>
         )}

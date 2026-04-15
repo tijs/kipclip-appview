@@ -169,3 +169,36 @@ Guidelines:
 - JSX configured in `deno.json` (no pragma needed in files)
 - Import from `jsr:` for Deno packages, `https://esm.sh/` for npm packages
 - Keep files under 500 lines
+
+## Design Context
+
+### Users
+
+Bluesky / AT Protocol users who want a simple, reliable bookmark manager. They
+value data ownership. Context: saving links throughout the day from desktop and
+mobile, returning later to find or read them.
+
+### Brand Personality
+
+**Friendly, simple, trustworthy.** Feels like a well-made everyday tool. Kip the
+chicken adds character without making the app feel like a toy.
+
+### Aesthetic Direction
+
+**North star: Things 3 / Bear.** Apple-quality polish, subtle details, beautiful
+typography. Premium but never complex. Design disappears into the content.
+
+- Palette: Coral `#e66456`, Cream `#f5f1e8`, Teal `#5b8a8f`, Orange `#f4a261`
+- Theme: Light (warm cream background is signature)
+- Anti-references: generic SaaS, social media feeds, dev tools, overly cute
+
+### Design Principles
+
+1. **Content is king.** Bookmarks and tags are the star. UI chrome recedes.
+2. **Quiet confidence.** Polish shows in spacing, typography, transitions — not
+   decorative effects.
+3. **Warm, not cute.** Coral-and-cream palette gives soul without crossing into
+   playful.
+4. **Respect the user's time.** Fast interactions, clear hierarchy, no clutter.
+5. **Accessible by default.** WCAG AA. Good contrast, keyboard nav, screen
+   reader support.
