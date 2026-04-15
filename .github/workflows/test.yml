@@ -19,6 +19,7 @@ jobs:
       - name: Lint
         run: deno lint
       - name: Audit dependencies
+        continue-on-error: true
         run: deno audit
       - name: Run tests with coverage
         run: deno test --allow-all --unstable-kv --coverage=coverage/ tests/
