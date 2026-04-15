@@ -167,6 +167,10 @@ export function Login() {
                   ref={inputRef}
                   type="text"
                   id="handle"
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                   placeholder="alice.bsky.social or your-domain.com"
                   className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-coral focus:border-transparent outline-none transition"
                   disabled={loading}
