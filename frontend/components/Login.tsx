@@ -69,9 +69,12 @@ export function Login() {
       setHandle(input.value);
     };
 
+    // Ensure button state reflects any prefilled value when the form appears
+    handleInput();
+
     input.addEventListener("input", handleInput);
     return () => input.removeEventListener("input", handleInput);
-  }, []);
+  }, [showForm]);
 
   async function startOAuthFlow(handle: string) {
     setLoading(true);
@@ -183,14 +186,15 @@ export function Login() {
                     type="button"
                     onClick={() => {
                       removeIdentity(identity.did);
-                      const updated = savedIdentities.filter(
-                        (id) =>
-                          id.did !== identity.did,
-                      );
-                      setSavedIdentities(updated);
-                      if (updated.length === 0) {
-                        setShowForm(true);
-                      }
+                      setSavedIdentities((current) => {
+                        const updated = current.filter((id) =>
+                          id.did !== identity.did
+                        );
+                        if (updated.length === 0) {
+                          setShowForm(true);
+                        }
+                        return updated;
+                      });
                     }}
                     className="p-2 text-gray-400 hover:text-gray-600 transition"
                     aria-label={`Remove ${identity.handle}`}
