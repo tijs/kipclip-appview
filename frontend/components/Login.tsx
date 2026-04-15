@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { isStandalonePwa, openOAuthPopup } from "../utils/pwa.ts";
+import {
+  getSavedIdentities,
+  removeIdentity,
+  type SavedIdentity,
+} from "../utils/saved-identities.ts";
 
 /**
  * Validate an AT Protocol handle format.
@@ -48,6 +53,10 @@ export function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [savedIdentities, setSavedIdentities] = useState<SavedIdentity[]>(
+    getSavedIdentities,
+  );
+  const [showForm, setShowForm] = useState(savedIdentities.length === 0);
 
   // Sync handle state when the Web Component updates the input value
   useEffect(() => {
@@ -154,54 +163,139 @@ export function Login() {
             Connect with your Atmosphere account
           </h2>
 
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label
-                htmlFor="handle"
-                className="block text-sm font-medium text-gray-700 mb-2"
+          {savedIdentities.length > 0 && !showForm && (
+            <div className="space-y-3">
+              {savedIdentities.map((identity) => (
+                <div key={identity.did} className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setError(null);
+                      startOAuthFlow(identity.handle);
+                    }}
+                    disabled={loading}
+                    className="flex-1 flex items-center gap-2 px-4 py-3 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <span className="text-gray-400">@</span>
+                    {identity.handle}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      removeIdentity(identity.did);
+                      const updated = savedIdentities.filter(
+                        (id) =>
+                          id.did !== identity.did,
+                      );
+                      setSavedIdentities(updated);
+                      if (updated.length === 0) {
+                        setShowForm(true);
+                      }
+                    }}
+                    className="p-2 text-gray-400 hover:text-gray-600 transition"
+                    aria-label={`Remove ${identity.handle}`}
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                      aria-hidden
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+
+              {error && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                  {error}
+                </div>
+              )}
+
+              {loading && (
+                <div className="flex items-center justify-center gap-2 text-gray-500 py-2">
+                  <div className="spinner w-5 h-5 border-2"></div>
+                  Connecting...
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setShowForm(true)}
+                className="w-full text-sm text-gray-500 hover:text-gray-700 transition py-1"
               >
-                Handle
-              </label>
-              <actor-typeahead>
-                <input
-                  ref={inputRef}
-                  type="text"
-                  id="handle"
-                  autoComplete="off"
-                  data-1p-ignore
-                  data-lpignore="true"
-                  data-form-type="other"
-                  placeholder="alice.bsky.social or your-domain.com"
-                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-coral focus:border-transparent outline-none transition"
-                  disabled={loading}
-                  autoFocus
-                />
-              </actor-typeahead>
+                Use a different account
+              </button>
             </div>
+          )}
 
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-                {error}
+          {showForm && (
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label
+                  htmlFor="handle"
+                  className="block text-sm font-medium text-gray-700 mb-2"
+                >
+                  Handle
+                </label>
+                <actor-typeahead>
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    id="handle"
+                    autoComplete="off"
+                    data-1p-ignore
+                    data-lpignore="true"
+                    data-form-type="other"
+                    placeholder="alice.bsky.social or your-domain.com"
+                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-coral focus:border-transparent outline-none transition"
+                    disabled={loading}
+                    autoFocus
+                  />
+                </actor-typeahead>
               </div>
-            )}
 
-            <button
-              type="submit"
-              disabled={loading || !handle.trim()}
-              className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading
-                ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <div className="spinner w-5 h-5 border-2"></div>
-                    Connecting...
-                  </span>
-                )
-                : (
-                  "Connect"
-                )}
-            </button>
-          </form>
+              {error && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading || !handle.trim()}
+                className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading
+                  ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <div className="spinner w-5 h-5 border-2"></div>
+                      Connecting...
+                    </span>
+                  )
+                  : (
+                    "Connect"
+                  )}
+              </button>
+
+              {savedIdentities.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowForm(false)}
+                  className="w-full text-sm text-gray-500 hover:text-gray-700 transition py-1"
+                >
+                  Back to saved accounts
+                </button>
+              )}
+            </form>
+          )}
 
           <details className="mt-4 text-sm text-gray-500">
             <summary className="cursor-pointer font-medium text-gray-600 hover:text-gray-800">

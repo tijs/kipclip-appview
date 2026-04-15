@@ -18,6 +18,7 @@ import { TermsOfUse } from "./TermsOfUse.tsx";
 import { useApp } from "../context/AppContext.tsx";
 import { apiPost } from "../utils/api.ts";
 import { clearAll as clearCache } from "../cache/db.ts";
+import { saveIdentity } from "../utils/saved-identities.ts";
 
 type ViewType = "bookmarks" | "reading-list";
 
@@ -73,6 +74,7 @@ export function App() {
           did: data.did,
           handle: data.handle,
         });
+        saveIdentity(data.handle, data.did);
       }
     } catch (error) {
       console.error("Failed to check session:", error);
