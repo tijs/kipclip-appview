@@ -2,6 +2,26 @@
 
 All notable changes to kipclip are documented in this file.
 
+## [0.9.0] - 2026-04-17
+
+### Fixed
+
+- Shared collections now return all matching bookmarks, not just matches found
+  within the first 100 records on the owner's PDS
+
+### Added
+
+- Share button on public collection pages (Web Share API with clipboard
+  fallback) so any visitor can share a collection, not just its owner
+- Regression test coverage for shared collection pagination and SSRF hardening
+
+### Changed
+
+- The owner's Share collection button now navigates directly to the collection
+  page instead of invoking the share sheet inline
+- All public share endpoints route through a hardened PDS client with SSRF
+  checks, page and deadline caps, per-request timeouts, and 429 backoff
+
 ## [0.8.0] - 2026-04-17
 
 ### Added
