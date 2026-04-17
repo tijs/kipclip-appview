@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { EnrichedTag } from "../../shared/types.ts";
 import { apiPost } from "../utils/api.ts";
+import { Button } from "./Button.tsx";
 
 interface AddTagProps {
   onClose: () => void;
@@ -82,30 +83,24 @@ export function AddTag({ onClose, onTagAdded }: AddTagProps) {
           )}
 
           <div className="flex gap-3">
-            <button
+            <Button
               type="button"
+              variant="secondary"
               onClick={onClose}
-              className="flex-1 px-4 py-3 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition"
               disabled={loading}
+              fullWidth
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
-              className="flex-1 btn-primary disabled:opacity-50"
-              disabled={loading || !value.trim()}
+              variant="primary"
+              loading={loading}
+              disabled={!value.trim()}
+              fullWidth
             >
-              {loading
-                ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <div className="spinner w-5 h-5 border-2"></div>
-                    Creating...
-                  </span>
-                )
-                : (
-                  "Create Tag"
-                )}
-            </button>
+              {loading ? "Creating..." : "Create Tag"}
+            </Button>
           </div>
         </form>
       </div>

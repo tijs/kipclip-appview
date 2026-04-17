@@ -2,6 +2,30 @@
 
 All notable changes to kipclip are documented in this file.
 
+## [0.8.0] - 2026-04-17
+
+### Added
+
+- Supporter gating via atprotofans.com: import is now unlocked for kipclip
+  supporters, with supporter status read from the user's PDS
+- Dismissible support banner, supporter badge in the user menu, and a dedicated
+  Settings → Supporter tab
+- Shared `Button`, `Tag`, and `HeartIcon` components for consistent styling
+  across supporter surfaces
+
+### Changed
+
+- Unified design language: coral CTAs, teal selection state, warmer palette
+- Import jobs stamp supporter verification at prepare-time so mid-import PDS
+  flakes no longer 403 an in-progress job
+- 403 responses on gated endpoints now include `upgradeUrl` and `statusUrl` so
+  clients can guide users to unlock the feature
+
+### Fixed
+
+- Supporter check hardened: byte-capped PDS response reader, pagination cap,
+  negative caching, and refresh cooldown protect against flaky/hostile PDSes
+
 ## [0.7.0] - 2026-03-20
 
 ### Changed

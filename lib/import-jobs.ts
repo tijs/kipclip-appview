@@ -20,6 +20,8 @@ export interface ImportJob {
   processedChunks: number;
   tags: string[];
   status: string;
+  /** ISO timestamp of supporter verification at prepare-time (null if not yet checked). */
+  supporterVerifiedAt: string | null;
 }
 
 export interface ImportChunk {
@@ -49,10 +51,11 @@ export async function createImportJob(
     chunks.push(bookmarks.slice(i, i + CHUNK_SIZE));
   }
 
+  const supporterVerifiedAt = new Date().toISOString();
   await rawDb.execute({
     sql: `INSERT INTO import_jobs
-          (id, did, format, total, skipped, total_chunks, tags)
-          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          (id, did, format, total, skipped, total_chunks, tags, supporter_verified_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       id,
       did,
@@ -61,6 +64,7 @@ export async function createImportJob(
       skipped,
       chunks.length,
       JSON.stringify(tags),
+      supporterVerifiedAt,
     ],
   });
 
@@ -84,6 +88,7 @@ export async function createImportJob(
     processedChunks: 0,
     tags,
     status: "pending",
+    supporterVerifiedAt,
   };
 }
 
@@ -93,7 +98,8 @@ export async function getImportJob(
 ): Promise<ImportJob | null> {
   const result = await rawDb.execute({
     sql: `SELECT id, did, format, total, skipped, imported, failed,
-                 total_chunks, processed_chunks, tags, status
+                 total_chunks, processed_chunks, tags, status,
+                 supporter_verified_at
           FROM import_jobs WHERE id = ?`,
     args: [jobId],
   });
@@ -113,6 +119,7 @@ export async function getImportJob(
     processedChunks: Number(row[8]),
     tags: JSON.parse(String(row[9] ?? "[]")),
     status: String(row[10]),
+    supporterVerifiedAt: row[11] == null ? null : String(row[11]),
   };
 }
 

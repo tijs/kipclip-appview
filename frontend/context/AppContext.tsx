@@ -17,6 +17,7 @@ import type {
 } from "../../shared/types.ts";
 import { getDateFormat, setDateFormat } from "../../shared/date-format.ts";
 import { apiGet, apiPatch, apiPost, apiPut } from "../utils/api.ts";
+import type { SupporterStatusResponse } from "../../shared/types.ts";
 import { perf } from "../perf.ts";
 import {
   deleteBookmarkFromCache,
@@ -86,6 +87,7 @@ interface AppState {
   readingListSelectedTags: Set<string>;
   bookmarkSearchQuery: string;
   readingListSearchQuery: string;
+  isSupporter: boolean;
 }
 
 interface AppContextValue extends AppState {
@@ -114,6 +116,9 @@ interface AppContextValue extends AppState {
   // Filter actions
   toggleTag: (tagValue: string) => void;
   clearFilters: () => void;
+
+  // Supporter actions
+  refreshSupporterStatus: () => Promise<boolean>;
 
   // Settings actions
   updateSettings: (updates: Partial<UserSettings>) => Promise<void>;
@@ -171,6 +176,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   });
   const [readingListSearchQuery, setReadingListSearchQuery] = useState("");
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isSupporter, setIsSupporter] = useState(false);
 
   // Ref to current bookmarks for race-condition-safe merging during sync.
   const bookmarksRef = useRef<EnrichedBookmark[]>([]);
@@ -243,6 +249,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   /** Apply settings/preferences from server response */
   function applyServerMeta(data: InitialDataResponse) {
     setSettings(data.settings);
+    setIsSupporter(data.isSupporter);
     if (data.preferences) {
       const localFormat = getDateFormat();
       const pdsFormat = data.preferences.dateFormat;
@@ -463,6 +470,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, [session]);
 
+  // Supporter actions
+  async function refreshSupporterStatus(): Promise<boolean> {
+    const response = await apiGet("/api/user/supporter-status");
+    if (!response.ok) {
+      throw new Error("Failed to refresh supporter status");
+    }
+    const data: SupporterStatusResponse = await response.json();
+    setIsSupporter(data.isSupporter);
+    return data.isSupporter;
+  }
+
   // Settings actions
   async function updateSettings(updates: Partial<UserSettings>) {
     try {
@@ -659,6 +677,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     readingListSelectedTags,
     bookmarkSearchQuery,
     readingListSearchQuery,
+    isSupporter,
+    refreshSupporterStatus,
     setSession,
     setBookmarks,
     addBookmark,

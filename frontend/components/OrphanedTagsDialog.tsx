@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { EnrichedTag } from "../../shared/types.ts";
 import { apiDelete } from "../utils/api.ts";
+import { Tag } from "./Tag.tsx";
 
 interface OrphanedTagsDialogProps {
   tags: EnrichedTag[];
@@ -54,14 +55,7 @@ export function OrphanedTagsDialog({
         </p>
 
         <div className="flex flex-wrap gap-2 mb-6">
-          {tags.map((tag) => (
-            <span
-              key={tag.uri}
-              className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm"
-            >
-              {tag.value}
-            </span>
-          ))}
+          {tags.map((tag) => <Tag key={tag.uri}>{tag.value}</Tag>)}
         </div>
 
         <div className="flex gap-3">

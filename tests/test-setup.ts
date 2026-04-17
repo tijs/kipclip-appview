@@ -23,3 +23,11 @@ if (!Deno.env.get("COOKIE_SECRET")) {
 }
 
 // Note: BASE_URL is not set here - tests use auto-detection from Request objects
+
+// Treat the default mock DID as an auto-supporter so tests can exercise
+// supporter-gated endpoints without wiring up a supporter record in every
+// PDS mock. Tests that specifically assert non-supporter behavior should
+// use a DID outside this set.
+import { _addTestAutoSupporter } from "../lib/atprotofans.ts";
+_addTestAutoSupporter("did:plc:test123");
+_addTestAutoSupporter("did:plc:other999");

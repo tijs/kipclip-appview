@@ -192,6 +192,27 @@ typography. Premium but never complex. Design disappears into the content.
 - Theme: Light (warm cream background is signature)
 - Anti-references: generic SaaS, social media feeds, dev tools, overly cute
 
+### Color Roles
+
+Each color has one job. Reaching for coral everywhere makes the app feel
+oppressive — roles keep the palette doing work.
+
+- **Coral** — primary CTAs only: "Add Bookmark", "Create Tag", "Share
+  collection", "Support on atprotofans", destructive-confirm. One coral element
+  per region; if two compete, demote one.
+- **Teal** — selected / active state: selected tag chips (sidebar, filter bar,
+  bulk-tag modal), supporter status pill, `.btn-secondary`. Reads as "status,"
+  not "action."
+- **Orange** — celebration / reward moments: the illustrated supporter badge on
+  the Settings → Supporter tab. Use sparingly; orange loses its meaning if it's
+  everywhere.
+- **Cream** — background only. Never a button or pill fill.
+- **Grays** — chrome, borders, body copy, disabled states.
+
+Quick sanity check before shipping a UI change: if coral appears in more than
+~2–3 places in a single view, something that should be teal or gray is wearing
+coral.
+
 ### Design Principles
 
 1. **Content is king.** Bookmarks and tags are the star. UI chrome recedes.

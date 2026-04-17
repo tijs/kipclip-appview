@@ -4,6 +4,7 @@
 
 import { useState } from "react";
 import { TagInput } from "./TagInput.tsx";
+import { Tag } from "./Tag.tsx";
 import type { EnrichedBookmark, EnrichedTag } from "../../shared/types.ts";
 
 interface BulkTagModalProps {
@@ -74,27 +75,25 @@ export function BulkTagModal({
                 )
                 : (
                   <div className="flex flex-wrap gap-2">
-                    {intersectionTags.map((tag) => (
-                      <button
-                        key={tag}
-                        type="button"
-                        onClick={() => {
-                          setSelectedTags((prev) =>
-                            prev.includes(tag)
-                              ? prev.filter((t) => t !== tag)
-                              : [...prev, tag]
-                          );
-                        }}
-                        className={`px-3 py-1.5 rounded-full text-sm border transition ${
-                          selectedTags.includes(tag)
-                            ? "bg-red-50 border-red-300 text-red-700"
-                            : "bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100"
-                        }`}
-                      >
-                        {tag}
-                        {selectedTags.includes(tag) && " ×"}
-                      </button>
-                    ))}
+                    {intersectionTags.map((tag) => {
+                      const isSelected = selectedTags.includes(tag);
+                      return (
+                        <Tag
+                          key={tag}
+                          variant={isSelected ? "destructive" : "outlined"}
+                          removable={isSelected}
+                          onClick={() => {
+                            setSelectedTags((prev) =>
+                              prev.includes(tag)
+                                ? prev.filter((t) => t !== tag)
+                                : [...prev, tag]
+                            );
+                          }}
+                        >
+                          {tag}
+                        </Tag>
+                      );
+                    })}
                   </div>
                 )}
             </div>
