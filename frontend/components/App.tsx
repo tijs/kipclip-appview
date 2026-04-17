@@ -12,6 +12,7 @@ import { SharedBookmarks } from "./SharedBookmarks.tsx";
 import { Settings } from "./Settings.tsx";
 import { ReadingList } from "./ReadingList.tsx";
 import { Support } from "./Support.tsx";
+import { SupportBanner } from "./SupportBanner.tsx";
 import { Press } from "./Press.tsx";
 import { PrivacyPolicy } from "./PrivacyPolicy.tsx";
 import { TermsOfUse } from "./TermsOfUse.tsx";
@@ -23,7 +24,7 @@ import { saveIdentity } from "../utils/saved-identities.ts";
 type ViewType = "bookmarks" | "reading-list";
 
 export function App() {
-  const { session, setSession, loadInitialData } = useApp();
+  const { session, setSession, loadInitialData, isSupporter } = useApp();
   const [loading, setLoading] = useState(true);
   const [dataLoading, setDataLoading] = useState(false);
   const [currentPath, setCurrentPath] = useState(globalThis.location.pathname);
@@ -225,6 +226,7 @@ export function App() {
           <div className="flex flex-col md:flex-row flex-1 md:overflow-hidden">
             <TagSidebar />
             <main className="flex-1 px-4 py-8 max-w-7xl mx-auto w-full md:overflow-y-auto">
+              {!isSupporter && <SupportBanner />}
               <BookmarkList />
             </main>
           </div>

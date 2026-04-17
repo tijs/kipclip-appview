@@ -4,6 +4,7 @@ import { type DateFormatOption, formatDate } from "../../shared/date-format.ts";
 import type { EnrichedBookmark } from "../../shared/types.ts";
 import { useMarkAsRead } from "../hooks/useMarkAsRead.ts";
 import { toast } from "sonner";
+import { Tag } from "./Tag.tsx";
 
 function ReadingListCard(
   { bookmark, dateFormat, onMarkAsRead }: {
@@ -156,14 +157,10 @@ function ReadingListTagSidebar() {
                   key={tag}
                   onClick={() => toggleReadingListTag(tag)}
                   className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${
-                    isSelected ? "" : "text-gray-700 hover:bg-gray-100"
+                    isSelected
+                      ? "coral-selected"
+                      : "text-gray-700 hover:bg-gray-100"
                   }`}
-                  style={isSelected
-                    ? {
-                      backgroundColor: "var(--coral-50)",
-                      color: "var(--coral-700)",
-                    }
-                    : {}}
                 >
                   {isSelected && (
                     <svg
@@ -182,7 +179,11 @@ function ReadingListTagSidebar() {
                   )}
                   <span className="truncate">{tag}</span>
                   {isReadingListTag && (
-                    <span className="ml-auto text-xs text-gray-400">
+                    <span
+                      className={`ml-auto text-xs ${
+                        isSelected ? "text-white/70" : "text-gray-400"
+                      }`}
+                    >
                       primary
                     </span>
                   )}
@@ -210,22 +211,14 @@ function ReadingListTagSidebar() {
           {readingListTags.map((tag) => {
             const isSelected = readingListSelectedTags.has(tag);
             return (
-              <button
-                type="button"
+              <Tag
                 key={tag}
+                variant={isSelected ? "selected" : "unselected"}
                 onClick={() => toggleReadingListTag(tag)}
-                className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm transition-colors ${
-                  isSelected ? "" : "bg-gray-100 text-gray-700"
-                }`}
-                style={isSelected
-                  ? {
-                    backgroundColor: "var(--coral-100)",
-                    color: "var(--coral-700)",
-                  }
-                  : {}}
+                className="flex-shrink-0"
               >
                 {tag}
-              </button>
+              </Tag>
             );
           })}
           {readingListSelectedTags.size > 0 && (

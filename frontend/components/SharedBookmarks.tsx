@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { formatDate } from "../../shared/date-format.ts";
 import type { EnrichedBookmark } from "../../shared/types.ts";
+import { SupportBanner } from "./SupportBanner.tsx";
+import { Tag } from "./Tag.tsx";
 
 interface SharedBookmarksProps {
   did: string;
@@ -166,6 +168,8 @@ export function SharedBookmarks({ did, encodedTags }: SharedBookmarksProps) {
   return (
     <div className="min-h-screen">
       <div className="max-w-7xl mx-auto px-4 py-8">
+        <SupportBanner />
+
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center gap-2 text-sm text-gray-600 mb-2">
@@ -186,16 +190,9 @@ export function SharedBookmarks({ did, encodedTags }: SharedBookmarksProps) {
           <div className="flex flex-wrap gap-2">
             <span className="text-sm text-gray-600">Filtered by tags:</span>
             {tags.map((tag) => (
-              <span
-                key={tag}
-                className="px-3 py-1 text-sm rounded-full font-medium"
-                style={{
-                  backgroundColor: "var(--coral-100)",
-                  color: "var(--coral-700)",
-                }}
-              >
+              <Tag key={tag} variant="selected">
                 {tag}
-              </span>
+              </Tag>
             ))}
           </div>
         </div>

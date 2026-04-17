@@ -1,10 +1,65 @@
 import { useEffect, useRef, useState } from "react";
 import { isStandalonePwa, openOAuthPopup } from "../utils/pwa.ts";
+import { Button } from "./Button.tsx";
 import {
   getSavedIdentities,
   removeIdentity,
   type SavedIdentity,
+  updateIdentityAvatar,
 } from "../utils/saved-identities.ts";
+
+/**
+ * Hue from a handle — stable per-handle color for the initial-avatar fallback.
+ * Keeps the saved-identity row visually distinct without shipping 1:1 avatars.
+ */
+function hueFromHandle(handle: string): number {
+  let h = 0;
+  for (let i = 0; i < handle.length; i++) {
+    h = (h * 31 + handle.charCodeAt(i)) >>> 0;
+  }
+  return h % 360;
+}
+
+function IdentityAvatar(
+  { handle, avatar, size = 40 }: {
+    handle: string;
+    avatar?: string;
+    size?: number;
+  },
+) {
+  const [failed, setFailed] = useState(false);
+  const initial = handle.replace(/^@/, "").charAt(0).toUpperCase() || "?";
+  const hue = hueFromHandle(handle);
+
+  if (avatar && !failed) {
+    return (
+      <img
+        src={avatar}
+        alt=""
+        width={size}
+        height={size}
+        className="rounded-full object-cover shrink-0"
+        style={{ width: size, height: size }}
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+
+  return (
+    <div
+      className="rounded-full flex items-center justify-center font-semibold text-white shrink-0"
+      style={{
+        width: size,
+        height: size,
+        backgroundColor: `hsl(${hue}, 45%, 55%)`,
+        fontSize: size * 0.4,
+      }}
+      aria-hidden
+    >
+      {initial}
+    </div>
+  );
+}
 
 /**
  * Validate an AT Protocol handle format.
@@ -75,6 +130,36 @@ export function Login() {
     input.addEventListener("input", handleInput);
     return () => input.removeEventListener("input", handleInput);
   }, [showForm]);
+
+  // Fetch avatars for saved identities that don't have one cached yet.
+  useEffect(() => {
+    const missing = savedIdentities.filter((id) => !id.avatar);
+    if (missing.length === 0) return;
+
+    let cancelled = false;
+    for (const identity of missing) {
+      const url =
+        `https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile?actor=${
+          encodeURIComponent(identity.handle)
+        }`;
+      fetch(url)
+        .then((r) => r.ok ? r.json() : null)
+        .then((data) => {
+          if (cancelled || !data?.avatar) return;
+          updateIdentityAvatar(identity.did, data.avatar);
+          setSavedIdentities((current) =>
+            current.map((id) =>
+              id.did === identity.did ? { ...id, avatar: data.avatar } : id
+            )
+          );
+        })
+        .catch(() => {/* fallback to initial avatar */});
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [savedIdentities.length]);
 
   async function startOAuthFlow(handle: string) {
     setLoading(true);
@@ -169,7 +254,7 @@ export function Login() {
           {savedIdentities.length > 0 && !showForm && (
             <div className="space-y-3">
               {savedIdentities.map((identity) => (
-                <div key={identity.did} className="flex items-center gap-2">
+                <div key={identity.did} className="relative group">
                   <button
                     type="button"
                     onClick={() => {
@@ -177,14 +262,40 @@ export function Login() {
                       startOAuthFlow(identity.handle);
                     }}
                     disabled={loading}
-                    className="flex-1 flex items-center gap-2 px-4 py-3 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full flex items-center gap-3 pl-3 pr-12 py-2.5 rounded-xl bg-white shadow-sm ring-1 ring-gray-200 hover:ring-2 hover:shadow-md hover:-translate-y-px transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ transitionDuration: "150ms" }}
                   >
-                    <span className="text-gray-400">@</span>
-                    {identity.handle}
+                    <IdentityAvatar
+                      handle={identity.handle}
+                      avatar={identity.avatar}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs text-gray-500 leading-tight">
+                        Continue as
+                      </div>
+                      <div className="font-semibold text-gray-800 truncate">
+                        @{identity.handle}
+                      </div>
+                    </div>
+                    <svg
+                      className="w-5 h-5 text-gray-400 group-hover:text-gray-600 shrink-0"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                      aria-hidden
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M9 5l7 7-7 7"
+                      />
+                    </svg>
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       removeIdentity(identity.did);
                       setSavedIdentities((current) => {
                         const updated = current.filter((id) =>
@@ -196,14 +307,14 @@ export function Login() {
                         return updated;
                       });
                     }}
-                    className="p-2 text-gray-400 hover:text-gray-600 transition"
+                    className="absolute -top-1.5 -right-1.5 w-6 h-6 flex items-center justify-center rounded-full bg-white shadow ring-1 ring-gray-200 text-gray-400 hover:text-gray-700 hover:ring-gray-300 transition opacity-0 group-hover:opacity-100 focus:opacity-100"
                     aria-label={`Remove ${identity.handle}`}
                   >
                     <svg
-                      className="w-4 h-4"
+                      className="w-3.5 h-3.5"
                       fill="none"
                       viewBox="0 0 24 24"
-                      strokeWidth={2}
+                      strokeWidth={2.5}
                       stroke="currentColor"
                       aria-hidden
                     >
@@ -230,13 +341,14 @@ export function Login() {
                 </div>
               )}
 
-              <button
-                type="button"
+              <Button
+                variant="link"
+                size="sm"
+                fullWidth
                 onClick={() => setShowForm(true)}
-                className="w-full text-sm text-gray-500 hover:text-gray-700 transition py-1"
               >
                 Use a different account
-              </button>
+              </Button>
             </div>
           )}
 
@@ -272,31 +384,25 @@ export function Login() {
                 </div>
               )}
 
-              <button
+              <Button
                 type="submit"
-                disabled={loading || !handle.trim()}
-                className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                variant="primary"
+                fullWidth
+                loading={loading}
+                disabled={!handle.trim()}
               >
-                {loading
-                  ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <div className="spinner w-5 h-5 border-2"></div>
-                      Connecting...
-                    </span>
-                  )
-                  : (
-                    "Connect"
-                  )}
-              </button>
+                {loading ? "Connecting..." : "Connect"}
+              </Button>
 
               {savedIdentities.length > 0 && (
-                <button
-                  type="button"
+                <Button
+                  variant="link"
+                  size="sm"
+                  fullWidth
                   onClick={() => setShowForm(false)}
-                  className="w-full text-sm text-gray-500 hover:text-gray-700 transition py-1"
                 >
                   Back to saved accounts
-                </button>
+                </Button>
               )}
             </form>
           )}
@@ -323,12 +429,14 @@ export function Login() {
             </div>
           </details>
 
-          <a
+          <Button
             href="/create-account"
-            className="mt-4 block w-full text-center px-4 py-3 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition"
+            variant="secondary"
+            fullWidth
+            className="mt-4"
           >
             Create a new account
-          </a>
+          </Button>
 
           <div className="relative my-6">
             <div className="absolute inset-0 flex items-center">
@@ -339,22 +447,24 @@ export function Login() {
             </div>
           </div>
 
-          <button
-            type="button"
+          <Button
+            variant="secondary"
+            fullWidth
             onClick={handleBlueskyConnect}
             disabled={loading}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg border border-blue-300 text-gray-700 font-medium hover:bg-blue-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            leadingIcon={
+              <svg
+                className="w-5 h-5"
+                viewBox="0 0 568 501"
+                fill="#1185FF"
+                aria-hidden
+              >
+                <path d="M123.121 33.6637C188.241 82.5526 258.281 181.681 284 234.873C309.719 181.681 379.759 82.5526 444.879 33.6637C491.866 -1.61183 568 -28.9064 568 57.9464C568 75.2916 558.055 203.659 552.222 224.501C531.947 296.954 458.067 315.434 392.347 304.249C507.222 323.8 536.444 388.56 473.333 453.32C353.473 576.312 301.061 422.461 287.631 383.039C285.169 375.812 284.017 372.431 284 375.306C283.983 372.431 282.831 375.812 280.369 383.039C266.939 422.461 214.527 576.312 94.6667 453.32C31.5556 388.56 60.7778 323.8 175.653 304.249C109.933 315.434 36.0533 296.954 15.7778 224.501C9.94525 203.659 0 75.2916 0 57.9464C0 -28.9064 76.1345 -1.61183 123.121 33.6637Z" />
+              </svg>
+            }
           >
-            <svg
-              className="w-5 h-5"
-              viewBox="0 0 568 501"
-              fill="#1185FF"
-              aria-hidden
-            >
-              <path d="M123.121 33.6637C188.241 82.5526 258.281 181.681 284 234.873C309.719 181.681 379.759 82.5526 444.879 33.6637C491.866 -1.61183 568 -28.9064 568 57.9464C568 75.2916 558.055 203.659 552.222 224.501C531.947 296.954 458.067 315.434 392.347 304.249C507.222 323.8 536.444 388.56 473.333 453.32C353.473 576.312 301.061 422.461 287.631 383.039C285.169 375.812 284.017 372.431 284 375.306C283.983 372.431 282.831 375.812 280.369 383.039C266.939 422.461 214.527 576.312 94.6667 453.32C31.5556 388.56 60.7778 323.8 175.653 304.249C109.933 315.434 36.0533 296.954 15.7778 224.501C9.94525 203.659 0 75.2916 0 57.9464C0 -28.9064 76.1345 -1.61183 123.121 33.6637Z" />
-            </svg>
             Connect with Bluesky
-          </button>
+          </Button>
         </div>
       </div>
     </div>

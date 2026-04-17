@@ -156,31 +156,36 @@ export function EditTag(
           )}
 
           <div className="flex gap-2 justify-between">
-            <button
+            <Button
               type="button"
+              variant="danger"
+              size="sm"
               onClick={handleDelete}
-              disabled={isSubmitting || isDeleting}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition text-sm font-medium"
+              loading={isDeleting}
+              disabled={isSubmitting}
             >
               {isDeleting ? "Deleting..." : "Delete"}
-            </button>
+            </Button>
 
             <div className="flex gap-2">
-              <button
+              <Button
                 type="button"
+                variant="secondary"
+                size="sm"
                 onClick={onClose}
                 disabled={isSubmitting || isDeleting}
-                className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition text-sm font-medium"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 type="submit"
-                disabled={isSubmitting || isDeleting || !value.trim()}
-                className="px-4 py-2 btn-primary disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                variant="primary"
+                size="sm"
+                loading={isSubmitting}
+                disabled={isDeleting || !value.trim()}
               >
                 {isSubmitting ? "Saving..." : "Save"}
-              </button>
+              </Button>
             </div>
           </div>
         </form>

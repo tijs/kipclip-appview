@@ -42,12 +42,23 @@ body {
   border: none;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.15s ease;
+  box-shadow:
+    0 1px 2px rgba(45, 55, 72, 0.08),
+    0 1px 3px rgba(230, 100, 86, 0.25);
 }
 
 .btn-primary:hover {
   background-color: #d45546;
   transform: translateY(-1px);
+  box-shadow:
+    0 2px 4px rgba(45, 55, 72, 0.1),
+    0 4px 8px rgba(230, 100, 86, 0.3);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(45, 55, 72, 0.08);
 }
 
 .btn-secondary {
@@ -58,12 +69,23 @@ body {
   border: none;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.15s ease;
+  box-shadow:
+    0 1px 2px rgba(45, 55, 72, 0.08),
+    0 1px 3px rgba(91, 138, 143, 0.25);
 }
 
 .btn-secondary:hover {
   background-color: #4a7a7f;
   transform: translateY(-1px);
+  box-shadow:
+    0 2px 4px rgba(45, 55, 72, 0.1),
+    0 4px 8px rgba(91, 138, 143, 0.3);
+}
+
+.btn-secondary:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(45, 55, 72, 0.08);
 }
 
 .card {
@@ -134,14 +156,14 @@ body {
   overflow: hidden;
 }
 
-/* Coral selection states (hover needs CSS, can't do inline) */
+/* Selected tag/pill state — teal reads as "status", leaves coral for CTAs */
 .coral-selected {
-  background-color: var(--coral);
+  background-color: var(--teal);
   color: white;
 }
 
 .coral-selected:hover {
-  background-color: var(--coral-700);
+  background-color: #4a7a7f;
 }
 
 /* Mobile tag bar scroll fade indicator */

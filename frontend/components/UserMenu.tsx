@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { useApp } from "../context/AppContext.tsx";
+import { SupporterBadge } from "./SupporterBadge.tsx";
 
 interface UserMenuProps {
   handle: string;
@@ -6,6 +8,7 @@ interface UserMenuProps {
 }
 
 export function UserMenu({ handle, onLogout }: UserMenuProps) {
+  const { isSupporter } = useApp();
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -38,6 +41,7 @@ export function UserMenu({ handle, onLogout }: UserMenuProps) {
         <span className="text-sm font-medium text-gray-700">
           @{handle}
         </span>
+        {isSupporter && <SupporterBadge />}
         <svg
           className={`w-4 h-4 text-gray-500 transition-transform ${
             isOpen ? "rotate-180" : ""
@@ -94,8 +98,9 @@ export function UserMenu({ handle, onLogout }: UserMenuProps) {
       {isOpen && (
         <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
           {/* Mobile only: Show username in menu */}
-          <div className="md:hidden px-4 py-3 border-b border-gray-200">
+          <div className="md:hidden px-4 py-3 border-b border-gray-200 flex items-center gap-2">
             <p className="text-sm font-medium text-gray-900">@{handle}</p>
+            {isSupporter && <SupporterBadge />}
           </div>
 
           <a

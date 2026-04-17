@@ -19,6 +19,7 @@ import {
 import { getUserPreferences } from "../../lib/preferences.ts";
 import { getUserSettings } from "../../lib/settings.ts";
 import { runPdsMigrations } from "../../lib/pds-migrations.ts";
+import { isUserSupporter } from "../../lib/atprotofans.ts";
 import type {
   AnnotationRecord,
   EnrichedBookmark,
@@ -98,12 +99,14 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
           tagRecords,
           settings,
           preferences,
+          isSupporter,
         ] = await Promise.all([
           listOnePage(oauthSession, BOOKMARK_COLLECTION, firstPageOpts),
           listOnePage(oauthSession, ANNOTATION_COLLECTION, firstPageOpts),
           listAllRecords(oauthSession, TAG_COLLECTION),
           getUserSettings(oauthSession.did),
           getUserPreferences(oauthSession),
+          isUserSupporter(oauthSession),
         ]);
 
         const annotationMap = new Map<string, AnnotationRecord>();
@@ -137,6 +140,7 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
           bookmarkCursor: bookmarkPage.cursor,
           annotationCursor: annotationPage.cursor,
           rateLimit,
+          isSupporter,
         };
 
         const response = setSessionCookie(

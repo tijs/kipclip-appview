@@ -18,6 +18,7 @@ import { useApp } from "../context/AppContext.tsx";
 import { apiDelete, apiPatch } from "../utils/api.ts";
 import { toast } from "sonner";
 import type { DateFormatOption } from "../../shared/date-format.ts";
+import { Tag } from "./Tag.tsx";
 import type { EnrichedBookmark, EnrichedTag } from "../../shared/types.ts";
 import { parseSearchQuery } from "../../shared/search-query.ts";
 
@@ -642,27 +643,15 @@ export function BookmarkList() {
               {availableTags
                 .filter((t) => selectedTags.has(t.value.toLowerCase()))
                 .map((tag) => (
-                  <button
+                  <Tag
                     key={tag.uri}
-                    type="button"
+                    variant="selected"
+                    shape="row"
+                    removable
                     onClick={() => toggleTag(tag.value)}
-                    className="px-3 py-1.5 text-sm rounded-lg coral-selected transition flex items-center gap-1.5"
                   >
                     {tag.value}
-                    <svg
-                      className="w-3.5 h-3.5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
-                  </button>
+                  </Tag>
                 ))}
             </>
           )}
@@ -672,17 +661,14 @@ export function BookmarkList() {
                 <span className="text-gray-300 mx-1">|</span>
               )}
               {matchingTags.map((tag) => (
-                <button
+                <Tag
                   key={tag.uri}
-                  type="button"
+                  variant="outlined"
+                  shape="row"
                   onClick={() => toggleTag(tag.value)}
-                  className="px-3 py-1.5 text-sm rounded-lg text-gray-700 hover:bg-gray-100 transition"
-                  style={{
-                    border: "1px solid #e5e7eb",
-                  }}
                 >
                   {tag.value}
-                </button>
+                </Tag>
               ))}
             </>
           )}

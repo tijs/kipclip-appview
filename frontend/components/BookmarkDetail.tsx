@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useDateFormat } from "../hooks/useDateFormat.ts";
 import type { EnrichedBookmark } from "../../shared/types.ts";
+import { Tag } from "./Tag.tsx";
 
 interface BookmarkDetailProps {
   bookmark: EnrichedBookmark;
@@ -127,12 +128,7 @@ export function BookmarkDetail({
           {bookmark.tags && bookmark.tags.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {bookmark.tags.map((tag, i) => (
-                <span
-                  key={i}
-                  className="px-2.5 py-1 text-xs rounded-full bg-gray-100 text-gray-700"
-                >
-                  {tag}
-                </span>
+                <Tag key={i} size="xs">{tag}</Tag>
               ))}
             </div>
           )}

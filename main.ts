@@ -28,6 +28,7 @@ import { registerMigrateHexRkeysRoute } from "./routes/api/migrate-hex-rkeys.ts"
 import { registerPreferencesRoutes } from "./routes/api/preferences.ts";
 import { registerShareApiRoutes } from "./routes/api/share.ts";
 import { registerTagRoutes } from "./routes/api/tags.ts";
+import { registerUserRoutes } from "./routes/api/user.ts";
 import { registerOAuthRoutes } from "./routes/oauth.ts";
 import { registerRssRoutes } from "./routes/share/rss.ts";
 import { registerShareTargetRoutes } from "./routes/share-target.ts";
@@ -111,6 +112,9 @@ app = registerMigrateHexRkeysRoute(app);
 
 // Tag API routes
 app = registerTagRoutes(app);
+
+// User-scoped API routes (supporter status)
+app = registerUserRoutes(app);
 
 // Initial data API route (combined bookmarks + tags + settings)
 app = registerInitialDataRoutes(app);

@@ -30,7 +30,7 @@ export function ImportBookmarks() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { loadInitialData } = useApp();
+  const { loadInitialData, isSupporter } = useApp();
 
   function handleFileSelect(file: File | null) {
     setSelectedFile(file);
@@ -146,6 +146,58 @@ export function ImportBookmarks() {
   const isProcessing = importState.status === "preparing" ||
     importState.status === "importing";
 
+  if (!isSupporter) {
+    return (
+      <div className="space-y-8">
+        <section>
+          <h2 className="text-3xl font-bold text-gray-800 mb-3">
+            Import Bookmarks
+          </h2>
+          <p className="text-gray-700 text-lg">
+            Bring your bookmarks from other services into kipclip.
+          </p>
+        </section>
+
+        <section
+          className="rounded-lg p-6 space-y-4"
+          style={{
+            backgroundColor: "var(--coral-50)",
+            border: "1px solid var(--coral-200)",
+          }}
+        >
+          <div className="flex items-center gap-2">
+            <svg
+              className="w-5 h-5"
+              fill="currentColor"
+              viewBox="0 0 24 24"
+              style={{ color: "var(--coral)" }}
+              aria-hidden
+            >
+              <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+            </svg>
+            <h3
+              className="text-xl font-bold"
+              style={{ color: "var(--coral-700)" }}
+            >
+              Supporter-only feature
+            </h3>
+          </div>
+          <p style={{ color: "var(--coral-700)" }}>
+            Import is available to kipclip supporters. Become a supporter to
+            unlock bulk import from Pinboard, Raindrop, Pocket, and more.
+          </p>
+          <a
+            href="/settings#supporter"
+            className="inline-flex items-center gap-2 px-5 py-3 rounded-lg font-medium text-white hover:opacity-95"
+            style={{ backgroundColor: "var(--coral)" }}
+          >
+            Learn about supporting kipclip
+          </a>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       <section>
@@ -158,37 +210,25 @@ export function ImportBookmarks() {
       </section>
 
       <div className="space-y-3">
-        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
-          <span className="text-xs font-bold uppercase tracking-wide text-amber-700 bg-amber-200 rounded px-1.5 py-0.5 mt-0.5 shrink-0">
-            Beta
-          </span>
-          <div className="text-sm text-amber-800">
-            <p>
-              Import is free while in beta. This will become a{" "}
-              <a href="/support" className="underline hover:text-amber-900">
-                supporter
-              </a>-only feature in the future.
-            </p>
-            <p className="mt-1">
-              Report bugs to{" "}
-              <a
-                href="mailto:kipclip@tijs.org"
-                className="underline hover:text-amber-900"
-              >
-                kipclip@tijs.org
-              </a>{" "}
-              or{" "}
-              <a
-                href="https://bsky.app/profile/kipclip.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline hover:text-amber-900"
-              >
-                @kipclip.com
-              </a>{" "}
-              on Bluesky.
-            </p>
-          </div>
+        <div
+          className="p-3 rounded-lg flex items-start gap-2"
+          style={{
+            backgroundColor: "var(--coral-50)",
+            border: "1px solid var(--coral-200)",
+          }}
+        >
+          <svg
+            className="w-4 h-4 mt-0.5 shrink-0"
+            fill="currentColor"
+            viewBox="0 0 24 24"
+            style={{ color: "var(--coral)" }}
+            aria-hidden
+          >
+            <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+          </svg>
+          <p className="text-sm" style={{ color: "var(--coral-700)" }}>
+            Thanks for supporting kipclip!
+          </p>
         </div>
         <div
           className="p-3 rounded-lg flex items-start gap-2"

@@ -9,6 +9,7 @@ const MAX_IDENTITIES = 5;
 export interface SavedIdentity {
   handle: string;
   did: string;
+  avatar?: string;
 }
 
 export function getSavedIdentities(): SavedIdentity[] {
@@ -28,13 +29,31 @@ export function getSavedIdentities(): SavedIdentity[] {
   }
 }
 
-export function saveIdentity(handle: string, did: string) {
+export function saveIdentity(
+  handle: string,
+  did: string,
+  avatar?: string,
+) {
   try {
     const identities = getSavedIdentities();
     // Remove existing entry for this DID (handle may have changed)
     const filtered = identities.filter((id) => id.did !== did);
     // Add to front (most recent first)
-    const updated = [{ handle, did }, ...filtered].slice(0, MAX_IDENTITIES);
+    const updated = [{ handle, did, avatar }, ...filtered].slice(
+      0,
+      MAX_IDENTITIES,
+    );
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+  } catch { /* localStorage unavailable */ }
+}
+
+/** Update an existing identity's avatar without reordering it. */
+export function updateIdentityAvatar(did: string, avatar: string) {
+  try {
+    const identities = getSavedIdentities();
+    const updated = identities.map((id) =>
+      id.did === did ? { ...id, avatar } : id
+    );
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
   } catch { /* localStorage unavailable */ }
 }

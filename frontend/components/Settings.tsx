@@ -8,16 +8,22 @@ import {
 import { apiPost } from "../utils/api.ts";
 import { ImportBookmarks } from "./ImportBookmarks.tsx";
 import { PageShell } from "./PageShell.tsx";
+import { SettingsSupporter } from "./SettingsSupporter.tsx";
 import type { MergeTagDuplicatesResponse } from "../../shared/types.ts";
 
-type SettingsTab = "general" | "import";
+type SettingsTab = "general" | "import" | "supporter";
+
+function tabFromHash(hash: string | undefined): SettingsTab {
+  if (hash === "#import") return "import";
+  if (hash === "#supporter") return "supporter";
+  return "general";
+}
 
 export function Settings() {
   const { settings, preferences, updateSettings, updatePreferences } = useApp();
-  const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
-    const hash = globalThis.location?.hash;
-    return hash === "#import" ? "import" : "general";
-  });
+  const [activeTab, setActiveTab] = useState<SettingsTab>(() =>
+    tabFromHash(globalThis.location?.hash)
+  );
   const [readingListTag, setReadingListTag] = useState(
     preferences.readingListTag,
   );
@@ -55,7 +61,7 @@ export function Settings() {
 
   // Update URL hash when tab changes
   useEffect(() => {
-    const hash = activeTab === "import" ? "#import" : "";
+    const hash = activeTab === "general" ? "" : `#${activeTab}`;
     if (globalThis.location.hash !== hash) {
       globalThis.history.replaceState(null, "", `/settings${hash}`);
     }
@@ -120,6 +126,7 @@ export function Settings() {
 
   const tabs: { id: SettingsTab; label: string }[] = [
     { id: "general", label: "General" },
+    { id: "supporter", label: "Supporter" },
     { id: "import", label: "Import" },
   ];
 
@@ -462,6 +469,8 @@ export function Settings() {
       )}
 
       {activeTab === "import" && <ImportBookmarks />}
+
+      {activeTab === "supporter" && <SettingsSupporter />}
     </PageShell>
   );
 }

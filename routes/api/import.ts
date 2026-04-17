@@ -17,6 +17,19 @@ import {
   setSessionCookie,
   TAG_COLLECTION,
 } from "../../lib/route-utils.ts";
+import { isUserSupporter } from "../../lib/atprotofans.ts";
+
+/** 403 response for endpoints that require supporter status. */
+function supporterRequiredResponse(): Response {
+  return Response.json(
+    {
+      success: false,
+      error: "supporter_required",
+      message: "Import is a supporter-only feature. Support kipclip to unlock.",
+    },
+    { status: 403 },
+  );
+}
 import { getBaseUrl } from "../../shared/url-utils.ts";
 import { generateTidForTimestamp } from "../../lib/tid.ts";
 import {
@@ -45,6 +58,10 @@ export function registerImportRoutes(app: App<any>): App<any> {
         await getSessionFromRequest(ctx.req);
       if (!oauthSession) {
         return createAuthErrorResponse(error);
+      }
+
+      if (!(await isUserSupporter(oauthSession))) {
+        return supporterRequiredResponse();
       }
 
       // Parse multipart form data
@@ -212,6 +229,10 @@ export function registerImportRoutes(app: App<any>): App<any> {
         await getSessionFromRequest(ctx.req);
       if (!oauthSession) {
         return createAuthErrorResponse(error);
+      }
+
+      if (!(await isUserSupporter(oauthSession))) {
+        return supporterRequiredResponse();
       }
 
       const { jobId } = ctx.params;

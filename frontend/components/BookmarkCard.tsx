@@ -1,5 +1,6 @@
 import { type DateFormatOption, formatDate } from "../../shared/date-format.ts";
 import type { EnrichedBookmark } from "../../shared/types.ts";
+import { Tag } from "./Tag.tsx";
 
 type ViewMode = "cards" | "list";
 
@@ -128,14 +129,7 @@ function CardView(
 
       {bookmark.tags && bookmark.tags.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-2">
-          {bookmark.tags.map((tag, i) => (
-            <span
-              key={i}
-              className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-700"
-            >
-              {tag}
-            </span>
-          ))}
+          {bookmark.tags.map((tag, i) => <Tag key={i} size="xs">{tag}</Tag>)}
         </div>
       )}
     </>
@@ -179,12 +173,7 @@ function ListView(
       {bookmark.tags && bookmark.tags.length > 0 && (
         <div className="hidden sm:flex items-center gap-1 shrink-0">
           {bookmark.tags.slice(0, 3).map((tag, i) => (
-            <span
-              key={i}
-              className="px-1.5 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600"
-            >
-              {tag}
-            </span>
+            <Tag key={i} size="xs">{tag}</Tag>
           ))}
           {bookmark.tags.length > 3 && (
             <span className="text-xs text-gray-400">

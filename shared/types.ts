@@ -193,6 +193,13 @@ export interface InitialDataResponse {
   annotationCursor?: string;
   /** PDS rate limit info (forwarded from upstream) */
   rateLimit?: { remaining: number; reset: number; limit: number };
+  /** True when the user is a kipclip supporter on atprotofans.com. */
+  isSupporter?: boolean;
+}
+
+// Supporter status API response
+export interface SupporterStatusResponse {
+  isSupporter: boolean;
 }
 
 // Import types
