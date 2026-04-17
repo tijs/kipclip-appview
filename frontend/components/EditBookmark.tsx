@@ -3,6 +3,7 @@ import { useDateFormat } from "../hooks/useDateFormat.ts";
 import type { EnrichedBookmark, EnrichedTag } from "../../shared/types.ts";
 import { apiDelete, apiPatch, apiPost } from "../utils/api.ts";
 import { TagInput } from "./TagInput.tsx";
+import { Button } from "./Button.tsx";
 
 interface EditBookmarkProps {
   bookmark: EnrichedBookmark;
@@ -227,41 +228,35 @@ export function EditBookmark({
         {/* Footer with action buttons */}
         <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 space-y-3">
           <div className="flex gap-3">
-            <button
+            <Button
               type="button"
+              variant="secondary"
               onClick={onClose}
-              className="flex-1 px-4 py-3 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition"
               disabled={loading}
+              fullWidth
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="primary"
               onClick={handleSave}
-              className="flex-1 btn-primary disabled:opacity-50"
-              disabled={loading}
+              loading={loading}
+              fullWidth
             >
-              {loading
-                ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <div className="spinner w-5 h-5 border-2"></div>
-                    Saving...
-                  </span>
-                )
-                : (
-                  "Save Changes"
-                )}
-            </button>
+              {loading ? "Saving..." : "Save Changes"}
+            </Button>
           </div>
 
-          <button
+          <Button
             type="button"
+            variant="danger"
             onClick={handleDelete}
-            className="w-full px-4 py-3 rounded-lg bg-red-50 text-red-600 font-medium hover:bg-red-100 transition border border-red-200"
             disabled={loading}
+            fullWidth
           >
             Delete Bookmark
-          </button>
+          </Button>
         </div>
       </div>
     </div>

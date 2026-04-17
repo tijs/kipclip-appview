@@ -5,6 +5,7 @@ import { EditTag } from "./EditTag.tsx";
 import { useApp } from "../context/AppContext.tsx";
 import { useDateFormat } from "../hooks/useDateFormat.ts";
 import { encodeTagsForUrl } from "../../shared/utils.ts";
+import { Button } from "./Button.tsx";
 
 export function TagSidebar() {
   const {
@@ -311,47 +312,54 @@ export function TagSidebar() {
               {tags.length} {tags.length === 1 ? "tag" : "tags"}
             </span>
           </h2>
-          <button
+          <Button
             type="button"
+            variant="primary"
+            size="sm"
             onClick={() => setShowAddModal(true)}
-            className="w-full btn-primary text-sm py-2 px-4"
+            fullWidth
           >
             + Create Tag
-          </button>
+          </Button>
         </div>
 
         {selectedTags.size > 0 && (
           <div className="mb-4 space-y-2">
-            <button
+            <Button
               type="button"
+              variant="secondary"
+              size="sm"
               onClick={clearFilters}
-              className="w-full px-3 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded-lg transition text-gray-700 font-medium"
               title="Clear all filters"
+              fullWidth
             >
               Clear filters ({selectedTags.size})
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="primary"
+              size="sm"
               onClick={handleShareFiltered}
-              className="w-full px-3 py-2 text-sm rounded-lg transition text-white font-medium flex items-center justify-center gap-2"
-              style={{ backgroundColor: "var(--coral)" }}
               title="Share these filtered bookmarks"
+              fullWidth
+              leadingIcon={
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+                  />
+                </svg>
+              }
             >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
-                />
-              </svg>
               Share collection
-            </button>
+            </Button>
           </div>
         )}
 

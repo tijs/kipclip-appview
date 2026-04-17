@@ -5,6 +5,7 @@ import { useApp } from "../context/AppContext.tsx";
 import { apiPost } from "../utils/api.ts";
 import { DuplicateWarning } from "./DuplicateWarning.tsx";
 import { TagInput } from "./TagInput.tsx";
+import { Button } from "./Button.tsx";
 
 interface AddBookmarkProps {
   onClose: () => void;
@@ -145,28 +146,24 @@ export function AddBookmark({
               )}
 
               <div className="flex gap-3">
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
                   onClick={onClose}
-                  className="flex-1 px-4 py-3 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition"
                   disabled={loading}
+                  fullWidth
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   type="submit"
-                  className="flex-1 btn-primary disabled:opacity-50"
-                  disabled={loading || !url.trim()}
+                  variant="primary"
+                  loading={loading}
+                  disabled={!url.trim()}
+                  fullWidth
                 >
-                  {loading
-                    ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <div className="spinner w-5 h-5 border-2"></div>
-                        Adding...
-                      </span>
-                    )
-                    : "Add Bookmark"}
-                </button>
+                  {loading ? "Adding..." : "Add Bookmark"}
+                </Button>
               </div>
             </form>
           )}

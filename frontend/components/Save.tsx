@@ -6,6 +6,7 @@ import type {
 } from "../../shared/types.ts";
 import { DuplicateWarning } from "./DuplicateWarning.tsx";
 import { TagInput } from "./TagInput.tsx";
+import { Button } from "./Button.tsx";
 
 export function Save() {
   const [session, setSession] = useState<
@@ -211,12 +212,9 @@ export function Save() {
             </p>
           </div>
 
-          <a
-            href={loginUrl}
-            className="inline-block w-full btn-primary py-3 px-4 rounded-lg text-center"
-          >
+          <Button href={loginUrl} variant="primary" fullWidth>
             Sign in
-          </a>
+          </Button>
         </div>
       </div>
     );
@@ -256,19 +254,17 @@ export function Save() {
           </div>
 
           <div className="space-y-3">
-            <button
+            <Button
               type="button"
+              variant="secondary"
               onClick={handleClose}
-              className="w-full px-4 py-3 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition"
+              fullWidth
             >
               Close Window
-            </button>
-            <a
-              href="/"
-              className="block w-full px-4 py-3 rounded-lg btn-primary text-center"
-            >
+            </Button>
+            <Button href="/" variant="primary" fullWidth>
               View All Bookmarks
-            </a>
+            </Button>
           </div>
         </div>
       </div>
@@ -356,20 +352,15 @@ export function Save() {
                 </div>
               )}
 
-              <button
+              <Button
                 type="submit"
-                className="w-full btn-primary py-3 disabled:opacity-50"
-                disabled={saving || !url.trim()}
+                variant="primary"
+                loading={saving}
+                disabled={!url.trim()}
+                fullWidth
               >
-                {saving
-                  ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <div className="spinner w-5 h-5 border-2"></div>
-                      Saving...
-                    </span>
-                  )
-                  : "Save Bookmark"}
-              </button>
+                {saving ? "Saving..." : "Save Bookmark"}
+              </Button>
             </form>
           )}
 

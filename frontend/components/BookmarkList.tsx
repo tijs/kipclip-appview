@@ -19,6 +19,7 @@ import { apiDelete, apiPatch } from "../utils/api.ts";
 import { toast } from "sonner";
 import type { DateFormatOption } from "../../shared/date-format.ts";
 import { Tag } from "./Tag.tsx";
+import { Button } from "./Button.tsx";
 import type { EnrichedBookmark, EnrichedTag } from "../../shared/types.ts";
 import { parseSearchQuery } from "../../shared/search-query.ts";
 
@@ -366,9 +367,9 @@ export function BookmarkList() {
     return (
       <div className="text-center py-20">
         <p className="text-red-600 mb-4">Error: {error}</p>
-        <button type="button" onClick={loadBookmarks} className="btn-primary">
+        <Button type="button" onClick={loadBookmarks}>
           Try Again
-        </button>
+        </Button>
       </div>
     );
   }
@@ -424,24 +425,24 @@ export function BookmarkList() {
             </h2>
             <div className="flex items-center gap-2">
               {bookmarks.length > 0 && (
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
                   onClick={isSelectMode
                     ? exitSelectMode
                     : () => setIsSelectMode(true)}
-                  className="px-6 py-3 rounded-lg border border-gray-300 text-gray-700 font-semibold hover:bg-gray-50"
                 >
                   {isSelectMode ? "Cancel" : "Select"}
-                </button>
+                </Button>
               )}
               {!isSelectMode && (
-                <button
+                <Button
                   type="button"
+                  variant="primary"
                   onClick={() => setShowAddModal(true)}
-                  className="btn-primary"
                 >
                   + Add Bookmark
-                </button>
+                </Button>
               )}
             </div>
           </div>
@@ -687,13 +688,12 @@ export function BookmarkList() {
             <p className="text-gray-500 mb-6">
               Start collecting your favorite links!
             </p>
-            <button
+            <Button
               type="button"
               onClick={() => setShowAddModal(true)}
-              className="btn-primary"
             >
               Add Your First Bookmark
-            </button>
+            </Button>
           </div>
         )
         : (
