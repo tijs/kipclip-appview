@@ -58,39 +58,15 @@ export function TagSidebar() {
     toast("Tag deleted");
   }
 
-  async function handleShareFiltered() {
+  function handleShareFiltered() {
     if (!session || selectedTags.size === 0) return;
 
-    try {
-      // Look up original-case tag values for the share URL
-      const originalCaseTags = tags
-        .filter((t) => selectedTags.has(t.value.toLowerCase()))
-        .map((t) => t.value);
-      const encodedTags = encodeTagsForUrl(originalCaseTags);
-      const shareUrl =
-        `${globalThis.location.origin}/share/${session.did}/${encodedTags}`;
-
-      // Use Web Share API if available
-      if (navigator.share) {
-        await navigator.share({
-          title: "My Kipclip Bookmarks Collection",
-          text: `Check out my bookmarks collection tagged with: ${
-            originalCaseTags.join(", ")
-          }`,
-          url: shareUrl,
-        });
-      } else {
-        // Fallback: copy to clipboard
-        await navigator.clipboard.writeText(shareUrl);
-        alert("Share link copied to clipboard!");
-      }
-    } catch (err: any) {
-      // User cancelled or share failed
-      if (err.name !== "AbortError") {
-        console.error("Share failed:", err);
-        alert("Failed to share link");
-      }
-    }
+    // Look up original-case tag values for the share URL
+    const originalCaseTags = tags
+      .filter((t) => selectedTags.has(t.value.toLowerCase()))
+      .map((t) => t.value);
+    const encodedTags = encodeTagsForUrl(originalCaseTags);
+    globalThis.location.href = `/share/${session.did}/${encodedTags}`;
   }
 
   // Shared tag item renderer
@@ -278,7 +254,7 @@ export function TagSidebar() {
                 onClick={handleShareFiltered}
                 className="px-3 py-1.5 text-xs rounded-lg transition text-white font-medium flex items-center gap-1.5"
                 style={{ backgroundColor: "var(--coral)" }}
-                title="Share these filtered bookmarks"
+                title="Open the shareable collection page"
               >
                 <svg
                   className="w-3.5 h-3.5"
@@ -340,7 +316,7 @@ export function TagSidebar() {
               variant="primary"
               size="sm"
               onClick={handleShareFiltered}
-              title="Share these filtered bookmarks"
+              title="Open the shareable collection page"
               fullWidth
               leadingIcon={
                 <svg

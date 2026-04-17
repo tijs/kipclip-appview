@@ -9,6 +9,12 @@ import {
   ANNOTATION_COLLECTION,
   BOOKMARK_COLLECTION,
 } from "../../lib/route-utils.ts";
+import {
+  assertSafePdsUrl,
+  isValidDid,
+  paginateListRecordsPublic,
+} from "../../lib/pds-public.ts";
+import { extractRkey } from "../../lib/annotations.ts";
 import { decodeTagsFromUrl } from "../../shared/utils.ts";
 import type { AnnotationRecord } from "../../shared/types.ts";
 
@@ -31,12 +37,15 @@ export function registerRssRoutes(app: App<any>): App<any> {
       const did = ctx.params.did;
       const encodedTags = ctx.params.encodedTags;
 
+      if (!isValidDid(did)) {
+        return new Response("Invalid DID", { status: 400 });
+      }
+
       const tags = decodeTagsFromUrl(encodedTags);
       if (!tags || tags.length === 0) {
         return new Response("Invalid tags", { status: 400 });
       }
 
-      // Use cached PLC resolver
       const resolved = await resolveDid(did);
       if (!resolved) {
         return new Response("PDS not found", { status: 404 });
@@ -44,50 +53,31 @@ export function registerRssRoutes(app: App<any>): App<any> {
 
       const { pdsUrl: pdsEndpoint, handle } = resolved;
 
-      // Fetch bookmarks and annotations in parallel
-      const [bookmarksResponse, annotationsResponse] = await Promise.all([
-        fetch(
-          `${pdsEndpoint}/xrpc/com.atproto.repo.listRecords?` +
-            new URLSearchParams({
-              repo: did,
-              collection: BOOKMARK_COLLECTION,
-              limit: "100",
-            }),
-        ),
-        fetch(
-          `${pdsEndpoint}/xrpc/com.atproto.repo.listRecords?` +
-            new URLSearchParams({
-              repo: did,
-              collection: ANNOTATION_COLLECTION,
-              limit: "100",
-            }),
-        ).catch(() => null),
+      try {
+        assertSafePdsUrl(pdsEndpoint);
+      } catch {
+        return new Response("PDS not allowed", { status: 400 });
+      }
+
+      const [bookmarkRecords, annotationRecords] = await Promise.all([
+        paginateListRecordsPublic(pdsEndpoint, did, BOOKMARK_COLLECTION),
+        paginateListRecordsPublic(pdsEndpoint, did, ANNOTATION_COLLECTION)
+          .catch(() => [] as any[]),
       ]);
 
-      if (!bookmarksResponse.ok) {
-        return new Response("Failed to fetch bookmarks", { status: 500 });
-      }
-
-      // Build annotation lookup map
       const annotationMap = new Map<string, AnnotationRecord>();
-      if (annotationsResponse?.ok) {
-        const annotationsData = await annotationsResponse.json();
-        for (const record of annotationsData.records || []) {
-          const rkey = record.uri.split("/").pop();
-          if (rkey) {
-            annotationMap.set(rkey, record.value as AnnotationRecord);
-          }
-        }
+      for (const record of annotationRecords) {
+        const rkey = extractRkey(record.uri);
+        if (rkey) annotationMap.set(rkey, record.value as AnnotationRecord);
       }
 
-      const bookmarksData = await bookmarksResponse.json();
-      const filteredBookmarks = bookmarksData.records
+      const filteredBookmarks = bookmarkRecords
         .filter((record: any) => {
           const recordTags = record.value?.tags || [];
           return tags.every((tag) => recordTags.includes(tag));
         })
         .map((record: any) => {
-          const rkey = record.uri.split("/").pop();
+          const rkey = extractRkey(record.uri);
           const annotation = rkey ? annotationMap.get(rkey) : undefined;
           return {
             uri: record.uri,
@@ -147,11 +137,14 @@ ${items}
 </rss>`;
 
       return new Response(rssXml, {
-        headers: { "Content-Type": "application/rss+xml; charset=utf-8" },
+        headers: {
+          "Content-Type": "application/rss+xml; charset=utf-8",
+          "Cache-Control": "public, max-age=60, stale-while-revalidate=600",
+        },
       });
     } catch (error) {
       console.error("RSS generation error:", error);
-      throw error;
+      return new Response("Failed to generate feed", { status: 500 });
     }
   });
 

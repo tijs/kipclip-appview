@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { formatDate } from "../../shared/date-format.ts";
 import type { EnrichedBookmark } from "../../shared/types.ts";
 import { SupportBanner } from "./SupportBanner.tsx";
@@ -98,6 +99,33 @@ export function SharedBookmarks({ did, encodedTags }: SharedBookmarksProps) {
     globalThis.open(url, "_blank", "noopener,noreferrer");
   }
 
+  async function handleShareCollection() {
+    const url = globalThis.location.href;
+    const title = handle
+      ? `${handle}'s bookmarks: ${tags.join(", ")}`
+      : `Bookmarks: ${tags.join(", ")}`;
+    const text = `Bookmarks tagged with ${tags.join(", ")}${
+      handle ? ` by ${handle}` : ""
+    }`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title, text, url });
+        return;
+      } catch (err: any) {
+        if (err.name === "AbortError") return;
+        // Fall through to clipboard on genuine failure.
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(url);
+      toast("Link copied to clipboard");
+    } catch {
+      toast("Could not copy link — copy it from the address bar");
+    }
+  }
+
   async function handleShare(e: React.MouseEvent, bookmark: any) {
     e.stopPropagation();
 
@@ -181,9 +209,35 @@ export function SharedBookmarks({ did, encodedTags }: SharedBookmarksProps) {
               {handle}
             </a>
           </div>
-          <h1 className="text-3xl font-bold text-gray-800 mb-4">
-            Bookmarks Collection
-          </h1>
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <h1 className="text-3xl font-bold text-gray-800">
+              Bookmarks Collection
+            </h1>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={handleShareCollection}
+              title="Share this collection"
+              leadingIcon={
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+                  />
+                </svg>
+              }
+            >
+              Share
+            </Button>
+          </div>
           <div className="flex flex-wrap gap-2">
             <span className="text-sm text-gray-600">Filtered by tags:</span>
             {tags.map((tag) => (
