@@ -17,9 +17,8 @@
  *
  * Sizes: sm (default) | xs (for dense card footers).
  *
- * Pass `removable` to show a trailing × affordance. Pass `checked` to
- * show a leading ✓ icon. Pass `onClick` to render a <button>; omit it
- * for a non-interactive <span>.
+ * Pass `removable` to show a trailing × affordance. Pass `onClick` to
+ * render a <button>; omit it for a non-interactive <span>.
  */
 
 import type { ReactNode } from "react";
@@ -40,9 +39,7 @@ interface TagProps {
   shape?: Shape;
   size?: Size;
   removable?: boolean;
-  checked?: boolean;
   onClick?: (e: React.MouseEvent) => void;
-  title?: string;
   className?: string;
 }
 
@@ -67,25 +64,6 @@ const VARIANT: Record<Variant, string> = {
 
 const BASE =
   "inline-flex items-center gap-1.5 font-medium transition-colors whitespace-nowrap";
-
-function CheckIcon() {
-  return (
-    <svg
-      className="w-3.5 h-3.5 shrink-0"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-      aria-hidden
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2.5}
-        d="M5 13l4 4L19 7"
-      />
-    </svg>
-  );
-}
 
 function CloseIcon() {
   return (
@@ -112,9 +90,7 @@ export function Tag({
   shape = "pill",
   size = "sm",
   removable = false,
-  checked = false,
   onClick,
-  title,
   className,
 }: TagProps) {
   const cls = [
@@ -128,7 +104,6 @@ export function Tag({
 
   const content = (
     <>
-      {checked && <CheckIcon />}
       <span className="truncate">{children}</span>
       {removable && <CloseIcon />}
     </>
@@ -136,14 +111,10 @@ export function Tag({
 
   if (onClick) {
     return (
-      <button type="button" className={cls} onClick={onClick} title={title}>
+      <button type="button" className={cls} onClick={onClick}>
         {content}
       </button>
     );
   }
-  return (
-    <span className={cls} title={title}>
-      {content}
-    </span>
-  );
+  return <span className={cls}>{content}</span>;
 }

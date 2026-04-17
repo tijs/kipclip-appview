@@ -17,7 +17,10 @@ import {
   setSessionCookie,
   TAG_COLLECTION,
 } from "../../lib/route-utils.ts";
-import { isUserSupporter } from "../../lib/atprotofans.ts";
+import {
+  ATPROTOFANS_SUPPORT_URL,
+  isUserSupporter,
+} from "../../lib/atprotofans.ts";
 
 /** 403 response for endpoints that require supporter status. */
 function supporterRequiredResponse(): Response {
@@ -26,6 +29,8 @@ function supporterRequiredResponse(): Response {
       success: false,
       error: "supporter_required",
       message: "Import is a supporter-only feature. Support kipclip to unlock.",
+      upgradeUrl: ATPROTOFANS_SUPPORT_URL,
+      statusUrl: "/api/user/supporter-status",
     },
     { status: 403 },
   );
@@ -231,10 +236,6 @@ export function registerImportRoutes(app: App<any>): App<any> {
         return createAuthErrorResponse(error);
       }
 
-      if (!(await isUserSupporter(oauthSession))) {
-        return supporterRequiredResponse();
-      }
-
       const { jobId } = ctx.params;
       const job = await getImportJob(jobId);
 
@@ -254,6 +255,13 @@ export function registerImportRoutes(app: App<any>): App<any> {
           { success: false, error: "Forbidden" } as ImportProcessResponse,
           { status: 403 },
         );
+      }
+
+      // Supporter status is verified once at prepare-time and stamped on the
+      // job. Trust the stamp here so mid-import PDS flakes or cache expiry
+      // can't 403 an in-progress job.
+      if (!job.supporterVerifiedAt) {
+        return supporterRequiredResponse();
       }
 
       // If job already completed, return final result

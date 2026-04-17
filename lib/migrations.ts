@@ -76,6 +76,13 @@ const MIGRATIONS: Array<{
       CREATE INDEX IF NOT EXISTS idx_import_chunks_job ON import_chunks(job_id, chunk_index)
     `,
   },
+  {
+    version: "004",
+    description: "Stamp supporter verification on import_jobs",
+    sql: `
+      ALTER TABLE import_jobs ADD COLUMN supporter_verified_at TEXT
+    `,
+  },
 ];
 
 export async function runMigrations() {

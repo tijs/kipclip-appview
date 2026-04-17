@@ -249,9 +249,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   /** Apply settings/preferences from server response */
   function applyServerMeta(data: InitialDataResponse) {
     setSettings(data.settings);
-    if (typeof data.isSupporter === "boolean") {
-      setIsSupporter(data.isSupporter);
-    }
+    setIsSupporter(data.isSupporter);
     if (data.preferences) {
       const localFormat = getDateFormat();
       const pdsFormat = data.preferences.dateFormat;

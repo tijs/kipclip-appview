@@ -21,14 +21,13 @@ import type {
 
 type Variant = "primary" | "secondary" | "danger" | "link";
 
-type Size = "sm" | "md" | "lg";
+type Size = "sm" | "md";
 
 type CommonProps = {
   variant?: Variant;
   size?: Size;
   fullWidth?: boolean;
   leadingIcon?: ReactNode;
-  trailingIcon?: ReactNode;
   loading?: boolean;
   children?: ReactNode;
   className?: string;
@@ -53,7 +52,6 @@ const BASE =
 const SIZES: Record<Size, string> = {
   sm: "px-3 py-1.5 text-sm",
   md: "px-5 py-2.5 text-base",
-  lg: "px-6 py-3 text-base",
 };
 
 // Per-variant resting, hover, and disabled styles. Disabled removes the
@@ -116,7 +114,6 @@ export function Button(props: ButtonProps) {
     size = "md",
     fullWidth = false,
     leadingIcon,
-    trailingIcon,
     loading = false,
     children,
     className,
@@ -126,38 +123,20 @@ export function Button(props: ButtonProps) {
   const isAnchor = "href" in rest && rest.href !== undefined;
   const buttonDisabled = (!isAnchor &&
     (rest as ButtonHTMLAttributes<HTMLButtonElement>).disabled) || false;
-  const anchorDisabled = isAnchor &&
-    (rest as AnchorHTMLAttributes<HTMLAnchorElement> & { disabled?: boolean })
-        .disabled === true;
-  const isDisabled = loading || buttonDisabled || anchorDisabled;
+  const isDisabled = loading || buttonDisabled;
 
   const cls = classes(variant, size, fullWidth, isDisabled, className);
   const content = (
     <>
       {loading ? <Spinner /> : leadingIcon}
       {children}
-      {!loading && trailingIcon}
     </>
   );
 
   if (isAnchor) {
-    const { disabled: _d, ...anchorProps } = rest as
-      & AnchorHTMLAttributes<HTMLAnchorElement>
-      & { disabled?: boolean };
-    // Anchors have no native disabled; simulate it with aria + pointer-events.
+    const anchorProps = rest as AnchorHTMLAttributes<HTMLAnchorElement>;
     return (
-      <a
-        className={cls}
-        aria-disabled={isDisabled || undefined}
-        tabIndex={isDisabled ? -1 : undefined}
-        onClick={isDisabled
-          ? (e) => {
-            e.preventDefault();
-          }
-          : anchorProps.onClick}
-        style={isDisabled ? { pointerEvents: "none" } : undefined}
-        {...anchorProps}
-      >
+      <a className={cls} {...anchorProps}>
         {content}
       </a>
     );

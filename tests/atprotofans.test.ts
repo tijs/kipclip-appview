@@ -51,6 +51,26 @@ Deno.test("isUserSupporter — hardcoded allowlist short-circuits true", async (
   assertEquals(AUTO_SUPPORTER_DIDS.has(KIPCLIP_DID), true);
 });
 
+Deno.test("isUserSupporter — injected autoSupporterDids short-circuits true", async () => {
+  _clearSupporterCache();
+  let called = false;
+  const injectedDid = "did:plc:injected-for-test";
+  const session = createMockSession({ did: injectedDid });
+  const wrapped = {
+    ...session,
+    makeRequest: () => {
+      called = true;
+      return Promise.resolve(listRecordsResponse([]));
+    },
+  };
+
+  const result = await isUserSupporter(wrapped as typeof session, {
+    autoSupporterDids: new Set([injectedDid]),
+  });
+  assertEquals(result, true);
+  assertEquals(called, false, "injected allowlist should skip PDS lookup");
+});
+
 Deno.test("isUserSupporter — empty records returns false", async () => {
   _clearSupporterCache();
   const session = createMockSession({
@@ -93,7 +113,7 @@ Deno.test("isUserSupporter — record pointing at another creator returns false"
   assertEquals(result, false);
 });
 
-Deno.test("isUserSupporter — PDS error returns false and is not cached", async () => {
+Deno.test("isUserSupporter — PDS error is negative-cached briefly", async () => {
   _clearSupporterCache();
   let callCount = 0;
   const session = createMockSession({ did: NON_ALLOWLISTED_DID });
@@ -101,7 +121,6 @@ Deno.test("isUserSupporter — PDS error returns false and is not cached", async
     ...session,
     makeRequest: (_method: string, _url: string) => {
       callCount++;
-      // First call: 503. Second call: success with supporter record.
       if (callCount === 1) {
         return Promise.resolve(
           new Response("service unavailable", { status: 503 }),
@@ -113,10 +132,17 @@ Deno.test("isUserSupporter — PDS error returns false and is not cached", async
 
   const first = await isUserSupporter(wrapped as typeof session);
   assertEquals(first, false);
+  assertEquals(callCount, 1);
 
-  // Second call should re-query (not cached) and return true
-  const second = await isUserSupporter(wrapped as typeof session);
-  assertEquals(second, true);
+  // Second call within negative-cache window returns cached false
+  const cached = await isUserSupporter(wrapped as typeof session);
+  assertEquals(cached, false);
+  assertEquals(callCount, 1, "failure is negative-cached (protects PDS)");
+
+  // Simulate negative-cache TTL expiry by clearing cache; retry recovers.
+  _clearSupporterCache();
+  const recovered = await isUserSupporter(wrapped as typeof session);
+  assertEquals(recovered, true);
   assertEquals(callCount, 2);
 });
 
@@ -139,7 +165,7 @@ Deno.test("isUserSupporter — cached result is reused within TTL", async () => 
   assertEquals(callCount, 1, "subsequent calls should hit cache");
 });
 
-Deno.test("isUserSupporter — bypassCache forces a re-query", async () => {
+Deno.test("isUserSupporter — bypassCache honors refresh cooldown", async () => {
   _clearSupporterCache();
   let callCount = 0;
   const session = createMockSession({ did: NON_ALLOWLISTED_DID });
@@ -147,7 +173,6 @@ Deno.test("isUserSupporter — bypassCache forces a re-query", async () => {
     ...session,
     makeRequest: () => {
       callCount++;
-      // First call: not a supporter. Second call: is a supporter.
       if (callCount === 1) {
         return Promise.resolve(listRecordsResponse([]));
       }
@@ -157,11 +182,17 @@ Deno.test("isUserSupporter — bypassCache forces a re-query", async () => {
 
   const first = await isUserSupporter(wrapped as typeof session);
   assertEquals(first, false);
-
-  const cached = await isUserSupporter(wrapped as typeof session);
-  assertEquals(cached, false, "cache hit");
   assertEquals(callCount, 1);
 
+  // Immediate bypassCache call: cooldown prevents hammering the PDS.
+  const inCooldown = await isUserSupporter(wrapped as typeof session, {
+    bypassCache: true,
+  });
+  assertEquals(inCooldown, false, "cooldown serves cached value");
+  assertEquals(callCount, 1, "cooldown blocks re-query");
+
+  // After cache clear (simulating cooldown expired), bypassCache re-queries.
+  _clearSupporterCache();
   const refreshed = await isUserSupporter(wrapped as typeof session, {
     bypassCache: true,
   });
@@ -200,4 +231,33 @@ Deno.test("isUserSupporter — paginates through cursor", async () => {
   const result = await isUserSupporter(wrapped as typeof session);
   assertEquals(result, true);
   assertEquals(call, 2);
+});
+
+Deno.test("isUserSupporter — caps pagination at MAX_PAGES", async () => {
+  _clearSupporterCache();
+  let callCount = 0;
+  const session = createMockSession({ did: NON_ALLOWLISTED_DID });
+  // Malicious PDS: always returns a cursor, never the matching record.
+  const wrapped = {
+    ...session,
+    makeRequest: () => {
+      callCount++;
+      return Promise.resolve(
+        createPdsResponse({
+          records: [
+            {
+              uri: `at://x/com.atprotofans.supporter/${callCount}`,
+              cid: "c",
+              value: { subject: "did:plc:someone-else" },
+            },
+          ],
+          cursor: `cursor-${callCount}`,
+        }),
+      );
+    },
+  };
+
+  const result = await isUserSupporter(wrapped as typeof session);
+  assertEquals(result, false);
+  assertEquals(callCount, 3, "pagination must stop at MAX_PAGES=3");
 });

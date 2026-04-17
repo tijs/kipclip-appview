@@ -4,6 +4,10 @@
  * surfaces can't drift.
  */
 
+import { ATPROTOFANS_SUPPORT_URL } from "../../lib/atprotofans.ts";
+import { Button } from "./Button.tsx";
+import { HeartIcon } from "./HeartIcon.tsx";
+
 function Step(
   { n, title, children }: {
     n: number;
@@ -37,7 +41,7 @@ export function SupporterHowItWorks() {
         <Step n={1} title='Click "Support on atprotofans"'>
           You'll be taken to{" "}
           <a
-            href="https://atprotofans.com/support/did:plc:3zzkrrjtsmo7nnwnvhex3auj"
+            href={ATPROTOFANS_SUPPORT_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="underline hover:text-gray-800"
@@ -69,22 +73,14 @@ export function SupporterHowItWorks() {
 /** The "Support on atprotofans" CTA button, reused across pages. */
 export function SupportOnAtprotofansButton() {
   return (
-    <a
-      href="https://atprotofans.com/support/did:plc:3zzkrrjtsmo7nnwnvhex3auj"
+    <Button
+      variant="primary"
+      href={ATPROTOFANS_SUPPORT_URL}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex items-center gap-2 px-5 py-3 rounded-lg font-medium text-white hover:opacity-95"
-      style={{ backgroundColor: "var(--coral)" }}
+      leadingIcon={<HeartIcon />}
     >
-      <svg
-        className="w-5 h-5"
-        fill="currentColor"
-        viewBox="0 0 24 24"
-        aria-hidden
-      >
-        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
-      </svg>
       Support on atprotofans
-    </a>
+    </Button>
   );
 }

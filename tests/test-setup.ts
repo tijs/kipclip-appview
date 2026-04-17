@@ -28,6 +28,6 @@ if (!Deno.env.get("COOKIE_SECRET")) {
 // supporter-gated endpoints without wiring up a supporter record in every
 // PDS mock. Tests that specifically assert non-supporter behavior should
 // use a DID outside this set.
-import { AUTO_SUPPORTER_DIDS } from "../lib/atprotofans.ts";
-AUTO_SUPPORTER_DIDS.add("did:plc:test123");
-AUTO_SUPPORTER_DIDS.add("did:plc:other999");
+import { _addTestAutoSupporter } from "../lib/atprotofans.ts";
+_addTestAutoSupporter("did:plc:test123");
+_addTestAutoSupporter("did:plc:other999");

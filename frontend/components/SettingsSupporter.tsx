@@ -7,6 +7,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { useApp } from "../context/AppContext.tsx";
+import { ATPROTOFANS_SUPPORT_URL } from "../../lib/atprotofans.ts";
 import {
   SupporterBadge,
   SupporterCelebrationBadge,
@@ -81,7 +82,7 @@ export function SettingsSupporter() {
         {isSupporter
           ? (
             <a
-              href="https://atprotofans.com/support/did:plc:3zzkrrjtsmo7nnwnvhex3auj"
+              href={ATPROTOFANS_SUPPORT_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 text-sm underline hover:opacity-80"
