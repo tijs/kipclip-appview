@@ -59,11 +59,23 @@ interface BookmarkCardProps {
   isSelectMode?: boolean;
   isSelected?: boolean;
   onClick: () => void;
+  onTagClick?: (tag: string) => void;
   onDragOver: (e: React.DragEvent) => void;
   onDragEnter: (e: React.DragEvent) => void;
   onDragLeave: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent) => void;
   onImageError: () => void;
+}
+
+function makeTagClickHandler(
+  tag: string,
+  onTagClick?: (tag: string) => void,
+) {
+  if (!onTagClick) return undefined;
+  return (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onTagClick(tag);
+  };
 }
 
 const NoteIcon = () => (
@@ -92,11 +104,12 @@ function getTitle(bookmark: EnrichedBookmark): string {
 }
 
 function CardView(
-  { bookmark, imageError, onImageError, dateFormat }: {
+  { bookmark, imageError, onImageError, dateFormat, onTagClick }: {
     bookmark: EnrichedBookmark;
     imageError: boolean;
     onImageError: () => void;
     dateFormat?: DateFormatOption;
+    onTagClick?: (tag: string) => void;
   },
 ) {
   return (
@@ -129,7 +142,16 @@ function CardView(
 
       {bookmark.tags && bookmark.tags.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-2">
-          {bookmark.tags.map((tag, i) => <Tag key={i} size="xs">{tag}</Tag>)}
+          {bookmark.tags.map((tag, i) => (
+            <Tag
+              key={i}
+              size="xs"
+              variant={onTagClick ? "unselected" : "neutral"}
+              onClick={makeTagClickHandler(tag, onTagClick)}
+            >
+              {tag}
+            </Tag>
+          ))}
         </div>
       )}
     </>
@@ -137,9 +159,10 @@ function CardView(
 }
 
 function ListView(
-  { bookmark, dateFormat }: {
+  { bookmark, dateFormat, onTagClick }: {
     bookmark: EnrichedBookmark;
     dateFormat?: DateFormatOption;
+    onTagClick?: (tag: string) => void;
   },
 ) {
   return (
@@ -173,7 +196,14 @@ function ListView(
       {bookmark.tags && bookmark.tags.length > 0 && (
         <div className="hidden sm:flex items-center gap-1 shrink-0">
           {bookmark.tags.slice(0, 3).map((tag, i) => (
-            <Tag key={i} size="xs">{tag}</Tag>
+            <Tag
+              key={i}
+              size="xs"
+              variant={onTagClick ? "unselected" : "neutral"}
+              onClick={makeTagClickHandler(tag, onTagClick)}
+            >
+              {tag}
+            </Tag>
           ))}
           {bookmark.tags.length > 3 && (
             <span className="text-xs text-gray-400">
@@ -200,6 +230,7 @@ export function BookmarkCard(
     isSelectMode,
     isSelected,
     onClick,
+    onTagClick,
     onDragOver,
     onDragEnter,
     onDragLeave,
@@ -252,6 +283,7 @@ export function BookmarkCard(
             imageError={imageError}
             onImageError={onImageError}
             dateFormat={dateFormat}
+            onTagClick={isSelectMode ? undefined : onTagClick}
           />
         )
         : (
@@ -268,7 +300,11 @@ export function BookmarkCard(
               />
             )}
             <div className="flex-1 min-w-0">
-              <ListView bookmark={bookmark} dateFormat={dateFormat} />
+              <ListView
+                bookmark={bookmark}
+                dateFormat={dateFormat}
+                onTagClick={isSelectMode ? undefined : onTagClick}
+              />
             </div>
           </div>
         )}

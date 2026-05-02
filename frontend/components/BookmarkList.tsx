@@ -723,6 +723,7 @@ export function BookmarkList() {
                       isSelectMode
                         ? toggleSelection(bookmark.uri)
                         : setDetailBookmark(bookmark)}
+                    onTagClick={toggleTag}
                     onDragOver={(e) => {
                       e.preventDefault();
                       e.dataTransfer.dropEffect = "copy";
