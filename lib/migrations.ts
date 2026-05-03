@@ -3,6 +3,7 @@
 // This file is kept for future application-specific migrations
 
 import { rawDb } from "./db.ts";
+import { MIRROR_MIGRATIONS } from "../mirror/schema.ts";
 
 // Migration tracking table
 const MIGRATIONS_TABLE = `
@@ -83,6 +84,7 @@ const MIGRATIONS: Array<{
       ALTER TABLE import_jobs ADD COLUMN supporter_verified_at TEXT
     `,
   },
+  ...MIRROR_MIGRATIONS,
 ];
 
 export async function runMigrations() {
