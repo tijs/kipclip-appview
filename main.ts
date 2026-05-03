@@ -28,6 +28,7 @@ import { registerImportRoutes } from "./routes/api/import.ts";
 import { registerMigrateHexRkeysRoute } from "./routes/api/migrate-hex-rkeys.ts";
 import { registerPreferencesRoutes } from "./routes/api/preferences.ts";
 import { registerShareApiRoutes } from "./routes/api/share.ts";
+import { registerSyncRoutes } from "./routes/api/sync.ts";
 import { registerTagRoutes } from "./routes/api/tags.ts";
 import { registerUserRoutes } from "./routes/api/user.ts";
 import { registerOAuthRoutes } from "./routes/oauth.ts";
@@ -131,6 +132,9 @@ app = registerPreferencesRoutes(app);
 
 // Share API routes (public bookmark sharing)
 app = registerShareApiRoutes(app);
+
+// Sync API routes (mirror tracking + TAP webhook)
+app = registerSyncRoutes(app);
 
 // RSS feed routes
 app = registerRssRoutes(app);
