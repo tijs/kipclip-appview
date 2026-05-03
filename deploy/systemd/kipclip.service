@@ -1,0 +1,23 @@
+[Unit]
+Description=kipclip Deno app (Fresh)
+After=network.target
+
+[Service]
+Type=simple
+User=kipclip
+Group=kipclip
+WorkingDirectory=/var/lib/kipclip/app
+EnvironmentFile=/etc/kipclip/env
+ExecStart=/opt/deno/bin/deno serve -A --port 8000 _fresh/server.js
+Restart=always
+RestartSec=2s
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/kipclip /var/log/kipclip
+
+[Install]
+WantedBy=multi-user.target

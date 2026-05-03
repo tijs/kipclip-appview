@@ -1,0 +1,22 @@
+# Caddyfile for kipclip staging box (phase 0-2).
+# Auto TLS via Let's Encrypt for staging.kipclip.com.
+# Reverse-proxies HTTPS public traffic to the kipclip Deno app on localhost:8000.
+# /api/sync/hook is NOT exposed here — TAP delivers webhooks via localhost only.
+
+staging.kipclip.com {
+	encode zstd gzip
+
+	# Block any external attempt to hit the TAP webhook endpoint.
+	@hook path /api/sync/hook
+	respond @hook 403
+
+	reverse_proxy 127.0.0.1:8000 {
+		header_up X-Forwarded-Proto https
+		header_up X-Forwarded-Host {host}
+	}
+
+	log {
+		output file /var/log/caddy/staging.kipclip.com.log
+		format console
+	}
+}

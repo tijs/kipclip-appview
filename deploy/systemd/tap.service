@@ -1,0 +1,22 @@
+[Unit]
+Description=TAP firehose subscriber (relay → kipclip webhook)
+After=network.target
+
+[Service]
+Type=simple
+User=tap
+Group=tap
+WorkingDirectory=/var/lib/tap
+ExecStart=/opt/tap/tap --config /etc/tap/config.yaml
+Restart=always
+RestartSec=5s
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/tap /var/log/tap
+
+[Install]
+WantedBy=multi-user.target
