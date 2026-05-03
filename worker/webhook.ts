@@ -65,12 +65,28 @@ export interface WebhookResult {
   applied: boolean;
 }
 
+const ACK_ASYNC = Deno.env.get("MIRROR_WEBHOOK_ACK_ASYNC") === "1";
+
 export async function handleWebhookRequest(req: Request): Promise<Response> {
   let body: MarshallableEvt;
   try {
     body = await req.json();
   } catch {
     return Response.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  if (ACK_ASYNC) {
+    // Ack immediately so TAP advances its outbox cursor; process in background.
+    // Required during backfill when burst load + Turso latency exceeds TAP's
+    // 30s webhook timeout. Idempotent upserts make at-least-once writes safe;
+    // event loss on Deno crash is acceptable since owner can re-track.
+    queueMicrotask(() => {
+      processEvent(body).catch((err) => {
+        console.error("[webhook] async dispatch error", err);
+        captureError(err as Error, { event: body });
+      });
+    });
+    return Response.json({ id: body.id, type: body.type, applied: true });
   }
 
   try {
