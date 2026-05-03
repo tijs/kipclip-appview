@@ -1,6 +1,6 @@
 # kipclip box ops runbook
 
-This directory holds the deploy artefacts for the staging Hetzner CX22 box that
+This directory holds the deploy artefacts for the staging Hetzner CAX21 box that
 hosts `staging.kipclip.com` during phases 0–2 of the AppView mirror migration
 (see `docs/plans/2026-05-02-001-feat-appview-mirror-phases-0-2-plan.md`).
 
@@ -40,7 +40,7 @@ sudo systemctl start kipclip
 
 ## Provisioning (U1)
 
-1. **Create CX22 ARM** — Falkenstein or Helsinki, Debian 12 base image.
+1. **Create CAX21** (4 vCPU ARM, 8GB RAM, 80GB SSD) — Falkenstein or Helsinki, Debian 12 base image.
 2. **Hostname:** `kipclip-box-01`. Apply unattended-upgrades:
    ```bash
    sudo apt update && sudo apt install -y unattended-upgrades
@@ -97,7 +97,14 @@ sudo systemctl start kipclip
 4. **Verify:** owner logs in at `https://staging.kipclip.com`, browses, logs
    out. Sentry events tagged `deployment=box`.
 
-## Backups (U4)
+## Backups (U4 — deferred to phase 3)
+
+> **Status:** Skipped during phases 0–2. Hetzner Cloud's daily VPS snapshot is enabled
+> on the box and covers infra recovery. Mirror tables, TAP cursor, sessions on Turso, and
+> app code are all regeneratable. Restic becomes required at phase 3 when sessions move
+> to local libSQL — land it BEFORE the DNS cutover.
+
+When phase 3 lands, complete the following:
 
 1. Provision Hetzner Storage Box. Note SFTP endpoint + user.
 2. Initialise repo:
