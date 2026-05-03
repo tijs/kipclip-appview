@@ -1,0 +1,231 @@
+/**
+ * Mirror read-side query layer.
+ *
+ * Returns rows shaped as EnrichedBookmark / EnrichedTag from shared/types.ts so
+ * route handlers can swap data sources behind MIRROR_MODE without translating.
+ *
+ * Bookmark queries LEFT JOIN annotations ON annotations.subject = bookmarks.uri
+ * — the annotation sidecar references the bookmark URI, not the rkey, so this
+ * is the authoritative join.
+ *
+ * Pagination uses (created_at, uri) as the sort key. Cursor format: an opaque
+ * base64-ish string `${created_at}|${uri}`. Ties on created_at are broken by
+ * URI lexicographic ordering, so pagination is stable across page boundaries.
+ */
+
+import { rawDb } from "../lib/db.ts";
+import type { EnrichedBookmark, EnrichedTag } from "../shared/types.ts";
+
+export interface SyncStatus {
+  tracking: boolean;
+  pdsUrl: string | null;
+  backfillStartedAt: number | null;
+  backfillCompleteAt: number | null;
+  lastSeq: number | null;
+  lastEventAt: number | null;
+}
+
+export interface FirstPageOpts {
+  /** Hard cap on rows returned. Defaults to 50 to match PDS first-page size. */
+  limit?: number;
+}
+
+export interface PageResult {
+  bookmarks: EnrichedBookmark[];
+  /** Cursor for the next page; undefined when no more rows. */
+  cursor?: string;
+}
+
+const DEFAULT_PAGE_SIZE = 50;
+
+const BOOKMARK_SELECT = `
+  SELECT
+    b.uri, b.cid, b.subject, b.created_at, b.tags,
+    b.enriched_title, b.enriched_description, b.enriched_favicon, b.enriched_image,
+    a.title AS a_title,
+    a.description AS a_description,
+    a.favicon AS a_favicon,
+    a.image AS a_image,
+    a.note AS a_note
+  FROM bookmarks b
+  LEFT JOIN annotations a ON a.subject = b.uri
+`;
+
+function rowToBookmark(row: unknown[]): EnrichedBookmark {
+  const [
+    uri,
+    cid,
+    subject,
+    createdAt,
+    tagsJson,
+    eTitle,
+    eDescription,
+    eFavicon,
+    eImage,
+    aTitle,
+    aDescription,
+    aFavicon,
+    aImage,
+    aNote,
+  ] = row as (string | number | null)[];
+  let tags: string[] = [];
+  if (tagsJson) {
+    try {
+      const parsed = JSON.parse(String(tagsJson));
+      if (Array.isArray(parsed)) tags = parsed.filter((t) => typeof t === "string");
+    } catch {
+      tags = [];
+    }
+  }
+  return {
+    uri: String(uri),
+    cid: String(cid),
+    subject: String(subject),
+    createdAt: String(createdAt),
+    tags,
+    title: (aTitle as string | null) ?? (eTitle as string | null) ?? undefined,
+    description: (aDescription as string | null) ??
+      (eDescription as string | null) ?? undefined,
+    favicon: (aFavicon as string | null) ?? (eFavicon as string | null) ??
+      undefined,
+    image: (aImage as string | null) ?? (eImage as string | null) ?? undefined,
+    note: (aNote as string | null) ?? undefined,
+  };
+}
+
+function encodeCursor(createdAt: string, uri: string): string {
+  return `${createdAt}|${uri}`;
+}
+
+function decodeCursor(cursor: string): { createdAt: string; uri: string } | null {
+  const idx = cursor.indexOf("|");
+  if (idx <= 0) return null;
+  return {
+    createdAt: cursor.slice(0, idx),
+    uri: cursor.slice(idx + 1),
+  };
+}
+
+/**
+ * First page of bookmarks for a DID, newest-first.
+ */
+export async function firstPageBookmarks(
+  did: string,
+  opts: FirstPageOpts = {},
+): Promise<PageResult> {
+  const limit = opts.limit ?? DEFAULT_PAGE_SIZE;
+  const r = await rawDb.execute({
+    sql: `${BOOKMARK_SELECT}
+          WHERE b.did = ?
+          ORDER BY b.created_at DESC, b.uri DESC
+          LIMIT ?`,
+    args: [did, limit + 1],
+  });
+  const rows = r.rows ?? [];
+  const hasMore = rows.length > limit;
+  const slice = hasMore ? rows.slice(0, limit) : rows;
+  const bookmarks = slice.map(rowToBookmark);
+  const cursor = hasMore && bookmarks.length > 0
+    ? encodeCursor(
+      bookmarks[bookmarks.length - 1].createdAt,
+      bookmarks[bookmarks.length - 1].uri,
+    )
+    : undefined;
+  return { bookmarks, cursor };
+}
+
+/**
+ * Next page after the cursor returned by a prior firstPageBookmarks /
+ * nextPageBookmarks call. Stable across boundaries via (created_at, uri).
+ */
+export async function nextPageBookmarks(
+  did: string,
+  cursor: string,
+  opts: FirstPageOpts = {},
+): Promise<PageResult> {
+  const decoded = decodeCursor(cursor);
+  if (!decoded) return { bookmarks: [], cursor: undefined };
+  const limit = opts.limit ?? DEFAULT_PAGE_SIZE;
+  const r = await rawDb.execute({
+    sql: `${BOOKMARK_SELECT}
+          WHERE b.did = ?
+            AND (
+              b.created_at < ?
+              OR (b.created_at = ? AND b.uri < ?)
+            )
+          ORDER BY b.created_at DESC, b.uri DESC
+          LIMIT ?`,
+    args: [did, decoded.createdAt, decoded.createdAt, decoded.uri, limit + 1],
+  });
+  const rows = r.rows ?? [];
+  const hasMore = rows.length > limit;
+  const slice = hasMore ? rows.slice(0, limit) : rows;
+  const bookmarks = slice.map(rowToBookmark);
+  const nextCursor = hasMore && bookmarks.length > 0
+    ? encodeCursor(
+      bookmarks[bookmarks.length - 1].createdAt,
+      bookmarks[bookmarks.length - 1].uri,
+    )
+    : undefined;
+  return { bookmarks, cursor: nextCursor };
+}
+
+/** Single bookmark by URI, joined with its annotation sidecar. */
+export async function getBookmark(
+  uri: string,
+): Promise<EnrichedBookmark | null> {
+  const r = await rawDb.execute({
+    sql: `${BOOKMARK_SELECT} WHERE b.uri = ?`,
+    args: [uri],
+  });
+  if (!r.rows || r.rows.length === 0) return null;
+  return rowToBookmark(r.rows[0]);
+}
+
+/** All tags for a DID. */
+export async function listTags(did: string): Promise<EnrichedTag[]> {
+  const r = await rawDb.execute({
+    sql: `SELECT uri, cid, value, created_at FROM tags WHERE did = ?
+          ORDER BY value`,
+    args: [did],
+  });
+  return (r.rows ?? []).map((row) => {
+    const [uri, cid, value, createdAt] = row as (string | null)[];
+    return {
+      uri: String(uri),
+      cid: String(cid),
+      value: String(value),
+      createdAt: String(createdAt),
+    };
+  });
+}
+
+/** Per-DID sync state. tracking=false when no row exists. */
+export async function getSyncStatus(did: string): Promise<SyncStatus> {
+  const r = await rawDb.execute({
+    sql: `SELECT pds_url, backfill_started_at, backfill_complete_at,
+                 last_seq, last_event_at
+          FROM tracked_dids WHERE did = ?`,
+    args: [did],
+  });
+  if (!r.rows || r.rows.length === 0) {
+    return {
+      tracking: false,
+      pdsUrl: null,
+      backfillStartedAt: null,
+      backfillCompleteAt: null,
+      lastSeq: null,
+      lastEventAt: null,
+    };
+  }
+  const [pdsUrl, started, complete, seq, eventAt] = r
+    .rows[0] as (string | number | null)[];
+  return {
+    tracking: true,
+    pdsUrl: (pdsUrl as string | null) ?? null,
+    backfillStartedAt: started === null ? null : Number(started),
+    backfillCompleteAt: complete === null ? null : Number(complete),
+    lastSeq: seq === null ? null : Number(seq),
+    lastEventAt: eventAt === null ? null : Number(eventAt),
+  };
+}
