@@ -1,0 +1,245 @@
+/**
+ * Mirror upsert layer.
+ *
+ * Idempotent upsert + delete helpers. Used by webhook receiver (worker/webhook.ts)
+ * and direct backfill paths.
+ *
+ * Idempotence: PRIMARY KEY on uri + INSERT…ON CONFLICT(uri) DO UPDATE replays the
+ * same record cleanly. last_seq monotonically advances via MAX().
+ *
+ * Cross-DID guard: every upsert verifies the record's URI starts with `at://{did}/`
+ * before writing — defends against caller bugs that would mix DIDs across rows.
+ */
+
+import { rawDb } from "../lib/db.ts";
+
+export interface BookmarkUpsert {
+  uri: string;
+  did: string;
+  rkey: string;
+  cid: string;
+  subject: string;
+  createdAt: string;
+  tags?: string[];
+  enrichedTitle?: string | null;
+  enrichedDescription?: string | null;
+  enrichedFavicon?: string | null;
+  enrichedImage?: string | null;
+}
+
+export interface AnnotationUpsert {
+  uri: string;
+  did: string;
+  rkey: string;
+  cid: string;
+  subject: string;
+  title?: string | null;
+  description?: string | null;
+  favicon?: string | null;
+  image?: string | null;
+  note?: string | null;
+}
+
+export interface TagUpsert {
+  uri: string;
+  did: string;
+  rkey: string;
+  cid: string;
+  value: string;
+  createdAt: string;
+}
+
+export interface TrackedDidUpsert {
+  did: string;
+  pdsUrl?: string | null;
+  backfillStartedAt?: number | null;
+  backfillCompleteAt?: number | null;
+  lastSeq?: number | null;
+  lastEventAt?: number | null;
+}
+
+function assertDidMatchesUri(uri: string, did: string): void {
+  const prefix = `at://${did}/`;
+  if (!uri.startsWith(prefix)) {
+    throw new Error(
+      `URI ${uri} does not belong to DID ${did} (cross-DID guard)`,
+    );
+  }
+}
+
+export async function upsertBookmark(record: BookmarkUpsert): Promise<void> {
+  assertDidMatchesUri(record.uri, record.did);
+  const tagsJson = JSON.stringify(record.tags ?? []);
+  await rawDb.execute({
+    sql: `
+      INSERT INTO bookmarks (
+        uri, did, rkey, cid, subject, created_at, tags,
+        enriched_title, enriched_description, enriched_favicon, enriched_image,
+        pending_echo, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+      ON CONFLICT(uri) DO UPDATE SET
+        did = excluded.did,
+        rkey = excluded.rkey,
+        cid = excluded.cid,
+        subject = excluded.subject,
+        created_at = excluded.created_at,
+        tags = excluded.tags,
+        enriched_title = excluded.enriched_title,
+        enriched_description = excluded.enriched_description,
+        enriched_favicon = excluded.enriched_favicon,
+        enriched_image = excluded.enriched_image,
+        pending_echo = 0,
+        updated_at = excluded.updated_at
+    `,
+    args: [
+      record.uri,
+      record.did,
+      record.rkey,
+      record.cid,
+      record.subject,
+      record.createdAt,
+      tagsJson,
+      record.enrichedTitle ?? null,
+      record.enrichedDescription ?? null,
+      record.enrichedFavicon ?? null,
+      record.enrichedImage ?? null,
+      Date.now(),
+    ],
+  });
+}
+
+export async function deleteBookmark(uri: string, did: string): Promise<void> {
+  assertDidMatchesUri(uri, did);
+  await rawDb.execute({
+    sql: "DELETE FROM bookmarks WHERE uri = ? AND did = ?",
+    args: [uri, did],
+  });
+}
+
+export async function upsertAnnotation(
+  record: AnnotationUpsert,
+): Promise<void> {
+  assertDidMatchesUri(record.uri, record.did);
+  await rawDb.execute({
+    sql: `
+      INSERT INTO annotations (
+        uri, did, rkey, cid, subject,
+        title, description, favicon, image, note,
+        updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(uri) DO UPDATE SET
+        did = excluded.did,
+        rkey = excluded.rkey,
+        cid = excluded.cid,
+        subject = excluded.subject,
+        title = excluded.title,
+        description = excluded.description,
+        favicon = excluded.favicon,
+        image = excluded.image,
+        note = excluded.note,
+        updated_at = excluded.updated_at
+    `,
+    args: [
+      record.uri,
+      record.did,
+      record.rkey,
+      record.cid,
+      record.subject,
+      record.title ?? null,
+      record.description ?? null,
+      record.favicon ?? null,
+      record.image ?? null,
+      record.note ?? null,
+      Date.now(),
+    ],
+  });
+}
+
+export async function deleteAnnotation(
+  uri: string,
+  did: string,
+): Promise<void> {
+  assertDidMatchesUri(uri, did);
+  await rawDb.execute({
+    sql: "DELETE FROM annotations WHERE uri = ? AND did = ?",
+    args: [uri, did],
+  });
+}
+
+export async function upsertTag(record: TagUpsert): Promise<void> {
+  assertDidMatchesUri(record.uri, record.did);
+  await rawDb.execute({
+    sql: `
+      INSERT INTO tags (uri, did, rkey, cid, value, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(uri) DO UPDATE SET
+        did = excluded.did,
+        rkey = excluded.rkey,
+        cid = excluded.cid,
+        value = excluded.value,
+        created_at = excluded.created_at,
+        updated_at = excluded.updated_at
+    `,
+    args: [
+      record.uri,
+      record.did,
+      record.rkey,
+      record.cid,
+      record.value,
+      record.createdAt,
+      Date.now(),
+    ],
+  });
+}
+
+export async function deleteTag(uri: string, did: string): Promise<void> {
+  assertDidMatchesUri(uri, did);
+  await rawDb.execute({
+    sql: "DELETE FROM tags WHERE uri = ? AND did = ?",
+    args: [uri, did],
+  });
+}
+
+/**
+ * Insert or update a tracked_dids row. Numeric fields advance monotonically
+ * (last_seq, last_event_at) so out-of-order webhook deliveries don't regress.
+ * On INSERT, added_at is stamped to now.
+ */
+export async function upsertTrackedDid(
+  state: TrackedDidUpsert,
+): Promise<void> {
+  await rawDb.execute({
+    sql: `
+      INSERT INTO tracked_dids (
+        did, pds_url, added_at,
+        backfill_started_at, backfill_complete_at,
+        last_seq, last_event_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(did) DO UPDATE SET
+        pds_url = COALESCE(excluded.pds_url, tracked_dids.pds_url),
+        backfill_started_at = COALESCE(
+          excluded.backfill_started_at, tracked_dids.backfill_started_at
+        ),
+        backfill_complete_at = COALESCE(
+          excluded.backfill_complete_at, tracked_dids.backfill_complete_at
+        ),
+        last_seq = MAX(
+          COALESCE(excluded.last_seq, 0),
+          COALESCE(tracked_dids.last_seq, 0)
+        ),
+        last_event_at = MAX(
+          COALESCE(excluded.last_event_at, 0),
+          COALESCE(tracked_dids.last_event_at, 0)
+        )
+    `,
+    args: [
+      state.did,
+      state.pdsUrl ?? null,
+      Date.now(),
+      state.backfillStartedAt ?? null,
+      state.backfillCompleteAt ?? null,
+      state.lastSeq ?? null,
+      state.lastEventAt ?? null,
+    ],
+  });
+}
