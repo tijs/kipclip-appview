@@ -23,16 +23,24 @@ import { upsertTrackedDid } from "../../mirror/upserts.ts";
 import { handleWebhookRequest } from "../../worker/webhook.ts";
 
 const TAP_CONTROL_URL = Deno.env.get("TAP_CONTROL_URL") ??
-  "http://127.0.0.1:7000";
+  "http://127.0.0.1:2480";
+const TAP_ADMIN_PASSWORD = Deno.env.get("TAP_ADMIN_PASSWORD");
 
 async function tapTrackDid(
   did: string,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
-    const r = await fetch(`${TAP_CONTROL_URL}/admin/track`, {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (TAP_ADMIN_PASSWORD) {
+      headers.Authorization = "Basic " +
+        btoa(`admin:${TAP_ADMIN_PASSWORD}`);
+    }
+    const r = await fetch(`${TAP_CONTROL_URL}/repos/add`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ did }),
+      headers,
+      body: JSON.stringify({ dids: [did] }),
     });
     if (!r.ok) {
       return { ok: false, error: `TAP control returned ${r.status}` };

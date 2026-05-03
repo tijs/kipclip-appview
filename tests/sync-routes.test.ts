@@ -35,7 +35,7 @@ function mockTapFetch(
       : input instanceof URL
       ? input.href
       : input.url;
-    if (url.startsWith("http://127.0.0.1:7000")) {
+    if (url.startsWith("http://127.0.0.1:2480")) {
       mock.calls.push({ url, init });
       const r = responses[Math.min(i++, responses.length - 1)];
       const resp = typeof r === "function" ? r() : r;
@@ -122,7 +122,7 @@ Deno.test("POST /api/sync/track - calls TAP and inserts row on success", async (
     const body = await res.json();
     assertEquals(body, { tracking: true, did: SESSION_DID });
     assertEquals(tap.calls.length, 1);
-    assertEquals(tap.calls[0].url, "http://127.0.0.1:7000/admin/track");
+    assertEquals(tap.calls[0].url, "http://127.0.0.1:2480/repos/add");
   } finally {
     restoreFetch();
     clearSession();
@@ -240,15 +240,42 @@ Deno.test("POST /api/sync/hook - 403 when URL hostname is not localhost", async 
   assertEquals(res.status, 403);
 });
 
-Deno.test("POST /api/sync/hook - 200 when host is localhost", async () => {
+function recordEvent(
+  collection: string,
+  rkey: string,
+  action: "create" | "update" | "delete",
+  record: Record<string, unknown> | undefined,
+  cid?: string,
+  live = false,
+  did = SESSION_DID,
+) {
+  return {
+    id: 1,
+    type: "record",
+    record: {
+      live,
+      did,
+      rev: "rev1",
+      collection,
+      rkey,
+      action,
+      record,
+      cid,
+    },
+  };
+}
+
+Deno.test("POST /api/sync/hook - 200 when host is localhost (empty payload)", async () => {
   const res = await handler(
     new Request("http://127.0.0.1:8000/api/sync/hook", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ events: [] }),
+      body: JSON.stringify({ id: 0, type: "unknown" }),
     }),
   );
   assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.applied, false);
 });
 
 Deno.test("POST /api/sync/hook - 400 on malformed JSON", async () => {
@@ -262,36 +289,30 @@ Deno.test("POST /api/sync/hook - 400 on malformed JSON", async () => {
   assertEquals(res.status, 400);
 });
 
-Deno.test("POST /api/sync/hook - applies bookmark create event to mirror", async () => {
+Deno.test("POST /api/sync/hook - applies bookmark create to mirror", async () => {
   await clearMirrorTables();
-  const event = {
-    type: "commit",
-    repo: SESSION_DID,
-    seq: 100,
-    time: "2026-05-01T00:00:00.000Z",
-    ops: [
-      {
-        action: "create",
-        path: "community.lexicon.bookmarks.bookmark/abc",
-        cid: "bafyABC",
-        record: {
-          subject: "https://example.com/abc",
-          createdAt: "2026-05-01T00:00:00.000Z",
-          tags: ["news"],
-        },
-      },
-    ],
-  };
+  const evt = recordEvent(
+    "community.lexicon.bookmarks.bookmark",
+    "abc",
+    "create",
+    {
+      subject: "https://example.com/abc",
+      createdAt: "2026-05-01T00:00:00.000Z",
+      tags: ["news"],
+    },
+    "bafyABC",
+  );
   const res = await handler(
     new Request("http://127.0.0.1:8000/api/sync/hook", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ events: [event] }),
+      body: JSON.stringify(evt),
     }),
   );
   assertEquals(res.status, 200);
   const body = await res.json();
-  assertEquals(body, { received: 1, applied: 1, errors: 0 });
+  assertEquals(body.applied, true);
+  assertEquals(body.type, "record");
 
   const { firstPageBookmarks } = await import("../mirror/queries.ts");
   const page = await firstPageBookmarks(SESSION_DID);
@@ -302,34 +323,36 @@ Deno.test("POST /api/sync/hook - applies bookmark create event to mirror", async
 Deno.test("POST /api/sync/hook - applies delete event", async () => {
   await clearMirrorTables();
   const uri = `at://${SESSION_DID}/community.lexicon.bookmarks.bookmark/del`;
-  const create = {
-    type: "commit",
-    repo: SESSION_DID,
-    seq: 200,
-    ops: [{
-      action: "create",
-      path: "community.lexicon.bookmarks.bookmark/del",
-      cid: "bafyDel",
-      record: {
-        subject: "https://example.com/del",
-        createdAt: "2026-05-01T00:00:00.000Z",
-      },
-    }],
-  };
-  const del = {
-    type: "commit",
-    repo: SESSION_DID,
-    seq: 201,
-    ops: [{
-      action: "delete",
-      path: "community.lexicon.bookmarks.bookmark/del",
-    }],
-  };
   await handler(
     new Request("http://127.0.0.1:8000/api/sync/hook", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ events: [create, del] }),
+      body: JSON.stringify(
+        recordEvent(
+          "community.lexicon.bookmarks.bookmark",
+          "del",
+          "create",
+          {
+            subject: "https://example.com/del",
+            createdAt: "2026-05-01T00:00:00.000Z",
+          },
+          "bafyDel",
+        ),
+      ),
+    }),
+  );
+  await handler(
+    new Request("http://127.0.0.1:8000/api/sync/hook", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        recordEvent(
+          "community.lexicon.bookmarks.bookmark",
+          "del",
+          "delete",
+          undefined,
+        ),
+      ),
     }),
   );
   const { getBookmark } = await import("../mirror/queries.ts");
@@ -338,26 +361,22 @@ Deno.test("POST /api/sync/hook - applies delete event", async () => {
 
 Deno.test("POST /api/sync/hook - duplicate redelivery is idempotent", async () => {
   await clearMirrorTables();
-  const event = {
-    type: "commit",
-    repo: SESSION_DID,
-    seq: 300,
-    ops: [{
-      action: "create",
-      path: "community.lexicon.bookmarks.bookmark/dup",
-      cid: "bafyDup",
-      record: {
-        subject: "https://example.com/dup",
-        createdAt: "2026-05-01T00:00:00.000Z",
-      },
-    }],
-  };
+  const evt = recordEvent(
+    "community.lexicon.bookmarks.bookmark",
+    "dup",
+    "create",
+    {
+      subject: "https://example.com/dup",
+      createdAt: "2026-05-01T00:00:00.000Z",
+    },
+    "bafyDup",
+  );
   const send = () =>
     handler(
       new Request("http://127.0.0.1:8000/api/sync/hook", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ events: [event] }),
+        body: JSON.stringify(evt),
       }),
     );
   await send();
@@ -367,60 +386,49 @@ Deno.test("POST /api/sync/hook - duplicate redelivery is idempotent", async () =
   assertEquals(page.bookmarks.length, 1);
 });
 
-Deno.test("POST /api/sync/hook - mixed bookmark+annotation+tag in one batch", async () => {
+Deno.test("POST /api/sync/hook - bookmark + annotation + tag events fill mirror", async () => {
   await clearMirrorTables();
   const events = [
-    {
-      type: "commit",
-      repo: SESSION_DID,
-      seq: 400,
-      ops: [{
-        action: "create",
-        path: "community.lexicon.bookmarks.bookmark/m",
-        cid: "bafyB",
-        record: {
-          subject: "https://example.com/m",
-          createdAt: "2026-05-01T00:00:00.000Z",
-        },
-      }],
-    },
-    {
-      type: "commit",
-      repo: SESSION_DID,
-      seq: 401,
-      ops: [{
-        action: "create",
-        path: "app.bookmark.annotation/m",
-        cid: "bafyA",
-        record: {
-          subject: `at://${SESSION_DID}/community.lexicon.bookmarks.bookmark/m`,
-          note: "anno-note",
-        },
-      }],
-    },
-    {
-      type: "commit",
-      repo: SESSION_DID,
-      seq: 402,
-      ops: [{
-        action: "create",
-        path: "com.kipclip.tag/news",
-        cid: "bafyT",
-        record: { value: "news", createdAt: "2026-05-01T00:00:00.000Z" },
-      }],
-    },
+    recordEvent(
+      "community.lexicon.bookmarks.bookmark",
+      "m",
+      "create",
+      {
+        subject: "https://example.com/m",
+        createdAt: "2026-05-01T00:00:00.000Z",
+      },
+      "bafyB",
+    ),
+    recordEvent(
+      "app.bookmark.annotation",
+      "m",
+      "create",
+      {
+        subject: `at://${SESSION_DID}/community.lexicon.bookmarks.bookmark/m`,
+        note: "anno-note",
+      },
+      "bafyA",
+    ),
+    recordEvent(
+      "com.kipclip.tag",
+      "news",
+      "create",
+      { value: "news", createdAt: "2026-05-01T00:00:00.000Z" },
+      "bafyT",
+    ),
   ];
-  const res = await handler(
-    new Request("http://127.0.0.1:8000/api/sync/hook", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ events }),
-    }),
-  );
-  const body = await res.json();
-  assertEquals(body, { received: 3, applied: 3, errors: 0 });
+  for (const e of events) {
+    const r = await handler(
+      new Request("http://127.0.0.1:8000/api/sync/hook", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(e),
+      }),
+    );
+    assertEquals(r.status, 200);
+  }
 
-  const { firstPageBookmarks, listTags, getSyncStatus } = await import(
+  const { firstPageBookmarks, listTags } = await import(
     "../mirror/queries.ts"
   );
   const page = await firstPageBookmarks(SESSION_DID);
@@ -428,19 +436,26 @@ Deno.test("POST /api/sync/hook - mixed bookmark+annotation+tag in one batch", as
   assertEquals(page.bookmarks[0].note, "anno-note");
   const tags = await listTags(SESSION_DID);
   assertEquals(tags.length, 1);
-  const status = await getSyncStatus(SESSION_DID);
-  assertEquals(status.lastSeq, 402);
 });
 
-Deno.test("POST /api/sync/hook - backfill_complete sets backfillCompleteAt", async () => {
+Deno.test("POST /api/sync/hook - live=true marks backfillCompleteAt", async () => {
   await clearMirrorTables();
+  const evt = recordEvent(
+    "community.lexicon.bookmarks.bookmark",
+    "live1",
+    "create",
+    {
+      subject: "https://example.com/live1",
+      createdAt: "2026-05-01T00:00:00.000Z",
+    },
+    "bafyLive",
+    /* live */ true,
+  );
   const res = await handler(
     new Request("http://127.0.0.1:8000/api/sync/hook", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        events: [{ type: "backfill_complete", repo: SESSION_DID }],
-      }),
+      body: JSON.stringify(evt),
     }),
   );
   assertEquals(res.status, 200);
@@ -450,38 +465,25 @@ Deno.test("POST /api/sync/hook - backfill_complete sets backfillCompleteAt", asy
   assertEquals(typeof s.backfillCompleteAt, "number");
 });
 
-Deno.test("POST /api/sync/hook - cross-DID op throws and increments errors", async () => {
+Deno.test("POST /api/sync/hook - identity event acks without writes", async () => {
   await clearMirrorTables();
-  const event = {
-    type: "commit",
-    repo: SESSION_DID,
-    seq: 500,
-    ops: [{
-      action: "create",
-      path: "community.lexicon.bookmarks.bookmark/x",
-      cid: "bafyX",
-      record: {
-        subject: "https://example.com/x",
-        createdAt: "2026-05-01T00:00:00.000Z",
-      },
-    }],
-  };
-  // Force cross-DID by lying about repo (DID mismatch caught by upsert guard
-  // because op.path is rebuilt from event.repo, but if event.repo is unknown
-  // string this just tests the unknown-DID drop path; cross-DID guard fires
-  // when the URI we synthesise from a malformed repo is rejected).
-  event.repo = "did:plc:other999";
   const res = await handler(
     new Request("http://127.0.0.1:8000/api/sync/hook", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ events: [event] }),
+      body: JSON.stringify({
+        id: 99,
+        type: "identity",
+        identity: {
+          did: SESSION_DID,
+          handle: "tijs.org",
+          is_active: true,
+          status: "active",
+        },
+      }),
     }),
   );
-  const body = await res.json();
-  // Either applied (since URI matches event.repo) — guard never fires; this is
-  // expected: webhook trusts the event.repo as the canonical DID for that
-  // event. The test documents that path and ensures status=200.
   assertEquals(res.status, 200);
-  assertEquals(body.received, 1);
+  const body = await res.json();
+  assertEquals(body.applied, true);
 });

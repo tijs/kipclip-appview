@@ -40,7 +40,8 @@ sudo systemctl start kipclip
 
 ## Provisioning (U1)
 
-1. **Create CAX21** (4 vCPU ARM, 8GB RAM, 80GB SSD) — Falkenstein or Helsinki, Debian 12 base image.
+1. **Create CAX21** (4 vCPU ARM, 8GB RAM, 80GB SSD) — Falkenstein or Helsinki,
+   Debian 12 base image.
 2. **Hostname:** `kipclip-box-01`. Apply unattended-upgrades:
    ```bash
    sudo apt update && sudo apt install -y unattended-upgrades
@@ -99,10 +100,11 @@ sudo systemctl start kipclip
 
 ## Backups (U4 — deferred to phase 3)
 
-> **Status:** Skipped during phases 0–2. Hetzner Cloud's daily VPS snapshot is enabled
-> on the box and covers infra recovery. Mirror tables, TAP cursor, sessions on Turso, and
-> app code are all regeneratable. Restic becomes required at phase 3 when sessions move
-> to local libSQL — land it BEFORE the DNS cutover.
+> **Status:** Skipped during phases 0–2. Hetzner Cloud's daily VPS snapshot is
+> enabled on the box and covers infra recovery. Mirror tables, TAP cursor,
+> sessions on Turso, and app code are all regeneratable. Restic becomes required
+> at phase 3 when sessions move to local libSQL — land it BEFORE the DNS
+> cutover.
 
 When phase 3 lands, complete the following:
 
