@@ -70,7 +70,10 @@ interface BackfillCompleteEvent {
   repo: string;
 }
 
-type Event = CommitEvent | BackfillCompleteEvent | { type: string; [k: string]: unknown };
+type Event = CommitEvent | BackfillCompleteEvent | {
+  type: string;
+  [k: string]: unknown;
+};
 
 export interface WebhookResult {
   received: number;
@@ -172,7 +175,8 @@ async function processOp(did: string, op: CommitOp): Promise<void> {
     const createdAt = stringField(record, "createdAt");
     if (!subject || !createdAt) return;
     const tags = arrayOfStrings(record["tags"]);
-    const enriched = (record["$enriched"] as Record<string, unknown> | undefined) ?? {};
+    const enriched =
+      (record["$enriched"] as Record<string, unknown> | undefined) ?? {};
     await upsertBookmark({
       uri,
       did,

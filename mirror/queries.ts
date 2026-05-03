@@ -72,7 +72,9 @@ function rowToBookmark(row: unknown[]): EnrichedBookmark {
   if (tagsJson) {
     try {
       const parsed = JSON.parse(String(tagsJson));
-      if (Array.isArray(parsed)) tags = parsed.filter((t) => typeof t === "string");
+      if (Array.isArray(parsed)) {
+        tags = parsed.filter((t) => typeof t === "string");
+      }
     } catch {
       tags = [];
     }
@@ -97,7 +99,9 @@ function encodeCursor(createdAt: string, uri: string): string {
   return `${createdAt}|${uri}`;
 }
 
-function decodeCursor(cursor: string): { createdAt: string; uri: string } | null {
+function decodeCursor(
+  cursor: string,
+): { createdAt: string; uri: string } | null {
   const idx = cursor.indexOf("|");
   if (idx <= 0) return null;
   return {

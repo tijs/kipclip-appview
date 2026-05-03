@@ -25,7 +25,9 @@ import { handleWebhookRequest } from "../../worker/webhook.ts";
 const TAP_CONTROL_URL = Deno.env.get("TAP_CONTROL_URL") ??
   "http://127.0.0.1:7000";
 
-async function tapTrackDid(did: string): Promise<{ ok: boolean; error?: string }> {
+async function tapTrackDid(
+  did: string,
+): Promise<{ ok: boolean; error?: string }> {
   try {
     const r = await fetch(`${TAP_CONTROL_URL}/admin/track`, {
       method: "POST",
@@ -127,7 +129,7 @@ export function registerSyncRoutes(app: App<unknown>): App<unknown> {
     }
   });
 
-  app = app.post("/api/sync/hook", async (ctx) => {
+  app = app.post("/api/sync/hook", (ctx) => {
     const url = new URL(ctx.req.url);
     if (!isLocalhostHostname(url.hostname)) {
       return Response.json(

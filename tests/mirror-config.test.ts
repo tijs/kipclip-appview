@@ -5,10 +5,7 @@
 import "./test-setup.ts";
 
 import { assertEquals } from "@std/assert";
-import {
-  _resetMirrorModeCache,
-  getMirrorMode,
-} from "../lib/mirror-config.ts";
+import { _resetMirrorModeCache, getMirrorMode } from "../lib/mirror-config.ts";
 
 function withEnv(value: string | undefined, fn: () => void) {
   const prev = Deno.env.get("MIRROR_MODE");

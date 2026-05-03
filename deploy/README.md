@@ -57,7 +57,8 @@ sudo systemctl start kipclip
    ```bash
    curl -fsSL https://deno.land/install.sh | sudo DENO_INSTALL=/opt/deno sh
    ```
-5. **Caddy:** Debian repo (https://caddyserver.com/docs/install#debian-ubuntu-raspbian).
+5. **Caddy:** Debian repo
+   (https://caddyserver.com/docs/install#debian-ubuntu-raspbian).
 6. **Tools:**
    ```bash
    sudo apt install -y restic git jq sqlite3 fail2ban
@@ -82,7 +83,8 @@ sudo systemctl start kipclip
    SENTRY_DSN=<same DSN>
    MIRROR_MODE=off
    ```
-   Locked down: `sudo chown root:kipclip /etc/kipclip/env && sudo chmod 640 /etc/kipclip/env`.
+   Locked down:
+   `sudo chown root:kipclip /etc/kipclip/env && sudo chmod 640 /etc/kipclip/env`.
 2. **Initial clone** (operator machine):
    ```bash
    ssh box 'sudo install -d -o kipclip -g kipclip /var/lib/kipclip/app'
@@ -102,15 +104,16 @@ sudo systemctl start kipclip
    ```bash
    sudo install -d -o root -g root -m 700 /etc/kipclip
    sudo tee /etc/kipclip/restic.env <<EOF
-RESTIC_REPOSITORY=sftp:userNNN@boxNNN.your-storagebox.de:/kipclip
-RESTIC_PASSWORD=<generated-key>
-EOF
-   sudo chmod 600 /etc/kipclip/restic.env
-   sudo -E env $(cat /etc/kipclip/restic.env) restic init
    ```
+
+RESTIC_REPOSITORY=sftp:userNNN@boxNNN.your-storagebox.de:/kipclip
+RESTIC_PASSWORD=<generated-key> EOF sudo chmod 600 /etc/kipclip/restic.env sudo
+-E env $(cat /etc/kipclip/restic.env) restic init
+
+````
 3. Cron: `sudo ln -s /var/lib/kipclip/app/deploy/restic-backup.sh /etc/cron.daily/kipclip-backup`.
 4. **Restore drill:** verify the Quick Reference restore steps end-to-end at
-   least once before phase 1 dogfood.
+least once before phase 1 dogfood.
 
 ## TAP install (U10)
 
@@ -121,17 +124,18 @@ Pinned version + binary source TBD during install spike. Final paths:
 - State dir `/var/lib/tap/`.
 - Service `deploy/systemd/tap.service` enabled via `systemctl enable --now tap`.
 - Control bind `127.0.0.1:7000`. Verify: `journalctl -u tap` shows relay
-  connection; no DIDs tracked at install time.
+connection; no DIDs tracked at install time.
 
 ## Dogfood validation (U13–U15)
 
 1. Track owner DID:
-   ```bash
-   curl -X POST http://127.0.0.1:8000/api/sync/track \
-     -H "Content-Type: application/json" \
-     -H "Cookie: sid=<owner-session>" \
-     -d '{"did":"did:plc:..."}'
-   ```
+```bash
+curl -X POST http://127.0.0.1:8000/api/sync/track \
+  -H "Content-Type: application/json" \
+  -H "Cookie: sid=<owner-session>" \
+  -d '{"did":"did:plc:..."}'
+````
+
 2. Watch backfill: `journalctl -u tap -u kipclip -f`.
 3. When `tracked_dids.backfill_complete_at` is set, run:
    ```bash
@@ -143,8 +147,8 @@ Pinned version + binary source TBD during install spike. Final paths:
 
 ### Dogfood log
 
-| Date | Notes |
-|------|-------|
+| Date   | Notes                  |
+| ------ | ---------------------- |
 | _stub_ | _filled in during U15_ |
 
 ## Rollback paths

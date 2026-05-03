@@ -52,7 +52,11 @@ async function seed(rkey: string, createdAt: string) {
 Deno.test("shouldReadFromMirror - off mode never serves from mirror", async () => {
   await clearMirrorTables();
   setMirrorMode("off");
-  await upsertTrackedDid({ did: DID, backfillStartedAt: 1, backfillCompleteAt: 2 });
+  await upsertTrackedDid({
+    did: DID,
+    backfillStartedAt: 1,
+    backfillCompleteAt: 2,
+  });
   const d = await shouldReadFromMirror(DID);
   assertEquals(d.fromMirror, false);
   assertEquals(d.syncing, false);

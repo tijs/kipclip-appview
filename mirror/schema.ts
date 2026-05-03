@@ -20,7 +20,8 @@ export interface MigrationEntry {
 export const MIRROR_MIGRATIONS: MigrationEntry[] = [
   {
     version: "005",
-    description: "Create mirror tables (bookmarks, annotations, tags, tracked_dids)",
+    description:
+      "Create mirror tables (bookmarks, annotations, tags, tracked_dids)",
     sql: `
       CREATE TABLE IF NOT EXISTS bookmarks (
         uri TEXT PRIMARY KEY,

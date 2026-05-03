@@ -23,7 +23,10 @@ import {
 const DID = "did:plc:test123";
 const OTHER_DID = "did:plc:other999";
 
-function bookmark(rkey: string, overrides: Partial<BookmarkUpsert> = {}): BookmarkUpsert {
+function bookmark(
+  rkey: string,
+  overrides: Partial<BookmarkUpsert> = {},
+): BookmarkUpsert {
   return {
     uri: `at://${DID}/community.lexicon.bookmarks.bookmark/${rkey}`,
     did: DID,
@@ -57,7 +60,9 @@ Deno.test("upsertBookmark - inserts a new bookmark", async () => {
   await clearMirrorTables();
   await upsertBookmark(bookmark("a"));
   assertEquals(await rowCount("bookmarks"), 1);
-  const row = await getBookmarkRow(`at://${DID}/community.lexicon.bookmarks.bookmark/a`);
+  const row = await getBookmarkRow(
+    `at://${DID}/community.lexicon.bookmarks.bookmark/a`,
+  );
   assertExists(row);
   assertEquals(row[2], "bafya");
   assertEquals(row[3], '["news"]');
