@@ -170,6 +170,22 @@ export async function nextPageBookmarks(
   return { bookmarks, cursor: nextCursor };
 }
 
+/**
+ * All bookmarks for a DID, newest-first. Used by /api/bookmarks list endpoint
+ * which returns the full set in one response.
+ */
+export async function listAllBookmarks(
+  did: string,
+): Promise<EnrichedBookmark[]> {
+  const r = await rawDb.execute({
+    sql: `${BOOKMARK_SELECT}
+          WHERE b.did = ?
+          ORDER BY b.created_at DESC, b.uri DESC`,
+    args: [did],
+  });
+  return (r.rows ?? []).map(rowToBookmark);
+}
+
 /** Single bookmark by URI, joined with its annotation sidecar. */
 export async function getBookmark(
   uri: string,

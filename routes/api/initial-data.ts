@@ -20,6 +20,12 @@ import { getUserPreferences } from "../../lib/preferences.ts";
 import { getUserSettings } from "../../lib/settings.ts";
 import { runPdsMigrations } from "../../lib/pds-migrations.ts";
 import { isUserSupporter } from "../../lib/atprotofans.ts";
+import { shouldReadFromMirror } from "../../lib/mirror-config.ts";
+import {
+  firstPageBookmarks,
+  listTags as listMirrorTags,
+  nextPageBookmarks,
+} from "../../mirror/queries.ts";
 import type {
   AnnotationRecord,
   EnrichedBookmark,
@@ -83,6 +89,39 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
       const annotationCursor = url.searchParams.get("annotationCursor") ||
         undefined;
       const isFirstPage = !bookmarkCursor;
+
+      const mirrorDecision = await shouldReadFromMirror(oauthSession.did);
+      if (mirrorDecision.fromMirror) {
+        if (isFirstPage) {
+          const [page, tagRecords, settings, preferences, isSupporter] =
+            await Promise.all([
+              firstPageBookmarks(oauthSession.did),
+              listMirrorTags(oauthSession.did),
+              getUserSettings(oauthSession.did),
+              getUserPreferences(oauthSession),
+              isUserSupporter(oauthSession),
+            ]);
+          const result: InitialDataResponse = {
+            bookmarks: page.bookmarks,
+            tags: tagRecords,
+            settings,
+            preferences,
+            bookmarkCursor: page.cursor,
+            isSupporter,
+            ...(mirrorDecision.syncing ? { syncing: true } : {}),
+          };
+          return setSessionCookie(Response.json(result), setCookieHeader);
+        }
+        const page = await nextPageBookmarks(oauthSession.did, bookmarkCursor);
+        return setSessionCookie(
+          Response.json({
+            bookmarks: page.bookmarks,
+            bookmarkCursor: page.cursor,
+            ...(mirrorDecision.syncing ? { syncing: true } : {}),
+          }),
+          setCookieHeader,
+        );
+      }
 
       if (isFirstPage) {
         // First page: fetch tags + settings + first page bookmarks/annotations.

@@ -29,6 +29,8 @@ import {
 import { getUserSettings } from "../../lib/settings.ts";
 import { getUserPreferences } from "../../lib/preferences.ts";
 import { sendToInstapaperAsync } from "../../lib/instapaper.ts";
+import { shouldReadFromMirror } from "../../lib/mirror-config.ts";
+import { listAllBookmarks } from "../../mirror/queries.ts";
 import type {
   AddBookmarkRequest,
   AddBookmarkResponse,
@@ -50,6 +52,13 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         await getSessionFromRequest(ctx.req);
       if (!oauthSession) {
         return createAuthErrorResponse(error);
+      }
+
+      const mirrorDecision = await shouldReadFromMirror(oauthSession.did);
+      if (mirrorDecision.fromMirror) {
+        const bookmarks = await listAllBookmarks(oauthSession.did);
+        const result: ListBookmarksResponse = { bookmarks };
+        return setSessionCookie(Response.json(result), setCookieHeader);
       }
 
       const [bookmarkRecords, annotationResult] = await Promise.all([

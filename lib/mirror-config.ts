@@ -12,6 +12,8 @@
  *             plus syncing flag. No PDS fallback.
  */
 
+import { getSyncStatus, type SyncStatus } from "../mirror/queries.ts";
+
 export type MirrorMode = "off" | "read" | "only";
 
 const VALID_MODES: ReadonlySet<MirrorMode> = new Set(["off", "read", "only"]);
@@ -48,4 +50,51 @@ export function _resetMirrorModeCache(): void {
 export function logMirrorMode(): void {
   const mode = getMirrorMode();
   console.log(`🪞 MIRROR_MODE=${mode}`);
+}
+
+export interface MirrorReadDecision {
+  /** True when handlers should serve from the mirror. */
+  fromMirror: boolean;
+  /** True when backfill is in progress for the DID. Stamp into response. */
+  syncing: boolean;
+  /** Cached sync status (saves a duplicate query in handlers). */
+  status: SyncStatus;
+}
+
+/**
+ * Decide whether a read for the given DID should hit the mirror.
+ *
+ *   "off"  → always false (PDS path).
+ *   "read" → true iff DID is tracked AND backfill has started; otherwise PDS
+ *            fallback so untracked users keep working before phase 3.
+ *   "only" → true unconditionally; untracked DIDs see empty mirror with
+ *            syncing=false (no PDS fallback). Phase 4+ behaviour, wired now.
+ *
+ * `syncing` is true when reading from the mirror but backfill_complete_at is
+ * not yet stamped — the response advertises "data may be incomplete".
+ */
+export async function shouldReadFromMirror(
+  did: string,
+): Promise<MirrorReadDecision> {
+  const mode = getMirrorMode();
+  const status = await getSyncStatus(did);
+
+  if (mode === "off") {
+    return { fromMirror: false, syncing: false, status };
+  }
+
+  if (mode === "only") {
+    return {
+      fromMirror: true,
+      syncing: status.tracking ? !status.backfillCompleteAt : false,
+      status,
+    };
+  }
+
+  const fromMirror = status.tracking && status.backfillStartedAt !== null;
+  return {
+    fromMirror,
+    syncing: fromMirror ? !status.backfillCompleteAt : false,
+    status,
+  };
 }

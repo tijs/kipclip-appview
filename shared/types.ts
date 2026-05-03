@@ -195,6 +195,12 @@ export interface InitialDataResponse {
   rateLimit?: { remaining: number; reset: number; limit: number };
   /** True when the user is a kipclip supporter on atprotofans.com. */
   isSupporter: boolean;
+  /**
+   * True when the response is served from the AppView mirror but backfill is
+   * still in progress for this DID. Absent when reading from PDS or when the
+   * mirror has completed backfill.
+   */
+  syncing?: boolean;
 }
 
 // Supporter status API response

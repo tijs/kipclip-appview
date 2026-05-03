@@ -19,6 +19,8 @@ import {
 } from "../../lib/pds-public.ts";
 import { extractRkey, mapBookmarkRecord } from "../../lib/annotations.ts";
 import { decodeTagsFromUrl } from "../../shared/utils.ts";
+import { shouldReadFromMirror } from "../../lib/mirror-config.ts";
+import { listAllBookmarks } from "../../mirror/queries.ts";
 import type {
   AnnotationRecord,
   EnrichedBookmark,
@@ -55,6 +57,26 @@ export function registerShareApiRoutes(app: App<any>): App<any> {
       }
 
       const { pdsUrl, handle } = resolved;
+
+      // Mirror branch: serve from local store when DID is tracked + backfill
+      // started. Owner's tracked DIDs power public share without hitting PDS.
+      const mirrorDecision = await shouldReadFromMirror(did);
+      if (mirrorDecision.fromMirror) {
+        const all = await listAllBookmarks(did);
+        const filtered = all.filter((b) =>
+          tags.every((t) => (b.tags ?? []).includes(t))
+        );
+        const result: SharedBookmarksResponse = {
+          bookmarks: filtered,
+          handle,
+          tags,
+        };
+        return Response.json(result, {
+          headers: {
+            "Cache-Control": "public, max-age=60, stale-while-revalidate=600",
+          },
+        });
+      }
 
       // Validate PDS URL before we start fanning out fetches.
       try {
