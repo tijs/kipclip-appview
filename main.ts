@@ -14,6 +14,7 @@ try {
 
 import { App, staticFiles } from "@fresh/core";
 import { initializeTables } from "./lib/db.ts";
+import { logMirrorMode } from "./lib/mirror-config.ts";
 import { initOAuth } from "./lib/oauth-config.ts";
 import { captureError } from "./lib/sentry.ts";
 
@@ -36,6 +37,9 @@ import { registerStaticRoutes } from "./routes/static.ts";
 
 // Run database migrations on startup
 await initializeTables();
+
+// Log the active mirror mode so deploys make config visible in journalctl
+logMirrorMode();
 
 // Create the Fresh app
 let app = new App();
