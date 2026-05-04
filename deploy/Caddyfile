@@ -1,22 +1,52 @@
-# Caddyfile for kipclip staging box (phase 0-2).
-# Auto TLS via Let's Encrypt for staging.kipclip.com.
-# Reverse-proxies HTTPS public traffic to the kipclip Deno app on localhost:8000.
-# /api/sync/hook is NOT exposed here — TAP delivers webhooks via localhost only.
+# Caddyfile for kipclip box.
+#
+# staging.kipclip.com — phase 0-2 staging hostname; remains active during
+#   phase 3 readiness window so the operator can hit the box directly via
+#   --resolve or the staging name while DNS still points apex at Deno
+#   Deploy.
+#
+# kipclip.com + www.kipclip.com — phase 3 production hostnames; activated
+#   on DNS flip. Block external /api/sync/hook on every public host so TAP
+#   delivers webhooks only via localhost.
 
-staging.kipclip.com {
+(common) {
 	encode zstd gzip
 
 	# Block any external attempt to hit the TAP webhook endpoint.
 	@hook path /api/sync/hook
 	respond @hook 403
 
+	# HSTS once we're live on the apex. Safe to keep on staging too.
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
 	reverse_proxy 127.0.0.1:8000 {
 		header_up X-Forwarded-Proto https
 		header_up X-Forwarded-Host {host}
 	}
+}
+
+staging.kipclip.com {
+	import common
 
 	log {
 		output file /var/log/caddy/staging.kipclip.com.log
 		format console
 	}
+}
+
+# Production apex + www. Active once DNS A/AAAA records point at the box.
+# Caddy will obtain certs automatically the first time these names resolve
+# to this host. Safe to land in the file ahead of DNS flip — Caddy won't
+# attempt cert provisioning until the names actually resolve here.
+kipclip.com {
+	import common
+
+	log {
+		output file /var/log/caddy/kipclip.com.log
+		format console
+	}
+}
+
+www.kipclip.com {
+	redir https://kipclip.com{uri} 308
 }

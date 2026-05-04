@@ -1,0 +1,22 @@
+[Unit]
+Description=kipclip restic backup (Turso dump + local mirror snapshot + TAP state)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=kipclip
+Group=kipclip
+ExecStart=/var/lib/kipclip/app/deploy/restic-backup.sh
+EnvironmentFile=/etc/kipclip/restic.env
+
+# Hardening — restic + sqlite3 only need /tmp + /var/lib/kipclip + /var/lib/tap.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/kipclip /var/lib/tap /tmp
+
+# Failure handling: non-zero exit propagates to journald. Pair with a Sentry
+# wrapper or `OnFailure=` unit if first-class alerting is needed; for now,
+# `systemctl status restic-backup` after each run is the operator signal.
