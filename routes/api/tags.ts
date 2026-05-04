@@ -7,6 +7,8 @@ import type { App } from "@fresh/core";
 import {
   BOOKMARK_COLLECTION,
   createAuthErrorResponse,
+  fetchOwnerBookmarkRecords,
+  fetchOwnerTagRecords,
   getSessionFromRequest,
   listAllRecords,
   setSessionCookie,
@@ -103,10 +105,7 @@ export function registerTagRoutes(app: App<any>): App<any> {
       }
 
       // Check if a tag with this value already exists (case-insensitive)
-      const existingRecords = await listAllRecords(
-        oauthSession,
-        TAG_COLLECTION,
-      );
+      const existingRecords = await fetchOwnerTagRecords(oauthSession);
       const existing = existingRecords.find((rec: any) =>
         tagsEqual(rec.value?.value ?? "", value)
       );
@@ -228,7 +227,7 @@ export function registerTagRoutes(app: App<any>): App<any> {
       }
 
       // Check for case-insensitive collision with another tag
-      const allTagRecords = await listAllRecords(oauthSession, TAG_COLLECTION);
+      const allTagRecords = await fetchOwnerTagRecords(oauthSession);
       const collision = allTagRecords.find((rec: any) =>
         tagsEqual(rec.value?.value ?? "", newValue) &&
         rec.uri !== currentRecord.uri
@@ -241,10 +240,7 @@ export function registerTagRoutes(app: App<any>): App<any> {
       }
 
       // Update bookmarks with the old tag value (case-insensitive match)
-      const bookmarkRecords = await listAllRecords(
-        oauthSession,
-        BOOKMARK_COLLECTION,
-      );
+      const bookmarkRecords = await fetchOwnerBookmarkRecords(oauthSession);
 
       await Promise.all(
         bookmarkRecords
@@ -352,10 +348,7 @@ export function registerTagRoutes(app: App<any>): App<any> {
       const tagValue = tagData.value.value;
 
       // List all bookmarks
-      const bookmarkRecords = await listAllRecords(
-        oauthSession,
-        BOOKMARK_COLLECTION,
-      );
+      const bookmarkRecords = await fetchOwnerBookmarkRecords(oauthSession);
       const count = bookmarkRecords.filter((record: any) =>
         tagIncludes(record.value.tags || [], tagValue)
       ).length;
@@ -401,10 +394,7 @@ export function registerTagRoutes(app: App<any>): App<any> {
       const tagValue = tagData.value.value;
 
       // Remove tag from all bookmarks
-      const bookmarkRecords = await listAllRecords(
-        oauthSession,
-        BOOKMARK_COLLECTION,
-      );
+      const bookmarkRecords = await fetchOwnerBookmarkRecords(oauthSession);
 
       await Promise.all(
         bookmarkRecords
@@ -481,8 +471,8 @@ export function registerTagRoutes(app: App<any>): App<any> {
       }
 
       const [tagRecords, bookmarkRecords] = await Promise.all([
-        listAllRecords(oauthSession, TAG_COLLECTION),
-        listAllRecords(oauthSession, BOOKMARK_COLLECTION),
+        fetchOwnerTagRecords(oauthSession),
+        fetchOwnerBookmarkRecords(oauthSession),
       ]);
 
       const result = await mergeTagDuplicates(

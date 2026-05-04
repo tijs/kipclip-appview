@@ -12,10 +12,10 @@ import {
   BOOKMARK_COLLECTION,
   createAuthErrorResponse,
   createNewTagRecords,
+  fetchOwnerBookmarkRecords,
+  fetchOwnerTagRecords,
   getSessionFromRequest,
-  listAllRecords,
   setSessionCookie,
-  TAG_COLLECTION,
 } from "../../lib/route-utils.ts";
 import {
   ATPROTOFANS_SUPPORT_URL,
@@ -124,30 +124,17 @@ export function registerImportRoutes(app: App<any>): App<any> {
         return setSessionCookie(Response.json(resp), setCookieHeader);
       }
 
-      // Fetch existing bookmarks for dedup
+      // Fetch existing bookmarks for dedup. Mirror-aware: tracked DIDs avoid
+      // paginating PDS, which previously walked the entire bookmark collection
+      // and was the worst rate-limit offender during large Instapaper imports.
       const existingUrls = new Set<string>();
-      let cursor: string | undefined;
-      do {
-        const params = new URLSearchParams({
-          repo: oauthSession.did,
-          collection: BOOKMARK_COLLECTION,
-          limit: "100",
-        });
-        if (cursor) params.set("cursor", cursor);
-
-        const res = await oauthSession.makeRequest(
-          "GET",
-          `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${params}`,
-        );
-        if (!res.ok) break;
-
-        const data = await res.json();
-        for (const rec of data.records || []) {
-          const base = getBaseUrl(rec.value.subject);
-          if (base) existingUrls.add(base);
-        }
-        cursor = data.cursor;
-      } while (cursor);
+      const existingBookmarkRecords = await fetchOwnerBookmarkRecords(
+        oauthSession,
+      );
+      for (const rec of existingBookmarkRecords) {
+        const base = getBaseUrl(rec.value.subject);
+        if (base) existingUrls.add(base);
+      }
 
       // Filter out duplicates
       const newBookmarks = bookmarks.filter((b) => {
@@ -171,10 +158,7 @@ export function registerImportRoutes(app: App<any>): App<any> {
       for (const b of newBookmarks) {
         for (const t of b.tags) rawTags.push(t);
       }
-      const existingTagRecords = await listAllRecords(
-        oauthSession,
-        TAG_COLLECTION,
-      );
+      const existingTagRecords = await fetchOwnerTagRecords(oauthSession);
       const existingTagValues = existingTagRecords
         .map((r: any) => r.value?.value)
         .filter(Boolean);

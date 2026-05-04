@@ -17,10 +17,11 @@ import {
   BOOKMARK_COLLECTION,
   createAuthErrorResponse,
   createNewTagRecords,
+  fetchOwnerBookmarkRecords,
+  fetchOwnerTagRecords,
   getSessionFromRequest,
   listAllRecords,
   setSessionCookie,
-  TAG_COLLECTION,
 } from "../../lib/route-utils.ts";
 import {
   deduplicateTagsCaseInsensitive,
@@ -108,10 +109,7 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         );
       }
 
-      const records = await listAllRecords(
-        oauthSession,
-        BOOKMARK_COLLECTION,
-      );
+      const records = await fetchOwnerBookmarkRecords(oauthSession);
 
       const duplicates: EnrichedBookmark[] = records
         .filter((record: any) => getBaseUrl(record.value.subject) === inputBase)
@@ -170,7 +168,7 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         // Deduplicate case-insensitively, then resolve against existing tag casing
         const deduped = deduplicateTagsCaseInsensitive(cleaned);
         if (deduped.length > 0) {
-          tagRecords = await listAllRecords(oauthSession, TAG_COLLECTION);
+          tagRecords = await fetchOwnerTagRecords(oauthSession);
           const existingValues = tagRecords.map((r: any) => r.value?.value)
             .filter(Boolean);
           validatedTags = resolveTagCasing(deduped, existingValues);

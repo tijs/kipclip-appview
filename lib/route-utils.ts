@@ -4,6 +4,9 @@
 
 import { getClearSessionCookie, getSessionFromRequest } from "./session.ts";
 import { tagIncludes } from "../shared/tag-utils.ts";
+import { shouldReadFromMirror } from "./mirror-config.ts";
+import { listAllBookmarks, listTags } from "../mirror/queries.ts";
+import { captureMessage } from "./sentry.ts";
 
 /** AT Protocol collection names */
 export const BOOKMARK_COLLECTION = "community.lexicon.bookmarks.bookmark";
@@ -199,6 +202,97 @@ export async function listAllRecords(
   } while (cursor);
 
   return all;
+}
+
+/**
+ * Mirror-aware bookmark records for the session's owner DID.
+ *
+ * Returns records in the same shape as `listAllRecords(session, BOOKMARK_COLLECTION)`
+ * so existing call sites swap in without downstream changes:
+ *   `{uri, cid, value: {subject, createdAt, tags}}[]`
+ *
+ * Behavior:
+ *   - Tracked DID + MIRROR_MODE=read: serve from mirror. Mirror is authoritative;
+ *     empty result is returned as `[]` (does NOT fall through to PDS).
+ *   - Tracked DID + Turso failure: capture warning to Sentry and fall through to PDS.
+ *   - Untracked DID / MIRROR_MODE=off: PDS path unchanged.
+ *   - `forcePds: true`: bypass mirror entirely (for migration scripts that need raw PDS).
+ */
+export async function fetchOwnerBookmarkRecords(
+  oauthSession: any,
+  opts?: { forcePds?: boolean },
+): Promise<any[]> {
+  if (opts?.forcePds) {
+    return await listAllRecords(oauthSession, BOOKMARK_COLLECTION);
+  }
+  const decision = await shouldReadFromMirror(oauthSession.did);
+  if (decision.fromMirror) {
+    try {
+      const bookmarks = await listAllBookmarks(oauthSession.did);
+      return bookmarks.map((b) => ({
+        uri: b.uri,
+        cid: b.cid,
+        value: {
+          subject: b.subject,
+          createdAt: b.createdAt,
+          tags: b.tags,
+        },
+      }));
+    } catch (err) {
+      captureMessage(
+        "mirror read fallback to PDS",
+        "warning",
+        {
+          did: oauthSession.did,
+          op: "fetchOwnerBookmarkRecords",
+          error: String(err),
+        },
+      );
+    }
+  }
+  return await listAllRecords(oauthSession, BOOKMARK_COLLECTION);
+}
+
+/**
+ * Mirror-aware tag records for the session's owner DID.
+ *
+ * Returns records shaped like `listAllRecords(session, TAG_COLLECTION)`:
+ *   `{uri, cid, value: {value, createdAt}}[]`
+ *
+ * Same semantics as `fetchOwnerBookmarkRecords` for mirror-vs-PDS branching.
+ */
+export async function fetchOwnerTagRecords(
+  oauthSession: any,
+  opts?: { forcePds?: boolean },
+): Promise<any[]> {
+  if (opts?.forcePds) {
+    return await listAllRecords(oauthSession, TAG_COLLECTION);
+  }
+  const decision = await shouldReadFromMirror(oauthSession.did);
+  if (decision.fromMirror) {
+    try {
+      const tags = await listTags(oauthSession.did);
+      return tags.map((t) => ({
+        uri: t.uri,
+        cid: t.cid,
+        value: {
+          value: t.value,
+          createdAt: t.createdAt,
+        },
+      }));
+    } catch (err) {
+      captureMessage(
+        "mirror read fallback to PDS",
+        "warning",
+        {
+          did: oauthSession.did,
+          op: "fetchOwnerTagRecords",
+          error: String(err),
+        },
+      );
+    }
+  }
+  return await listAllRecords(oauthSession, TAG_COLLECTION);
 }
 
 /** Re-export for convenience */
