@@ -7,6 +7,7 @@ import type {
   EnrichedBookmark,
   EnrichedTag,
   InitialDataResponse,
+  ListTagsResponse,
 } from "../../shared/types.ts";
 import { putBookmarks, putTags } from "./db.ts";
 import { apiGet } from "../utils/api.ts";
@@ -15,6 +16,23 @@ import { perf } from "../perf.ts";
 interface CachedData {
   bookmarks: EnrichedBookmark[];
   tags: EnrichedTag[];
+}
+
+/**
+ * Fetch the user's full tag list from /api/tags.
+ * Tags are split out of /api/initial-data so the largest payload does not
+ * block first-paint; clients fire this in parallel with fetchFirstPage.
+ */
+export async function fetchTags(): Promise<EnrichedTag[]> {
+  perf.start("tagsFetch");
+  const response = await apiGet("/api/tags");
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Failed to load tags: ${response.status} ${body}`);
+  }
+  const data = (await response.json()) as ListTagsResponse;
+  perf.end("tagsFetch");
+  return data.tags ?? [];
 }
 
 interface LoadPagesResult {

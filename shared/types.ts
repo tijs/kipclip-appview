@@ -181,10 +181,11 @@ export interface UpdatePreferencesResponse {
   error?: string;
 }
 
-// Combined initial data response (for optimized page load)
+// Combined initial data response (for optimized page load).
+// Tags are fetched separately via /api/tags so the largest payload does not
+// block first-paint.
 export interface InitialDataResponse {
   bookmarks: EnrichedBookmark[];
-  tags: EnrichedTag[];
   settings: UserSettings;
   preferences: UserPreferences;
   /** Cursor for next page of bookmarks (absent when all loaded) */

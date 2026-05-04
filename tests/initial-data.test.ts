@@ -72,18 +72,11 @@ function annotationRecord(rkey: string) {
   };
 }
 
-function tagRecord(rkey: string, value: string) {
-  return {
-    uri: `at://${TEST_DID}/${TAG_COLLECTION}/${rkey}`,
-    cid: `cid-${rkey}`,
-    value: { value, createdAt: "2026-01-01T00:00:00.000Z" },
-  };
-}
-
 // ---------- First page returns bookmarks with tags ----------
 
 Deno.test({
-  name: "GET /api/initial-data - first page returns bookmarks with their tags",
+  name:
+    "GET /api/initial-data - first page returns bookmarks with their tag arrays and no top-level tags field",
   sanitizeResources: false,
   sanitizeOps: false,
   async fn() {
@@ -93,12 +86,6 @@ Deno.test({
       bookmarkRecord("bm3", []),
     ];
     const annotations = [annotationRecord("bm1"), annotationRecord("bm2")];
-    const tags = [
-      tagRecord("t1", "swift"),
-      tagRecord("t2", "ios"),
-      tagRecord("t3", "react"),
-      tagRecord("t4", "web"),
-    ];
 
     setTestSessionProvider(() =>
       Promise.resolve(
@@ -116,7 +103,9 @@ Deno.test({
             return Response.json({ records: annotations });
           }
           if (url.includes("listRecords") && url.includes(TAG_COLLECTION)) {
-            return Response.json({ records: tags });
+            // Migration path may still pull tags; handler should not include
+            // them in the response.
+            return Response.json({ records: [] });
           }
           if (
             url.includes("getRecord") &&
@@ -136,15 +125,14 @@ Deno.test({
 
       const body = await res.json();
 
-      // Verify bookmarks include tags
+      // Per-bookmark tag arrays still present
       assertEquals(body.bookmarks.length, 3);
       assertEquals(body.bookmarks[0].tags, ["swift", "ios"]);
       assertEquals(body.bookmarks[1].tags, ["react", "web"]);
       assertEquals(body.bookmarks[2].tags, []);
 
-      // Verify tags are returned
-      assertEquals(body.tags.length, 4);
-      assertEquals(body.tags[0].value, "swift");
+      // Top-level tags field removed — clients fetch /api/tags separately
+      assertEquals(body.tags, undefined);
 
       // Verify enrichment from annotations
       assertEquals(body.bookmarks[0].title, "Title for bm1");

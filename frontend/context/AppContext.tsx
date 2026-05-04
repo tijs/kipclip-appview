@@ -33,6 +33,7 @@ import {
 } from "../cache/db.ts";
 import {
   fetchFirstPage,
+  fetchTags,
   loadRemainingPages,
   writeToCache,
 } from "../cache/sync.ts";
@@ -300,10 +301,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const isStale = session ? isSessionStale(session.did) : false;
         const toastId = isStale ? toast("Syncing bookmarks...") : undefined;
         try {
-          const data = await fetchFirstPage({ newestFirst: true });
+          const [data, tagsList] = await Promise.all([
+            fetchFirstPage({ newestFirst: true }),
+            fetchTags(),
+          ]);
           applyServerMeta(data);
-          setTags(data.tags);
-          putTags(data.tags).catch(() => {});
+          setTags(tagsList);
+          putTags(tagsList).catch(() => {});
 
           // All bookmarks deleted on another device → clear local cache
           if (data.bookmarks.length === 0 && !data.bookmarkCursor) {
@@ -340,13 +344,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
         }
       } else {
-        // Cache miss (cold start): fetch first page, render, paginate rest
-        const data = await fetchFirstPage();
+        // Cache miss (cold start): fetch first page + tags in parallel,
+        // render, then paginate remaining bookmark pages in background.
+        const [data, tagsList] = await Promise.all([
+          fetchFirstPage(),
+          fetchTags(),
+        ]);
         applyServerMeta(data);
 
         // Render first page immediately
         setBookmarks(data.bookmarks);
-        setTags(data.tags);
+        setTags(tagsList);
 
         if (data.bookmarkCursor) {
           // Paginate remaining pages in background
@@ -357,11 +365,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           // Write full set to cache
           await writeToCache({
             bookmarks: result.complete ? result.bookmarks : data.bookmarks,
-            tags: data.tags,
+            tags: tagsList,
           });
         } else {
           // Only one page — write directly
-          await writeToCache({ bookmarks: data.bookmarks, tags: data.tags });
+          await writeToCache({ bookmarks: data.bookmarks, tags: tagsList });
         }
         if (session) markSessionVisited(session.did);
       }
@@ -384,7 +392,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setIsSyncing(true);
     try {
       const previousCount = bookmarksRef.current.length;
-      const data = await fetchFirstPage();
+      const [data, tagsList] = await Promise.all([
+        fetchFirstPage(),
+        fetchTags(),
+      ]);
       applyServerMeta(data);
       const result = await loadRemainingPages(data, (page) => {
         if (toastId) {
@@ -393,8 +404,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
       if (result.complete) {
         setBookmarks(result.bookmarks);
-        setTags(data.tags);
-        await writeToCache({ bookmarks: result.bookmarks, tags: data.tags });
+        setTags(tagsList);
+        await writeToCache({ bookmarks: result.bookmarks, tags: tagsList });
         if (session) markSessionVisited(session.did);
         const diff = result.bookmarks.length - previousCount;
         if (toastId) {
@@ -431,10 +442,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       (async () => {
         setIsSyncing(true);
         try {
-          const data = await fetchFirstPage({ newestFirst: true });
+          const [data, tagsList] = await Promise.all([
+            fetchFirstPage({ newestFirst: true }),
+            fetchTags(),
+          ]);
           applyServerMeta(data);
-          setTags(data.tags);
-          putTags(data.tags).catch(() => {});
+          setTags(tagsList);
+          putTags(tagsList).catch(() => {});
 
           const result = mergeFirstPageDiff(
             data.bookmarks,

@@ -21,11 +21,7 @@ import { getUserSettings } from "../../lib/settings.ts";
 import { runPdsMigrations } from "../../lib/pds-migrations.ts";
 import { isUserSupporter } from "../../lib/atprotofans.ts";
 import { shouldReadFromMirror } from "../../lib/mirror-config.ts";
-import {
-  firstPageBookmarks,
-  listTags as listMirrorTags,
-  nextPageBookmarks,
-} from "../../mirror/queries.ts";
+import { firstPageBookmarks, nextPageBookmarks } from "../../mirror/queries.ts";
 import type {
   AnnotationRecord,
   EnrichedBookmark,
@@ -109,14 +105,14 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
               throw e;
             }
           };
-          const [page, tagRecords, settings, preferences, isSupporter] =
-            await Promise.all([
+          const [page, settings, preferences, isSupporter] = await Promise.all(
+            [
               time("bookmarks", firstPageBookmarks(oauthSession.did)),
-              time("tags", listMirrorTags(oauthSession.did)),
               time("settings", getUserSettings(oauthSession.did)),
               time("prefs", getUserPreferences(oauthSession)),
               time("supporter", isUserSupporter(oauthSession)),
-            ]);
+            ],
+          );
           console.log(
             `[initial-data] total: ${
               Date.now() - t0
@@ -124,7 +120,6 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
           );
           const result: InitialDataResponse = {
             bookmarks: page.bookmarks,
-            tags: tagRecords,
             settings,
             preferences,
             bookmarkCursor: page.cursor,
@@ -156,14 +151,12 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
         const [
           bookmarkPage,
           annotationPage,
-          tagRecords,
           settings,
           preferences,
           isSupporter,
         ] = await Promise.all([
           listOnePage(oauthSession, BOOKMARK_COLLECTION, firstPageOpts),
           listOnePage(oauthSession, ANNOTATION_COLLECTION, firstPageOpts),
-          listAllRecords(oauthSession, TAG_COLLECTION),
           getUserSettings(oauthSession.did),
           getUserPreferences(oauthSession),
           isUserSupporter(oauthSession),
@@ -180,13 +173,6 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
           annotationMap,
         );
 
-        const tags: EnrichedTag[] = tagRecords.map((record: any) => ({
-          uri: record.uri,
-          cid: record.cid,
-          value: record.value.value,
-          createdAt: record.value.createdAt,
-        }));
-
         const rateLimit = pickLowestRateLimit(
           bookmarkPage.rateLimit,
           annotationPage.rateLimit,
@@ -194,7 +180,6 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
 
         const result: InitialDataResponse = {
           bookmarks,
-          tags,
           settings,
           preferences,
           bookmarkCursor: bookmarkPage.cursor,
@@ -208,14 +193,17 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
           setCookieHeader,
         );
 
-        // Background migrations: run once per user per server session
+        // Background migrations: run once per user per server session.
+        // Tags are fetched inside this branch because runPdsMigrations needs
+        // them for tag-record migrations.
         const userDid = oauthSession.did;
         if (bookmarkPage.records.length > 0 && !migratedUsers.has(userDid)) {
           migratedUsers.add(userDid);
           Promise.all([
             listAllRecords(oauthSession, BOOKMARK_COLLECTION),
             listAllRecords(oauthSession, ANNOTATION_COLLECTION),
-          ]).then(([allBookmarks, allAnnotations]) => {
+            listAllRecords(oauthSession, TAG_COLLECTION),
+          ]).then(([allBookmarks, allAnnotations, allTagRecords]) => {
             const allAnnotationMap = new Map<string, AnnotationRecord>();
             for (const record of allAnnotations) {
               const rkey = record.uri.split("/").pop();
@@ -223,6 +211,14 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
                 allAnnotationMap.set(rkey, record.value as AnnotationRecord);
               }
             }
+            const tagRecords: EnrichedTag[] = allTagRecords.map(
+              (record: any) => ({
+                uri: record.uri,
+                cid: record.cid,
+                value: record.value.value,
+                createdAt: record.value.createdAt,
+              }),
+            );
             return runPdsMigrations({
               oauthSession,
               bookmarkRecords: allBookmarks,
