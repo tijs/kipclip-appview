@@ -23,15 +23,25 @@ import type {
 } from "../../shared/types.ts";
 import { tagIncludes, tagsEqual } from "../../shared/tag-utils.ts";
 import { mergeTagDuplicates } from "../../lib/migration-merge-tags.ts";
+import { shouldReadFromMirror } from "../../lib/mirror-config.ts";
+import { listTags as listMirrorTags } from "../../mirror/queries.ts";
 
 export function registerTagRoutes(app: App<any>): App<any> {
-  // List tags
+  // List tags. Reads from mirror when MIRROR_MODE=read and the DID is tracked
+  // with a populated mirror; otherwise falls through to the PDS.
   app = app.get("/api/tags", async (ctx) => {
     try {
       const { session: oauthSession, setCookieHeader, error } =
         await getSessionFromRequest(ctx.req);
       if (!oauthSession) {
         return createAuthErrorResponse(error);
+      }
+
+      const decision = await shouldReadFromMirror(oauthSession.did);
+      if (decision.fromMirror) {
+        const tags = await listMirrorTags(oauthSession.did);
+        const result: ListTagsResponse = { tags };
+        return setSessionCookie(Response.json(result), setCookieHeader);
       }
 
       const records = await listAllRecords(oauthSession, TAG_COLLECTION);

@@ -15,7 +15,11 @@ import {
   _resetMirrorModeCache,
   shouldReadFromMirror,
 } from "../lib/mirror-config.ts";
-import { upsertBookmark, upsertTrackedDid } from "../mirror/upserts.ts";
+import {
+  upsertBookmark,
+  upsertTag,
+  upsertTrackedDid,
+} from "../mirror/upserts.ts";
 
 initOAuth(new Request("https://kipclip.com"));
 const handler = app.handler();
@@ -176,4 +180,85 @@ Deno.test("GET /api/bookmarks - read mode + tracked DID serves from mirror", asy
     clearSession();
     setMirrorMode("off");
   }
+});
+
+async function seedTag(rkey: string, value: string) {
+  await upsertTag({
+    uri: `at://${DID}/com.kipclip.tag/${rkey}`,
+    did: DID,
+    rkey,
+    cid: `bafyTAG${rkey}`,
+    value,
+    createdAt: "2026-05-01T00:00:00.000Z",
+  });
+}
+
+Deno.test("GET /api/tags - read mode + tracked DID serves from mirror", async () => {
+  await clearMirrorTables();
+  await seedTag("t1", "rust");
+  await seedTag("t2", "deno");
+  await upsertTrackedDid({
+    did: DID,
+    backfillStartedAt: 1,
+    backfillCompleteAt: 2,
+  });
+  setMirrorMode("read");
+  withSession();
+  try {
+    const res = await handler(new Request("https://kipclip.com/api/tags"));
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.tags.length, 2);
+    const values = body.tags.map((t: { value: string }) => t.value).sort();
+    assertEquals(values, ["deno", "rust"]);
+  } finally {
+    clearSession();
+    setMirrorMode("off");
+  }
+});
+
+Deno.test("GET /api/tags - read mode + tracked DID + no rows returns empty", async () => {
+  await clearMirrorTables();
+  await upsertTrackedDid({
+    did: DID,
+    backfillStartedAt: 1,
+    backfillCompleteAt: 2,
+  });
+  setMirrorMode("read");
+  withSession();
+  try {
+    const res = await handler(new Request("https://kipclip.com/api/tags"));
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.tags, []);
+  } finally {
+    clearSession();
+    setMirrorMode("off");
+  }
+});
+
+Deno.test("GET /api/tags - off mode falls through to PDS path", async () => {
+  await clearMirrorTables();
+  await seedTag("t1", "should-not-appear");
+  setMirrorMode("off");
+  withSession();
+  try {
+    const res = await handler(new Request("https://kipclip.com/api/tags"));
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    // PDS mock returns empty rows in test env; key invariant is that mirror
+    // rows did NOT bleed into the PDS-fallback response.
+    assertEquals(body.tags, []);
+  } finally {
+    clearSession();
+    setMirrorMode("off");
+  }
+});
+
+Deno.test("GET /api/tags - no session returns 401", async () => {
+  await clearMirrorTables();
+  clearSession();
+  setMirrorMode("off");
+  const res = await handler(new Request("https://kipclip.com/api/tags"));
+  assertEquals(res.status, 401);
 });
