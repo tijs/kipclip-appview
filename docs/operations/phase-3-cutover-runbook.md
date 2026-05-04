@@ -23,10 +23,10 @@ DNS flip from Deno Deploy to the Hetzner box. Run only after every box in
 - [ ] **Drop DNS TTL on `kipclip.com` and `www.kipclip.com` to 60s.** Wait for
       propagation (`dig +short kipclip.com` from multiple regions; or use
       https://dnschecker.org).
-- [ ] Verify Caddyfile on the box already has `kipclip.com` and
-      `www.kipclip.com` blocks (this lands ahead of the flip — see
-      `deploy/Caddyfile`). Caddy will provision certs automatically when DNS
-      resolves to the box.
+- [ ] Confirm `deploy/Caddyfile` on the box has the `kipclip.com` and
+      `www.kipclip.com` blocks **commented out** (default state — they're
+      uncommented at flip time, NOT before, to avoid Let's Encrypt rate limits
+      from failed cert provisioning attempts).
 
 ## Pre-flip (T-1h)
 
@@ -57,6 +57,10 @@ curl -s  --resolve kipclip.com:443:$BOX_IP https://kipclip.com/api/initial-data 
 - [ ] Set apex A record → box public IPv4.
 - [ ] Set apex AAAA record → box public IPv6.
 - [ ] Set `www` A/AAAA records → box public IPv4/IPv6.
+- [ ] Wait for DNS to resolve to box (verify via `dig +short kipclip.com`).
+- [ ] On the box: uncomment the `kipclip.com` and `www.kipclip.com` blocks in
+      `/etc/caddy/Caddyfile`, then `sudo systemctl reload caddy`. Watch
+      `journalctl -u caddy -f` for successful ACME orders.
 - [ ] Optional: remove the old Deno Deploy CNAME / A records once you confirm
       the new ones resolve.
 
