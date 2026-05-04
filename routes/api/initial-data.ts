@@ -93,29 +93,13 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
         undefined;
       const isFirstPage = !bookmarkCursor;
 
-      const tSession = Date.now();
       const mirrorDecision = await shouldReadFromMirror(oauthSession.did);
-      const dSession = Date.now() - tSession;
       if (mirrorDecision.fromMirror) {
         if (isFirstPage) {
-          const t0 = Date.now();
-          const time = async <T>(label: string, p: Promise<T>): Promise<T> => {
-            const start = Date.now();
-            try {
-              const r = await p;
-              console.log(`[initial-data] ${label}: ${Date.now() - start}ms`);
-              return r;
-            } catch (e) {
-              console.log(
-                `[initial-data] ${label}: ${Date.now() - start}ms ERR`,
-              );
-              throw e;
-            }
-          };
           const [page, extras, isSupporter] = await Promise.all([
-            time("bookmarks", firstPageBookmarks(oauthSession.did)),
-            time("extras", getMirrorInitialExtras(oauthSession.did)),
-            time("supporter", isUserSupporter(oauthSession)),
+            firstPageBookmarks(oauthSession.did),
+            getMirrorInitialExtras(oauthSession.did),
+            isUserSupporter(oauthSession),
           ]);
           const settings: UserSettings = {
             instapaperEnabled: extras.instapaperEnabled,
@@ -130,11 +114,6 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
             dateFormat: extras.preferences?.dateFormat || "us",
             readingListTag: extras.preferences?.readingListTag || "toread",
           };
-          console.log(
-            `[initial-data] total: ${
-              Date.now() - t0
-            }ms (mirrorDecision: ${dSession}ms)`,
-          );
           const result: InitialDataResponse = {
             bookmarks: page.bookmarks,
             settings,
