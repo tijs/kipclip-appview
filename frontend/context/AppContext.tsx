@@ -219,17 +219,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Tag actions
   async function loadTags() {
-    try {
-      const response = await apiGet("/api/tags");
-      if (!response.ok) {
-        throw new Error("Failed to load tags");
-      }
-      const data = await response.json();
-      setTags(data.tags);
-    } catch (err) {
-      console.error("Failed to load tags:", err);
-      throw err;
-    }
+    const tagsList = await fetchTags();
+    setTags(tagsList);
+    putTags(tagsList).catch(() => {});
   }
 
   function addTag(tag: EnrichedTag) {

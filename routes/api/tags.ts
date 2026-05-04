@@ -39,9 +39,18 @@ export function registerTagRoutes(app: App<any>): App<any> {
 
       const decision = await shouldReadFromMirror(oauthSession.did);
       if (decision.fromMirror) {
-        const tags = await listMirrorTags(oauthSession.did);
-        const result: ListTagsResponse = { tags };
-        return setSessionCookie(Response.json(result), setCookieHeader);
+        try {
+          const tags = await listMirrorTags(oauthSession.did);
+          const result: ListTagsResponse = { tags };
+          return setSessionCookie(Response.json(result), setCookieHeader);
+        } catch (mirrorErr) {
+          // Mirror Turso failure: return empty tags rather than 500 so the
+          // client renders bookmarks with an empty sidebar instead of erroring.
+          // Matches the PDS-branch recovery shape ({tags: []}) below.
+          console.warn("listMirrorTags failed, returning empty:", mirrorErr);
+          const result: ListTagsResponse = { tags: [] };
+          return setSessionCookie(Response.json(result), setCookieHeader);
+        }
       }
 
       const records = await listAllRecords(oauthSession, TAG_COLLECTION);

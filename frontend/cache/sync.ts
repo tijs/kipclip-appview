@@ -20,19 +20,32 @@ interface CachedData {
 
 /**
  * Fetch the user's full tag list from /api/tags.
- * Tags are split out of /api/initial-data so the largest payload does not
- * block first-paint; clients fire this in parallel with fetchFirstPage.
+ *
+ * Fail-soft: returns [] on any network or non-OK response. Tags are split
+ * out of /api/initial-data so the largest payload does not block first-paint;
+ * clients fire this in parallel with fetchFirstPage via Promise.all, which
+ * has fail-fast semantics. Returning [] instead of throwing keeps a transient
+ * tag-fetch failure from blocking the bookmark render path.
+ *
+ * Callers that need strict error semantics should fetch /api/tags directly.
  */
 export async function fetchTags(): Promise<EnrichedTag[]> {
   perf.start("tagsFetch");
-  const response = await apiGet("/api/tags");
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(`Failed to load tags: ${response.status} ${body}`);
+  try {
+    const response = await apiGet("/api/tags");
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      console.warn(`fetchTags: ${response.status} ${body}`);
+      return [];
+    }
+    const data = (await response.json()) as ListTagsResponse;
+    return data.tags ?? [];
+  } catch (err) {
+    console.warn("fetchTags: network error", err);
+    return [];
+  } finally {
+    perf.end("tagsFetch");
   }
-  const data = (await response.json()) as ListTagsResponse;
-  perf.end("tagsFetch");
-  return data.tags ?? [];
 }
 
 interface LoadPagesResult {
