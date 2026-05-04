@@ -152,7 +152,11 @@ async function fetchUrlMetadata(url: string): Promise<UrlMetadata> {
     const html = await response.text();
     return parseHtmlMetadata(html, parsedUrl);
   } catch (error) {
-    console.error(`Failed to extract metadata from ${url}:`, error);
+    // Many sites block bot User-Agents (403/401/451) or require cookies — that
+    // is expected, not exceptional. Log a one-liner instead of a full stack
+    // trace so production logs stay readable.
+    const msg = error instanceof Error ? error.message : String(error);
+    console.warn(`[Enrichment] ${url}: ${msg}`);
     try {
       const parsedUrl = new URL(url);
       return { title: parsedUrl.hostname, favicon: defaultFavicon(parsedUrl) };

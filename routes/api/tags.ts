@@ -27,6 +27,7 @@ import { tagIncludes, tagsEqual } from "../../shared/tag-utils.ts";
 import { mergeTagDuplicates } from "../../lib/migration-merge-tags.ts";
 import { shouldReadFromMirror } from "../../lib/mirror-config.ts";
 import { listTags as listMirrorTags } from "../../mirror/queries.ts";
+import { captureMessage } from "../../lib/sentry.ts";
 
 export function registerTagRoutes(app: App<any>): App<any> {
   // List tags. Reads from mirror when MIRROR_MODE=read and the DID is tracked
@@ -46,12 +47,17 @@ export function registerTagRoutes(app: App<any>): App<any> {
           const result: ListTagsResponse = { tags };
           return setSessionCookie(Response.json(result), setCookieHeader);
         } catch (mirrorErr) {
-          // Mirror Turso failure: return empty tags rather than 500 so the
-          // client renders bookmarks with an empty sidebar instead of erroring.
-          // Matches the PDS-branch recovery shape ({tags: []}) below.
-          console.warn("listMirrorTags failed, returning empty:", mirrorErr);
-          const result: ListTagsResponse = { tags: [] };
-          return setSessionCookie(Response.json(result), setCookieHeader);
+          captureMessage(
+            "mirror read fallback to PDS",
+            "warning",
+            {
+              did: oauthSession.did,
+              op: "GET /api/tags",
+              error: String(mirrorErr),
+            },
+          );
+          // Fall through to the PDS path below — gives the user real tags
+          // instead of an empty sidebar when Turso flakes briefly.
         }
       }
 

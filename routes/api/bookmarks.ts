@@ -32,6 +32,7 @@ import { getUserPreferences } from "../../lib/preferences.ts";
 import { sendToInstapaperAsync } from "../../lib/instapaper.ts";
 import { shouldReadFromMirror } from "../../lib/mirror-config.ts";
 import { listAllBookmarks } from "../../mirror/queries.ts";
+import { captureMessage } from "../../lib/sentry.ts";
 import type {
   AddBookmarkRequest,
   AddBookmarkResponse,
@@ -57,9 +58,22 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
 
       const mirrorDecision = await shouldReadFromMirror(oauthSession.did);
       if (mirrorDecision.fromMirror) {
-        const bookmarks = await listAllBookmarks(oauthSession.did);
-        const result: ListBookmarksResponse = { bookmarks };
-        return setSessionCookie(Response.json(result), setCookieHeader);
+        try {
+          const bookmarks = await listAllBookmarks(oauthSession.did);
+          const result: ListBookmarksResponse = { bookmarks };
+          return setSessionCookie(Response.json(result), setCookieHeader);
+        } catch (mirrorErr) {
+          captureMessage(
+            "mirror read fallback to PDS",
+            "warning",
+            {
+              did: oauthSession.did,
+              op: "GET /api/bookmarks",
+              error: String(mirrorErr),
+            },
+          );
+          // Fall through to the PDS path below.
+        }
       }
 
       const [bookmarkRecords, annotationResult] = await Promise.all([

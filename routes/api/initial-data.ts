@@ -27,6 +27,7 @@ import {
   nextPageBookmarks,
 } from "../../mirror/queries.ts";
 import { decrypt } from "../../lib/encryption.ts";
+import { captureMessage } from "../../lib/sentry.ts";
 import type {
   AnnotationRecord,
   EnrichedBookmark,
@@ -95,44 +96,66 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
 
       const mirrorDecision = await shouldReadFromMirror(oauthSession.did);
       if (mirrorDecision.fromMirror) {
-        if (isFirstPage) {
-          const [page, extras, isSupporter] = await Promise.all([
-            firstPageBookmarks(oauthSession.did),
-            getMirrorInitialExtras(oauthSession.did),
-            isUserSupporter(oauthSession),
-          ]);
-          const settings: UserSettings = {
-            instapaperEnabled: extras.instapaperEnabled,
-            instapaperUsername: extras.instapaperEnabled &&
-                extras.instapaperUsernameEncrypted
-              ? await decrypt(extras.instapaperUsernameEncrypted).catch(() =>
-                undefined
-              )
-              : undefined,
-          };
-          const preferences: UserPreferences = {
-            dateFormat: extras.preferences?.dateFormat || "us",
-            readingListTag: extras.preferences?.readingListTag || "toread",
-          };
-          const result: InitialDataResponse = {
-            bookmarks: page.bookmarks,
-            settings,
-            preferences,
-            bookmarkCursor: page.cursor,
-            isSupporter,
-            ...(mirrorDecision.syncing ? { syncing: true } : {}),
-          };
-          return setSessionCookie(Response.json(result), setCookieHeader);
+        // Wrap the mirror branch so a Turso connection flake (eu-west-1
+        // ↔ Deno Deploy US sometimes drops requests) falls through to
+        // the PDS path below instead of 500-ing the user. Sentry warning
+        // surfaces the degradation event in production.
+        try {
+          if (isFirstPage) {
+            const [page, extras, isSupporter] = await Promise.all([
+              firstPageBookmarks(oauthSession.did),
+              getMirrorInitialExtras(oauthSession.did),
+              isUserSupporter(oauthSession),
+            ]);
+            const settings: UserSettings = {
+              instapaperEnabled: extras.instapaperEnabled,
+              instapaperUsername: extras.instapaperEnabled &&
+                  extras.instapaperUsernameEncrypted
+                ? await decrypt(extras.instapaperUsernameEncrypted).catch(() =>
+                  undefined
+                )
+                : undefined,
+            };
+            const preferences: UserPreferences = {
+              dateFormat: extras.preferences?.dateFormat || "us",
+              readingListTag: extras.preferences?.readingListTag || "toread",
+            };
+            const result: InitialDataResponse = {
+              bookmarks: page.bookmarks,
+              settings,
+              preferences,
+              bookmarkCursor: page.cursor,
+              isSupporter,
+              ...(mirrorDecision.syncing ? { syncing: true } : {}),
+            };
+            return setSessionCookie(Response.json(result), setCookieHeader);
+          }
+          const page = await nextPageBookmarks(
+            oauthSession.did,
+            bookmarkCursor,
+          );
+          return setSessionCookie(
+            Response.json({
+              bookmarks: page.bookmarks,
+              bookmarkCursor: page.cursor,
+              ...(mirrorDecision.syncing ? { syncing: true } : {}),
+            }),
+            setCookieHeader,
+          );
+        } catch (mirrorErr) {
+          captureMessage(
+            "mirror read fallback to PDS",
+            "warning",
+            {
+              did: oauthSession.did,
+              op: isFirstPage
+                ? "initial-data first-page"
+                : "initial-data next-page",
+              error: String(mirrorErr),
+            },
+          );
+          // Fall through to the PDS path below.
         }
-        const page = await nextPageBookmarks(oauthSession.did, bookmarkCursor);
-        return setSessionCookie(
-          Response.json({
-            bookmarks: page.bookmarks,
-            bookmarkCursor: page.cursor,
-            ...(mirrorDecision.syncing ? { syncing: true } : {}),
-          }),
-          setCookieHeader,
-        );
       }
 
       if (isFirstPage) {
