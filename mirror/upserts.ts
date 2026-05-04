@@ -11,7 +11,7 @@
  * before writing — defends against caller bugs that would mix DIDs across rows.
  */
 
-import { rawDb } from "../lib/db.ts";
+import { mirrorWrite } from "../lib/db.ts";
 
 export interface BookmarkUpsert {
   uri: string;
@@ -77,7 +77,7 @@ function assertDidMatchesUri(uri: string, did: string): void {
 export async function upsertBookmark(record: BookmarkUpsert): Promise<void> {
   assertDidMatchesUri(record.uri, record.did);
   const tagsJson = JSON.stringify(record.tags ?? []);
-  await rawDb.execute({
+  await mirrorWrite({
     sql: `
       INSERT INTO bookmarks (
         uri, did, rkey, cid, subject, created_at, tags,
@@ -117,7 +117,7 @@ export async function upsertBookmark(record: BookmarkUpsert): Promise<void> {
 
 export async function deleteBookmark(uri: string, did: string): Promise<void> {
   assertDidMatchesUri(uri, did);
-  await rawDb.execute({
+  await mirrorWrite({
     sql: "DELETE FROM bookmarks WHERE uri = ? AND did = ?",
     args: [uri, did],
   });
@@ -127,7 +127,7 @@ export async function upsertAnnotation(
   record: AnnotationUpsert,
 ): Promise<void> {
   assertDidMatchesUri(record.uri, record.did);
-  await rawDb.execute({
+  await mirrorWrite({
     sql: `
       INSERT INTO annotations (
         uri, did, rkey, cid, subject,
@@ -167,7 +167,7 @@ export async function deleteAnnotation(
   did: string,
 ): Promise<void> {
   assertDidMatchesUri(uri, did);
-  await rawDb.execute({
+  await mirrorWrite({
     sql: "DELETE FROM annotations WHERE uri = ? AND did = ?",
     args: [uri, did],
   });
@@ -175,7 +175,7 @@ export async function deleteAnnotation(
 
 export async function upsertTag(record: TagUpsert): Promise<void> {
   assertDidMatchesUri(record.uri, record.did);
-  await rawDb.execute({
+  await mirrorWrite({
     sql: `
       INSERT INTO tags (uri, did, rkey, cid, value, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -201,7 +201,7 @@ export async function upsertTag(record: TagUpsert): Promise<void> {
 
 export async function deleteTag(uri: string, did: string): Promise<void> {
   assertDidMatchesUri(uri, did);
-  await rawDb.execute({
+  await mirrorWrite({
     sql: "DELETE FROM tags WHERE uri = ? AND did = ?",
     args: [uri, did],
   });
@@ -210,7 +210,7 @@ export async function deleteTag(uri: string, did: string): Promise<void> {
 export async function upsertPreferences(
   record: PreferencesUpsert,
 ): Promise<void> {
-  await rawDb.execute({
+  await mirrorWrite({
     sql: `
       INSERT INTO preferences (did, cid, date_format, reading_list_tag, updated_at)
       VALUES (?, ?, ?, ?, ?)
@@ -231,7 +231,7 @@ export async function upsertPreferences(
 }
 
 export async function deletePreferences(did: string): Promise<void> {
-  await rawDb.execute({
+  await mirrorWrite({
     sql: "DELETE FROM preferences WHERE did = ?",
     args: [did],
   });
@@ -245,7 +245,7 @@ export async function deletePreferences(did: string): Promise<void> {
 export async function upsertTrackedDid(
   state: TrackedDidUpsert,
 ): Promise<void> {
-  await rawDb.execute({
+  await mirrorWrite({
     sql: `
       INSERT INTO tracked_dids (
         did, pds_url, added_at,

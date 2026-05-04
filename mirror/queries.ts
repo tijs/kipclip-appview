@@ -13,7 +13,7 @@
  * URI lexicographic ordering, so pagination is stable across page boundaries.
  */
 
-import { rawDb } from "../lib/db.ts";
+import { mirrorRead, rawDb } from "../lib/db.ts";
 import type { EnrichedBookmark, EnrichedTag } from "../shared/types.ts";
 
 export interface SyncStatus {
@@ -118,13 +118,15 @@ export async function firstPageBookmarks(
   opts: FirstPageOpts = {},
 ): Promise<PageResult> {
   const limit = opts.limit ?? DEFAULT_PAGE_SIZE;
-  const r = await rawDb.execute({
-    sql: `${BOOKMARK_SELECT}
+  const r = await mirrorRead((db) =>
+    db.execute({
+      sql: `${BOOKMARK_SELECT}
           WHERE b.did = ?
           ORDER BY b.created_at DESC, b.uri DESC
           LIMIT ?`,
-    args: [did, limit + 1],
-  });
+      args: [did, limit + 1],
+    })
+  );
   const rows = r.rows ?? [];
   const hasMore = rows.length > limit;
   const slice = hasMore ? rows.slice(0, limit) : rows;
@@ -150,8 +152,9 @@ export async function nextPageBookmarks(
   const decoded = decodeCursor(cursor);
   if (!decoded) return { bookmarks: [], cursor: undefined };
   const limit = opts.limit ?? DEFAULT_PAGE_SIZE;
-  const r = await rawDb.execute({
-    sql: `${BOOKMARK_SELECT}
+  const r = await mirrorRead((db) =>
+    db.execute({
+      sql: `${BOOKMARK_SELECT}
           WHERE b.did = ?
             AND (
               b.created_at < ?
@@ -159,8 +162,9 @@ export async function nextPageBookmarks(
             )
           ORDER BY b.created_at DESC, b.uri DESC
           LIMIT ?`,
-    args: [did, decoded.createdAt, decoded.createdAt, decoded.uri, limit + 1],
-  });
+      args: [did, decoded.createdAt, decoded.createdAt, decoded.uri, limit + 1],
+    })
+  );
   const rows = r.rows ?? [];
   const hasMore = rows.length > limit;
   const slice = hasMore ? rows.slice(0, limit) : rows;
@@ -181,12 +185,14 @@ export async function nextPageBookmarks(
 export async function listAllBookmarks(
   did: string,
 ): Promise<EnrichedBookmark[]> {
-  const r = await rawDb.execute({
-    sql: `${BOOKMARK_SELECT}
+  const r = await mirrorRead((db) =>
+    db.execute({
+      sql: `${BOOKMARK_SELECT}
           WHERE b.did = ?
           ORDER BY b.created_at DESC, b.uri DESC`,
-    args: [did],
-  });
+      args: [did],
+    })
+  );
   return (r.rows ?? []).map(rowToBookmark);
 }
 
@@ -194,21 +200,25 @@ export async function listAllBookmarks(
 export async function getBookmark(
   uri: string,
 ): Promise<EnrichedBookmark | null> {
-  const r = await rawDb.execute({
-    sql: `${BOOKMARK_SELECT} WHERE b.uri = ?`,
-    args: [uri],
-  });
+  const r = await mirrorRead((db) =>
+    db.execute({
+      sql: `${BOOKMARK_SELECT} WHERE b.uri = ?`,
+      args: [uri],
+    })
+  );
   if (!r.rows || r.rows.length === 0) return null;
   return rowToBookmark(r.rows[0]);
 }
 
 /** All tags for a DID. */
 export async function listTags(did: string): Promise<EnrichedTag[]> {
-  const r = await rawDb.execute({
-    sql: `SELECT uri, cid, value, created_at FROM tags WHERE did = ?
+  const r = await mirrorRead((db) =>
+    db.execute({
+      sql: `SELECT uri, cid, value, created_at FROM tags WHERE did = ?
           ORDER BY value`,
-    args: [did],
-  });
+      args: [did],
+    })
+  );
   return (r.rows ?? []).map((row) => {
     const [uri, cid, value, createdAt] = row as (string | null)[];
     return {
@@ -232,10 +242,13 @@ export interface MirrorPreferences {
 export async function getMirrorPreferences(
   did: string,
 ): Promise<MirrorPreferences | null> {
-  const r = await rawDb.execute({
-    sql: "SELECT date_format, reading_list_tag FROM preferences WHERE did = ?",
-    args: [did],
-  });
+  const r = await mirrorRead((db) =>
+    db.execute({
+      sql:
+        "SELECT date_format, reading_list_tag FROM preferences WHERE did = ?",
+      args: [did],
+    })
+  );
   if (!r.rows || r.rows.length === 0) return null;
   const [dateFormat, readingListTag] = r.rows[0] as (string | null)[];
   return {
@@ -260,6 +273,12 @@ export interface MirrorInitialExtras {
  * so the second roundtrip pays full latency. One LEFT JOIN against a literal
  * DID row produces both in one call. Caller decrypts the username and applies
  * UserSettings defaults; preferences callers apply their own defaults.
+ *
+ * Stays on Turso (rawDb) deliberately: user_settings is Turso-only durable
+ * state (not mirrored via TAP), so this JOIN can't run against the local
+ * libSQL where user_settings doesn't exist. Future optimization: split prefs
+ * from settings, read prefs via mirrorRead for sub-ms latency, settings still
+ * Turso. Out of scope for plan 004.
  */
 export async function getMirrorInitialExtras(
   did: string,
@@ -300,12 +319,14 @@ export async function getMirrorInitialExtras(
 
 /** Per-DID sync state. tracking=false when no row exists. */
 export async function getSyncStatus(did: string): Promise<SyncStatus> {
-  const r = await rawDb.execute({
-    sql: `SELECT pds_url, backfill_started_at, backfill_complete_at,
+  const r = await mirrorRead((db) =>
+    db.execute({
+      sql: `SELECT pds_url, backfill_started_at, backfill_complete_at,
                  last_seq, last_event_at
           FROM tracked_dids WHERE did = ?`,
-    args: [did],
-  });
+      args: [did],
+    })
+  );
   if (!r.rows || r.rows.length === 0) {
     return {
       tracking: false,
