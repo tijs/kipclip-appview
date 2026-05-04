@@ -199,11 +199,16 @@ async function processIdentityEvent(_e: IdentityEvt): Promise<void> {
 }
 
 async function touchTracked(did: string, r: RecordEvt): Promise<void> {
+  const now = Date.now();
+  // On the first live event we set BOTH started + complete so the row never has
+  // complete-without-started (which would fail the mirror-read gate that
+  // requires backfill_started_at !== null). Existing non-null values are
+  // preserved by upsertTrackedDid's COALESCE clauses.
   await upsertTrackedDid({
     did,
-    lastEventAt: Date.now(),
-    // Mark backfill complete on first live event after backfill stream.
-    backfillCompleteAt: r.live ? Date.now() : null,
+    lastEventAt: now,
+    backfillStartedAt: r.live ? now : null,
+    backfillCompleteAt: r.live ? now : null,
   });
 }
 
