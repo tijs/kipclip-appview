@@ -22,7 +22,7 @@ const handler = app.handler();
 
 const DID = "did:plc:test123";
 
-function setMirrorMode(mode: "off" | "read" | "only") {
+function setMirrorMode(mode: "off" | "read") {
   Deno.env.set("MIRROR_MODE", mode);
   _resetMirrorModeCache();
 }
@@ -92,15 +92,6 @@ Deno.test("shouldReadFromMirror - read mode + untracked DID → PDS fallback", a
   setMirrorMode("read");
   const d = await shouldReadFromMirror(DID);
   assertEquals(d.fromMirror, false);
-  setMirrorMode("off");
-});
-
-Deno.test("shouldReadFromMirror - only mode + untracked DID → mirror, no syncing flag", async () => {
-  await clearMirrorTables();
-  setMirrorMode("only");
-  const d = await shouldReadFromMirror(DID);
-  assertEquals(d.fromMirror, true);
-  assertEquals(d.syncing, false);
   setMirrorMode("off");
 });
 

@@ -8,15 +8,18 @@
  *   "off"   - Default. All reads go to PDS. Mirror infra may exist but is unused.
  *   "read"  - Reads served from mirror for tracked DIDs with started backfill.
  *             Untracked DIDs fall through to PDS so login works before sync.
- *   "only"  - Reads served from mirror only. Untracked DIDs get empty results
- *             plus syncing flag. No PDS fallback.
+ *
+ * Writes always go to the user's PDS. The mirror is purely a TAP-fed read
+ * replica; there is no future "mirror is authoritative for writes" mode (see
+ * docs/plans/2026-05-02-001-feat-appview-mirror-phases-0-2-plan.md, Terminal
+ * architecture note). The legacy value "only" is rejected as invalid.
  */
 
 import { getSyncStatus, type SyncStatus } from "../mirror/queries.ts";
 
-export type MirrorMode = "off" | "read" | "only";
+export type MirrorMode = "off" | "read";
 
-const VALID_MODES: ReadonlySet<MirrorMode> = new Set(["off", "read", "only"]);
+const VALID_MODES: ReadonlySet<MirrorMode> = new Set(["off", "read"]);
 
 let cached: MirrorMode | null = null;
 
@@ -26,6 +29,12 @@ function readMode(): MirrorMode {
   const normalised = raw.trim().toLowerCase();
   if (VALID_MODES.has(normalised as MirrorMode)) {
     return normalised as MirrorMode;
+  }
+  if (normalised === "only") {
+    console.warn(
+      `⚠️ MIRROR_MODE="only" is no longer supported (mirror is read-only by design); falling back to "off"`,
+    );
+    return "off";
   }
   console.warn(
     `⚠️ MIRROR_MODE has invalid value "${raw}", falling back to "off"`,
@@ -66,9 +75,7 @@ export interface MirrorReadDecision {
  *
  *   "off"  → always false (PDS path).
  *   "read" → true iff DID is tracked AND backfill has started; otherwise PDS
- *            fallback so untracked users keep working before phase 3.
- *   "only" → true unconditionally; untracked DIDs see empty mirror with
- *            syncing=false (no PDS fallback). Phase 4+ behaviour, wired now.
+ *            fallback so untracked users keep working.
  *
  * `syncing` is true when reading from the mirror but backfill_complete_at is
  * not yet stamped — the response advertises "data may be incomplete".
@@ -81,14 +88,6 @@ export async function shouldReadFromMirror(
 
   if (mode === "off") {
     return { fromMirror: false, syncing: false, status };
-  }
-
-  if (mode === "only") {
-    return {
-      fromMirror: true,
-      syncing: status.tracking ? !status.backfillCompleteAt : false,
-      status,
-    };
   }
 
   const fromMirror = status.tracking && status.backfillStartedAt !== null;

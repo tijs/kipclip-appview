@@ -41,13 +41,14 @@ Deno.test("getMirrorMode - returns read", () => {
   withEnv("read", () => assertEquals(getMirrorMode(), "read"));
 });
 
-Deno.test("getMirrorMode - returns only", () => {
-  withEnv("only", () => assertEquals(getMirrorMode(), "only"));
+Deno.test("getMirrorMode - legacy 'only' falls back to off", () => {
+  withEnv("only", () => assertEquals(getMirrorMode(), "off"));
+  withEnv("Only", () => assertEquals(getMirrorMode(), "off"));
 });
 
 Deno.test("getMirrorMode - case-insensitive", () => {
   withEnv("READ", () => assertEquals(getMirrorMode(), "read"));
-  withEnv("Only", () => assertEquals(getMirrorMode(), "only"));
+  withEnv("OFF", () => assertEquals(getMirrorMode(), "off"));
 });
 
 Deno.test("getMirrorMode - trims whitespace", () => {
