@@ -170,6 +170,15 @@ Guidelines:
 - Import from `jsr:` for Deno packages, `https://esm.sh/` for npm packages
 - Keep files under 500 lines
 
+## Documented Solutions
+
+`docs/solutions/` — documented solutions to past problems (bugs, best practices,
+workflow patterns), organized by category subdirectory (e.g.
+`performance-issues/`, `integration-issues/`) with YAML frontmatter fields like
+`module`, `tags`, `problem_type`, `component`. Relevant when implementing or
+debugging in documented areas — grep frontmatter to find applicable prior
+learnings before re-investigating.
+
 ## Design Context
 
 ### Users
