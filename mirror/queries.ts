@@ -244,6 +244,60 @@ export async function getMirrorPreferences(
   };
 }
 
+export interface MirrorInitialExtras {
+  /** Raw user_settings row data (caller decrypts username and applies defaults). */
+  instapaperEnabled: boolean;
+  instapaperUsernameEncrypted: string | null;
+  /** Mirrored preferences row, or null when no row exists yet. */
+  preferences: MirrorPreferences | null;
+}
+
+/**
+ * Combined read of user_settings + preferences in a single Turso roundtrip.
+ *
+ * /api/initial-data's mirror branch needs both, and they previously fired as
+ * two parallel HTTP requests — the libSQL HTTP client serializes per-connection
+ * so the second roundtrip pays full latency. One LEFT JOIN against a literal
+ * DID row produces both in one call. Caller decrypts the username and applies
+ * UserSettings defaults; preferences callers apply their own defaults.
+ */
+export async function getMirrorInitialExtras(
+  did: string,
+): Promise<MirrorInitialExtras> {
+  const r = await rawDb.execute({
+    sql: `SELECT
+            s.instapaper_enabled,
+            s.instapaper_username_encrypted,
+            p.date_format,
+            p.reading_list_tag,
+            CASE WHEN p.did IS NULL THEN 0 ELSE 1 END AS has_prefs
+          FROM (SELECT ? AS did) d
+          LEFT JOIN user_settings s ON s.did = d.did
+          LEFT JOIN preferences p ON p.did = d.did`,
+    args: [did],
+  });
+  const row = (r.rows?.[0] ?? []) as (string | number | null)[];
+  const [
+    instapaperEnabled,
+    instapaperUsernameEncrypted,
+    dateFormat,
+    readingListTag,
+    hasPrefs,
+  ] = row;
+  return {
+    instapaperEnabled: instapaperEnabled === 1 || instapaperEnabled === "1",
+    instapaperUsernameEncrypted: instapaperUsernameEncrypted
+      ? String(instapaperUsernameEncrypted)
+      : null,
+    preferences: hasPrefs
+      ? {
+        dateFormat: (dateFormat as string | null) ?? null,
+        readingListTag: (readingListTag as string | null) ?? null,
+      }
+      : null,
+  };
+}
+
 /** Per-DID sync state. tracking=false when no row exists. */
 export async function getSyncStatus(did: string): Promise<SyncStatus> {
   const r = await rawDb.execute({

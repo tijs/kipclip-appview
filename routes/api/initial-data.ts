@@ -21,12 +21,19 @@ import { getUserSettings } from "../../lib/settings.ts";
 import { runPdsMigrations } from "../../lib/pds-migrations.ts";
 import { isUserSupporter } from "../../lib/atprotofans.ts";
 import { shouldReadFromMirror } from "../../lib/mirror-config.ts";
-import { firstPageBookmarks, nextPageBookmarks } from "../../mirror/queries.ts";
+import {
+  firstPageBookmarks,
+  getMirrorInitialExtras,
+  nextPageBookmarks,
+} from "../../mirror/queries.ts";
+import { decrypt } from "../../lib/encryption.ts";
 import type {
   AnnotationRecord,
   EnrichedBookmark,
   EnrichedTag,
   InitialDataResponse,
+  UserPreferences,
+  UserSettings,
 } from "../../shared/types.ts";
 import { newestTidCursor } from "../../lib/tid.ts";
 
@@ -105,14 +112,24 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
               throw e;
             }
           };
-          const [page, settings, preferences, isSupporter] = await Promise.all(
-            [
-              time("bookmarks", firstPageBookmarks(oauthSession.did)),
-              time("settings", getUserSettings(oauthSession.did)),
-              time("prefs", getUserPreferences(oauthSession)),
-              time("supporter", isUserSupporter(oauthSession)),
-            ],
-          );
+          const [page, extras, isSupporter] = await Promise.all([
+            time("bookmarks", firstPageBookmarks(oauthSession.did)),
+            time("extras", getMirrorInitialExtras(oauthSession.did)),
+            time("supporter", isUserSupporter(oauthSession)),
+          ]);
+          const settings: UserSettings = {
+            instapaperEnabled: extras.instapaperEnabled,
+            instapaperUsername: extras.instapaperEnabled &&
+                extras.instapaperUsernameEncrypted
+              ? await decrypt(extras.instapaperUsernameEncrypted).catch(() =>
+                undefined
+              )
+              : undefined,
+          };
+          const preferences: UserPreferences = {
+            dateFormat: extras.preferences?.dateFormat || "us",
+            readingListTag: extras.preferences?.readingListTag || "toread",
+          };
           console.log(
             `[initial-data] total: ${
               Date.now() - t0

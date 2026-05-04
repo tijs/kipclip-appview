@@ -7,11 +7,13 @@ import { assertEquals, assertExists } from "@std/assert";
 import {
   firstPageBookmarks,
   getBookmark,
+  getMirrorInitialExtras,
   getMirrorPreferences,
   getSyncStatus,
   listTags,
   nextPageBookmarks,
 } from "../mirror/queries.ts";
+import { rawDb } from "../lib/db.ts";
 import {
   upsertAnnotation,
   upsertBookmark,
@@ -248,4 +250,79 @@ Deno.test("getMirrorPreferences - returns nulls for missing columns", async () =
   await upsertPreferences({ did: DID, cid: "bafyP1" });
   const p = await getMirrorPreferences(DID);
   assertEquals(p, { dateFormat: null, readingListTag: null });
+});
+
+async function clearUserSettings() {
+  await rawDb.execute({ sql: "DELETE FROM user_settings", args: [] });
+}
+
+Deno.test("getMirrorInitialExtras - both rows missing returns defaults+null", async () => {
+  await clearMirrorTables();
+  await clearUserSettings();
+  const e = await getMirrorInitialExtras(DID);
+  assertEquals(e.instapaperEnabled, false);
+  assertEquals(e.instapaperUsernameEncrypted, null);
+  assertEquals(e.preferences, null);
+});
+
+Deno.test("getMirrorInitialExtras - settings row only returns settings + null prefs", async () => {
+  await clearMirrorTables();
+  await clearUserSettings();
+  await rawDb.execute({
+    sql:
+      "INSERT INTO user_settings (did, instapaper_enabled, instapaper_username_encrypted) VALUES (?, ?, ?)",
+    args: [DID, 1, "ENCRYPTED_USER"],
+  });
+  const e = await getMirrorInitialExtras(DID);
+  assertEquals(e.instapaperEnabled, true);
+  assertEquals(e.instapaperUsernameEncrypted, "ENCRYPTED_USER");
+  assertEquals(e.preferences, null);
+});
+
+Deno.test("getMirrorInitialExtras - prefs row only returns defaults + parsed prefs", async () => {
+  await clearMirrorTables();
+  await clearUserSettings();
+  await upsertPreferences({
+    did: DID,
+    cid: "bafyP1",
+    dateFormat: "iso",
+    readingListTag: "later",
+  });
+  const e = await getMirrorInitialExtras(DID);
+  assertEquals(e.instapaperEnabled, false);
+  assertEquals(e.instapaperUsernameEncrypted, null);
+  assertEquals(e.preferences, { dateFormat: "iso", readingListTag: "later" });
+});
+
+Deno.test("getMirrorInitialExtras - both rows present returns combined", async () => {
+  await clearMirrorTables();
+  await clearUserSettings();
+  await rawDb.execute({
+    sql:
+      "INSERT INTO user_settings (did, instapaper_enabled, instapaper_username_encrypted) VALUES (?, ?, ?)",
+    args: [DID, 1, "ENC"],
+  });
+  await upsertPreferences({
+    did: DID,
+    cid: "bafyP1",
+    dateFormat: "iso",
+  });
+  const e = await getMirrorInitialExtras(DID);
+  assertEquals(e.instapaperEnabled, true);
+  assertEquals(e.instapaperUsernameEncrypted, "ENC");
+  assertEquals(e.preferences, { dateFormat: "iso", readingListTag: null });
+});
+
+Deno.test("getMirrorInitialExtras - other DID's rows do not bleed", async () => {
+  await clearMirrorTables();
+  await clearUserSettings();
+  await rawDb.execute({
+    sql: "INSERT INTO user_settings (did, instapaper_enabled) VALUES (?, ?)",
+    args: [OTHER_DID, 1],
+  });
+  await upsertPreferences({ did: OTHER_DID, cid: "bafy2", dateFormat: "eu" });
+  const e = await getMirrorInitialExtras(DID);
+  assertEquals(e.instapaperEnabled, false);
+  assertEquals(e.instapaperUsernameEncrypted, null);
+  assertEquals(e.preferences, null);
 });
