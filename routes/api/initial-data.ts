@@ -90,17 +90,38 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
         undefined;
       const isFirstPage = !bookmarkCursor;
 
+      const tSession = Date.now();
       const mirrorDecision = await shouldReadFromMirror(oauthSession.did);
+      const dSession = Date.now() - tSession;
       if (mirrorDecision.fromMirror) {
         if (isFirstPage) {
+          const t0 = Date.now();
+          const time = async <T>(label: string, p: Promise<T>): Promise<T> => {
+            const start = Date.now();
+            try {
+              const r = await p;
+              console.log(`[initial-data] ${label}: ${Date.now() - start}ms`);
+              return r;
+            } catch (e) {
+              console.log(
+                `[initial-data] ${label}: ${Date.now() - start}ms ERR`,
+              );
+              throw e;
+            }
+          };
           const [page, tagRecords, settings, preferences, isSupporter] =
             await Promise.all([
-              firstPageBookmarks(oauthSession.did),
-              listMirrorTags(oauthSession.did),
-              getUserSettings(oauthSession.did),
-              getUserPreferences(oauthSession),
-              isUserSupporter(oauthSession),
+              time("bookmarks", firstPageBookmarks(oauthSession.did)),
+              time("tags", listMirrorTags(oauthSession.did)),
+              time("settings", getUserSettings(oauthSession.did)),
+              time("prefs", getUserPreferences(oauthSession)),
+              time("supporter", isUserSupporter(oauthSession)),
             ]);
+          console.log(
+            `[initial-data] total: ${
+              Date.now() - t0
+            }ms (mirrorDecision: ${dSession}ms)`,
+          );
           const result: InitialDataResponse = {
             bookmarks: page.bookmarks,
             tags: tagRecords,
