@@ -49,6 +49,13 @@ export interface TagUpsert {
   createdAt: string;
 }
 
+export interface PreferencesUpsert {
+  did: string;
+  cid: string;
+  dateFormat?: string | null;
+  readingListTag?: string | null;
+}
+
 export interface TrackedDidUpsert {
   did: string;
   pdsUrl?: string | null;
@@ -197,6 +204,36 @@ export async function deleteTag(uri: string, did: string): Promise<void> {
   await rawDb.execute({
     sql: "DELETE FROM tags WHERE uri = ? AND did = ?",
     args: [uri, did],
+  });
+}
+
+export async function upsertPreferences(
+  record: PreferencesUpsert,
+): Promise<void> {
+  await rawDb.execute({
+    sql: `
+      INSERT INTO preferences (did, cid, date_format, reading_list_tag, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(did) DO UPDATE SET
+        cid = excluded.cid,
+        date_format = excluded.date_format,
+        reading_list_tag = excluded.reading_list_tag,
+        updated_at = excluded.updated_at
+    `,
+    args: [
+      record.did,
+      record.cid,
+      record.dateFormat ?? null,
+      record.readingListTag ?? null,
+      Date.now(),
+    ],
+  });
+}
+
+export async function deletePreferences(did: string): Promise<void> {
+  await rawDb.execute({
+    sql: "DELETE FROM preferences WHERE did = ?",
+    args: [did],
   });
 }
 

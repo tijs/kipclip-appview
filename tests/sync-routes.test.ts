@@ -487,3 +487,83 @@ Deno.test("POST /api/sync/hook - identity event acks without writes", async () =
   const body = await res.json();
   assertEquals(body.applied, true);
 });
+
+Deno.test("POST /api/sync/hook - preferences create lands in mirror", async () => {
+  await clearMirrorTables();
+  const evt = recordEvent(
+    "com.kipclip.preferences",
+    "self",
+    "create",
+    { dateFormat: "iso", readingListTag: "later" },
+    "bafyPref",
+  );
+  const res = await handler(
+    new Request("http://127.0.0.1:8000/api/sync/hook", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(evt),
+    }),
+  );
+  assertEquals(res.status, 200);
+  const { getMirrorPreferences } = await import("../mirror/queries.ts");
+  assertEquals(await getMirrorPreferences(SESSION_DID), {
+    dateFormat: "iso",
+    readingListTag: "later",
+  });
+});
+
+Deno.test("POST /api/sync/hook - preferences update overwrites row", async () => {
+  await clearMirrorTables();
+  const send = (record: Record<string, unknown>, cid: string) =>
+    handler(
+      new Request("http://127.0.0.1:8000/api/sync/hook", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          recordEvent("com.kipclip.preferences", "self", "create", record, cid),
+        ),
+      }),
+    );
+  await send({ dateFormat: "us", readingListTag: "toread" }, "bafyP1");
+  await send({ dateFormat: "iso", readingListTag: "later" }, "bafyP2");
+  const { getMirrorPreferences } = await import("../mirror/queries.ts");
+  assertEquals(await getMirrorPreferences(SESSION_DID), {
+    dateFormat: "iso",
+    readingListTag: "later",
+  });
+});
+
+Deno.test("POST /api/sync/hook - preferences delete removes row", async () => {
+  await clearMirrorTables();
+  await handler(
+    new Request("http://127.0.0.1:8000/api/sync/hook", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        recordEvent(
+          "com.kipclip.preferences",
+          "self",
+          "create",
+          { dateFormat: "us" },
+          "bafyP1",
+        ),
+      ),
+    }),
+  );
+  await handler(
+    new Request("http://127.0.0.1:8000/api/sync/hook", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        recordEvent(
+          "com.kipclip.preferences",
+          "self",
+          "delete",
+          undefined,
+        ),
+      ),
+    }),
+  );
+  const { getMirrorPreferences } = await import("../mirror/queries.ts");
+  assertEquals(await getMirrorPreferences(SESSION_DID), null);
+});

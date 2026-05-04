@@ -13,9 +13,11 @@ import {
   type BookmarkUpsert,
   deleteAnnotation,
   deleteBookmark,
+  deletePreferences,
   deleteTag,
   upsertAnnotation,
   upsertBookmark,
+  upsertPreferences,
   upsertTag,
   upsertTrackedDid,
 } from "../mirror/upserts.ts";
@@ -311,4 +313,94 @@ Deno.test("integration - bookmark + annotation share rkey, both queryable by DID
     `at://${DID}/community.lexicon.bookmarks.bookmark/z`,
     "important",
   ]);
+});
+
+Deno.test("upsertPreferences - inserts a new row with both fields", async () => {
+  await clearMirrorTables();
+  await upsertPreferences({
+    did: DID,
+    cid: "bafyP1",
+    dateFormat: "us",
+    readingListTag: "toread",
+  });
+  const r = await rawDb.execute({
+    sql:
+      "SELECT did, cid, date_format, reading_list_tag FROM preferences WHERE did = ?",
+    args: [DID],
+  });
+  assertEquals(r.rows.length, 1);
+  assertEquals(r.rows[0], [DID, "bafyP1", "us", "toread"]);
+});
+
+Deno.test("upsertPreferences - is idempotent on (did)", async () => {
+  await clearMirrorTables();
+  const record = {
+    did: DID,
+    cid: "bafyP1",
+    dateFormat: "us",
+    readingListTag: "toread",
+  };
+  await upsertPreferences(record);
+  const r1 = await rawDb.execute({
+    sql: "SELECT updated_at FROM preferences WHERE did = ?",
+    args: [DID],
+  });
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  await upsertPreferences(record);
+  const r2 = await rawDb.execute({
+    sql: "SELECT COUNT(*), updated_at FROM preferences WHERE did = ?",
+    args: [DID],
+  });
+  assertEquals(r2.rows[0][0], 1);
+  assertNotEquals(r2.rows[0][1], r1.rows[0][0]);
+});
+
+Deno.test("upsertPreferences - update changes existing row", async () => {
+  await clearMirrorTables();
+  await upsertPreferences({
+    did: DID,
+    cid: "bafyP1",
+    dateFormat: "us",
+    readingListTag: "toread",
+  });
+  await upsertPreferences({
+    did: DID,
+    cid: "bafyP2",
+    dateFormat: "iso",
+    readingListTag: "later",
+  });
+  const r = await rawDb.execute({
+    sql:
+      "SELECT cid, date_format, reading_list_tag FROM preferences WHERE did = ?",
+    args: [DID],
+  });
+  assertEquals(r.rows[0], ["bafyP2", "iso", "later"]);
+});
+
+Deno.test("upsertPreferences - allows null fields", async () => {
+  await clearMirrorTables();
+  await upsertPreferences({
+    did: DID,
+    cid: "bafyP1",
+  });
+  const r = await rawDb.execute({
+    sql: "SELECT date_format, reading_list_tag FROM preferences WHERE did = ?",
+    args: [DID],
+  });
+  assertEquals(r.rows[0], [null, null]);
+});
+
+Deno.test("deletePreferences - removes the row", async () => {
+  await clearMirrorTables();
+  await upsertPreferences({
+    did: DID,
+    cid: "bafyP1",
+    dateFormat: "us",
+  });
+  await deletePreferences(DID);
+  const r = await rawDb.execute({
+    sql: "SELECT COUNT(*) FROM preferences WHERE did = ?",
+    args: [DID],
+  });
+  assertEquals(r.rows[0][0], 0);
 });

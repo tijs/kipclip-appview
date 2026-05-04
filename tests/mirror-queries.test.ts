@@ -7,6 +7,7 @@ import { assertEquals, assertExists } from "@std/assert";
 import {
   firstPageBookmarks,
   getBookmark,
+  getMirrorPreferences,
   getSyncStatus,
   listTags,
   nextPageBookmarks,
@@ -14,6 +15,7 @@ import {
 import {
   upsertAnnotation,
   upsertBookmark,
+  upsertPreferences,
   upsertTag,
   upsertTrackedDid,
 } from "../mirror/upserts.ts";
@@ -221,4 +223,29 @@ Deno.test("getSyncStatus - in-progress backfill (started, not complete)", async 
   assertEquals(s.tracking, true);
   assertEquals(s.backfillStartedAt, 1000);
   assertEquals(s.backfillCompleteAt, null);
+});
+
+Deno.test("getMirrorPreferences - returns null when no row", async () => {
+  await clearMirrorTables();
+  const p = await getMirrorPreferences(DID);
+  assertEquals(p, null);
+});
+
+Deno.test("getMirrorPreferences - returns parsed object when row exists", async () => {
+  await clearMirrorTables();
+  await upsertPreferences({
+    did: DID,
+    cid: "bafyP1",
+    dateFormat: "iso",
+    readingListTag: "later",
+  });
+  const p = await getMirrorPreferences(DID);
+  assertEquals(p, { dateFormat: "iso", readingListTag: "later" });
+});
+
+Deno.test("getMirrorPreferences - returns nulls for missing columns", async () => {
+  await clearMirrorTables();
+  await upsertPreferences({ did: DID, cid: "bafyP1" });
+  const p = await getMirrorPreferences(DID);
+  assertEquals(p, { dateFormat: null, readingListTag: null });
 });

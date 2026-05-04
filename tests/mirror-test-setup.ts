@@ -16,4 +16,5 @@ export async function clearMirrorTables(): Promise<void> {
   await rawDb.execute({ sql: "DELETE FROM annotations", args: [] });
   await rawDb.execute({ sql: "DELETE FROM tags", args: [] });
   await rawDb.execute({ sql: "DELETE FROM tracked_dids", args: [] });
+  await rawDb.execute({ sql: "DELETE FROM preferences", args: [] });
 }

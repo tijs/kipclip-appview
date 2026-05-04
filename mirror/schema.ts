@@ -9,6 +9,7 @@
  *   annotations    — app.bookmark.annotation sidecar records
  *   tags           — com.kipclip.tag records
  *   tracked_dids   — per-DID sync state, drives status endpoint
+ *   preferences    — com.kipclip.preferences (one row per DID, rkey "self")
  */
 
 export interface MigrationEntry {
@@ -83,6 +84,19 @@ export const MIRROR_MIGRATIONS: MigrationEntry[] = [
         ON annotations(subject);
       CREATE INDEX IF NOT EXISTS idx_tags_did_value
         ON tags(did, value)
+    `,
+  },
+  {
+    version: "007",
+    description: "Create preferences mirror table (com.kipclip.preferences)",
+    sql: `
+      CREATE TABLE IF NOT EXISTS preferences (
+        did TEXT PRIMARY KEY,
+        cid TEXT NOT NULL,
+        date_format TEXT,
+        reading_list_tag TEXT,
+        updated_at INTEGER NOT NULL
+      )
     `,
   },
 ];

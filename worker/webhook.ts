@@ -20,9 +20,11 @@ import { captureError } from "../lib/sentry.ts";
 import {
   deleteAnnotation,
   deleteBookmark,
+  deletePreferences,
   deleteTag,
   upsertAnnotation,
   upsertBookmark,
+  upsertPreferences,
   upsertTag,
   upsertTrackedDid,
 } from "../mirror/upserts.ts";
@@ -33,6 +35,7 @@ const ANNOTATION_COLLECTIONS = new Set([
   "com.kipclip.annotation",
 ]);
 const TAG_COLLECTION = "com.kipclip.tag";
+const PREFERENCES_COLLECTION = "com.kipclip.preferences";
 
 interface RecordEvt {
   live?: boolean;
@@ -131,6 +134,8 @@ async function processRecordEvent(r: RecordEvt): Promise<void> {
       await deleteAnnotation(uri, did);
     } else if (collection === TAG_COLLECTION) {
       await deleteTag(uri, did);
+    } else if (collection === PREFERENCES_COLLECTION) {
+      await deletePreferences(did);
     }
     await touchTracked(did, r);
     return;
@@ -187,6 +192,13 @@ async function processRecordEvent(r: RecordEvt): Promise<void> {
       cid,
       value,
       createdAt,
+    });
+  } else if (collection === PREFERENCES_COLLECTION) {
+    await upsertPreferences({
+      did,
+      cid,
+      dateFormat: stringField(record, "dateFormat"),
+      readingListTag: stringField(record, "readingListTag"),
     });
   }
 

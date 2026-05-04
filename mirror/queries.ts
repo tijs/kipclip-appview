@@ -220,6 +220,30 @@ export async function listTags(did: string): Promise<EnrichedTag[]> {
   });
 }
 
+export interface MirrorPreferences {
+  dateFormat: string | null;
+  readingListTag: string | null;
+}
+
+/**
+ * Read the user's mirrored preferences. Returns null when no row exists yet
+ * so callers can fall back to defaults or to a PDS read.
+ */
+export async function getMirrorPreferences(
+  did: string,
+): Promise<MirrorPreferences | null> {
+  const r = await rawDb.execute({
+    sql: "SELECT date_format, reading_list_tag FROM preferences WHERE did = ?",
+    args: [did],
+  });
+  if (!r.rows || r.rows.length === 0) return null;
+  const [dateFormat, readingListTag] = r.rows[0] as (string | null)[];
+  return {
+    dateFormat: dateFormat ?? null,
+    readingListTag: readingListTag ?? null,
+  };
+}
+
 /** Per-DID sync state. tracking=false when no row exists. */
 export async function getSyncStatus(did: string): Promise<SyncStatus> {
   const r = await rawDb.execute({
