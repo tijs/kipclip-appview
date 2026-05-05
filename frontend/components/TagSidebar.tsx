@@ -75,7 +75,7 @@ export function TagSidebar() {
     return (
       <li
         key={tag.uri}
-        className={`group flex items-center justify-between gap-2 px-3 py-2 rounded-lg transition text-sm whitespace-nowrap flex-shrink-0 cursor-pointer ${
+        className={`group flex items-center justify-between gap-2 px-3 py-2 rounded-lg transition text-sm whitespace-nowrap flex-shrink-0 md:min-w-0 cursor-pointer ${
           isSelected ? "coral-selected" : "text-gray-700 hover:bg-gray-100"
         }`}
         title={`Created ${formatDate(tag.createdAt)}`}
@@ -83,7 +83,7 @@ export function TagSidebar() {
           toggleTag(tag.value);
         }}
       >
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           {isSelected && (
             <svg
               className="w-4 h-4"
@@ -99,7 +99,7 @@ export function TagSidebar() {
               />
             </svg>
           )}
-          <span>{tag.value}</span>
+          <span className="md:truncate">{tag.value}</span>
         </div>
         <div className="flex items-center gap-1">
           <button
@@ -353,7 +353,7 @@ export function TagSidebar() {
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden">
           {tags.length === 0
             ? (
               <div className="text-center py-10 text-gray-500 text-sm">
