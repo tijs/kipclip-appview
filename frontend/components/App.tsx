@@ -18,7 +18,6 @@ import { PrivacyPolicy } from "./PrivacyPolicy.tsx";
 import { TermsOfUse } from "./TermsOfUse.tsx";
 import { useApp } from "../context/AppContext.tsx";
 import { apiPost } from "../utils/api.ts";
-import { clearAll as clearCache } from "../cache/db.ts";
 import { saveIdentity } from "../utils/saved-identities.ts";
 
 type ViewType = "bookmarks" | "reading-list";
@@ -87,14 +86,6 @@ export function App() {
   async function handleLogout() {
     try {
       await apiPost("/api/auth/logout");
-      await clearCache();
-      if (session?.did) {
-        try {
-          localStorage.removeItem(`kipclip-last-visit-${session.did}`);
-        } catch {
-          // localStorage unavailable — ignore
-        }
-      }
       setSession(null);
     } catch (error) {
       console.error("Failed to logout:", error);
