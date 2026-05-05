@@ -16,11 +16,28 @@
  * Exits 0 when both stores match. Exits 1 on any mismatch.
  */
 
-import { localDb, rawDb } from "../lib/db.ts";
+// Validate required env BEFORE importing lib/db.ts. The shared module
+// eagerly opens both connections at import time and crashes with an
+// opaque libSQL error 14 if TURSO_DATABASE_URL is unset (it falls back
+// to file:.local/kipclip.db which does not exist on the box). Fail fast
+// with an operator-friendly message instead.
+const missing: string[] = [];
+if (!Deno.env.get("LOCAL_DB_URL")) missing.push("LOCAL_DB_URL");
+if (!Deno.env.get("TURSO_DATABASE_URL")) missing.push("TURSO_DATABASE_URL");
+if (!Deno.env.get("TURSO_AUTH_TOKEN")) missing.push("TURSO_AUTH_TOKEN");
+if (missing.length > 0) {
+  console.error(
+    `ERROR: missing required env: ${missing.join(", ")}. ` +
+      `Source /etc/kipclip/env or pass vars inline (see usage at top of file).`,
+  );
+  Deno.exit(2);
+}
+
+const { localDb, rawDb } = await import("../lib/db.ts");
 
 if (!localDb) {
   console.error(
-    "ERROR: LOCAL_DB_URL not set. Drift check requires both DBs configured.",
+    "ERROR: LOCAL_DB_URL did not initialize a local client. Check the URL scheme (must be file:).",
   );
   Deno.exit(2);
 }

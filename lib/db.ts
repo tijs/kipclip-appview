@@ -76,23 +76,45 @@ if (isTestDb) {
         `⚠️ LOCAL_DB_URL must use file: scheme; got "${localDbUrl}" — ignoring`,
       );
     } else {
-      const { createClient: createLocalClient } = await import(
-        "@libsql/client"
-      );
-      const localClient = createLocalClient({ url: localDbUrl });
-      localDb = {
-        execute: async (
-          query: { sql: string; args: unknown[] },
-        ): Promise<{ rows: unknown[][] }> => {
-          const result = await localClient.execute({
-            sql: query.sql,
-            args: query.args as any,
-          });
-          const rows = result.rows.map((row) => Object.values(row));
-          return { rows };
-        },
-      };
-      console.error(`✅ Local libSQL initialized at ${localDbUrl}`);
+      // Open the local file in a try/catch so a missing/locked/corrupt
+      // mirror.db on boot does NOT crash the whole service. mirrorRead()
+      // already falls back to Turso when localDb is null, so degraded
+      // boot is preferable to a CrashLoop. Sentry captures the warning
+      // so the operator notices.
+      try {
+        const { createClient: createLocalClient } = await import(
+          "@libsql/client"
+        );
+        const localClient = createLocalClient({ url: localDbUrl });
+        localDb = {
+          execute: async (
+            query: { sql: string; args: unknown[] },
+          ): Promise<{ rows: unknown[][] }> => {
+            const result = await localClient.execute({
+              sql: query.sql,
+              args: query.args as any,
+            });
+            const rows = result.rows.map((row) => Object.values(row));
+            return { rows };
+          },
+        };
+        console.error(`✅ Local libSQL initialized at ${localDbUrl}`);
+      } catch (err) {
+        console.warn(
+          `⚠️ Failed to open local libSQL at ${localDbUrl}: ${
+            String(err)
+          } — continuing Turso-only`,
+        );
+        try {
+          const { captureMessage } = await import("./sentry.ts");
+          captureMessage(
+            "mirror local init failed: continuing Turso-only",
+            "error",
+            { error: String(err), url: localDbUrl },
+          );
+        } catch { /* sentry optional at boot */ }
+        localDb = null;
+      }
     }
   }
 }
