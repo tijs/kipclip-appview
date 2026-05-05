@@ -16,8 +16,9 @@ deno task dev           # Run development server with hot reload
 deno task build         # Build for production
 deno task preview       # Run production server locally
 deno task test          # Run all tests
-deno task check         # Type check
-deno task quality       # Format check and lint
+deno task check         # Type-check the server entrypoint (main.ts)
+deno task check:frontend # Targeted frontend check (TS2304 / TS2307 fatal — catches missing imports / undefined components like the EditTag <Button> regression)
+deno task quality       # fmt --check + lint + audit + check + check:frontend (run before pushing to main)
 deno fmt                # Format code
 deno lint               # Lint code
 

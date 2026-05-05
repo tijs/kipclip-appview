@@ -44,6 +44,7 @@
     "npm:esbuild@0.27.2": "0.27.2",
     "npm:esbuild@~0.25.5": "0.25.7",
     "npm:html-entities@2.6.0": "2.6.0",
+    "npm:idb@8": "8.0.3",
     "npm:iron-session@8.0.4": "8.0.4",
     "npm:preact-render-to-string@^6.6.3": "6.6.5_preact@10.28.2",
     "npm:preact@^10.27.0": "10.28.2",
@@ -705,6 +706,9 @@
     "html-entities@2.6.0": {
       "integrity": "sha512-kig+rMn/QOVRvr7c86gQ8lWXq+Hkv6CbAH1hLu+RG338StTpE8Z0b44SDVaqVu7HGKf27frdmUYEs9hTUX/cLQ=="
     },
+    "idb@8.0.3": {
+      "integrity": "sha512-LtwtVyVYO5BqRvcsKuB2iUMnHwPVByPCXFXOpuU96IZPPoPN6xjOGxZQ74pgSVVLQWtUOYgyeL4GE98BY5D3wg=="
+    },
     "iron-session@8.0.4": {
       "integrity": "sha512-9ivNnaKOd08osD0lJ3i6If23GFS2LsxyMU8Gf/uBUEgm8/8CC1hrrCHFDpMo3IFbpBgwoo/eairRsaD3c5itxA==",
       "dependencies": [
@@ -830,6 +834,7 @@
       "npm:@sentry/deno@10.34.0",
       "npm:esbuild@0.27.2",
       "npm:html-entities@2.6.0",
+      "npm:idb@8",
       "npm:react-dom@19.2.3",
       "npm:react@19",
       "npm:react@19.2.3",
