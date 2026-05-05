@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useState } from "react";
+import type { MouseEvent } from "react";
 import { HeartIcon } from "./HeartIcon.tsx";
 
 const STORAGE_KEY = "kipclip-support-banner-dismissed-at";
@@ -43,7 +44,7 @@ export function SupportBanner({ href = "/support" }: { href?: string }) {
 
   if (dismissed) return null;
 
-  function handleDismiss(e: React.MouseEvent) {
+  function handleDismiss(e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
     markDismissed();

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 /**
  * Shared "How supporter status works" explanation.
  * Used on the /support page and the Settings > Supporter tab so the two
@@ -12,7 +13,7 @@ function Step(
   { n, title, children }: {
     n: number;
     title: string;
-    children: React.ReactNode;
+    children: ReactNode;
   },
 ) {
   return (

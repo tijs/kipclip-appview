@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { FormEvent } from "react";
 import { isStandalonePwa, openOAuthPopup } from "../utils/pwa.ts";
 import { Button } from "./Button.tsx";
 import {
@@ -199,7 +200,7 @@ export function Login() {
     }
   }
 
-  async function handleLogin(e: React.FormEvent) {
+  async function handleLogin(e: FormEvent) {
     e.preventDefault();
     setError(null);
 

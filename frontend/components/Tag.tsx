@@ -21,8 +21,7 @@
  * render a <button>; omit it for a non-interactive <span>.
  */
 
-import type { ReactNode } from "react";
-
+import type { Key, MouseEvent, ReactNode } from "react";
 type Variant =
   | "selected"
   | "unselected"
@@ -34,12 +33,13 @@ type Shape = "pill" | "row";
 type Size = "xs" | "sm";
 
 interface TagProps {
+  key?: Key | null;
   children: ReactNode;
   variant?: Variant;
   shape?: Shape;
   size?: Size;
   removable?: boolean;
-  onClick?: (e: React.MouseEvent) => void;
+  onClick?: (e: MouseEvent) => void;
   className?: string;
 }
 

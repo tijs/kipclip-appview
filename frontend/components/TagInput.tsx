@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { KeyboardEvent } from "react";
 import type { EnrichedTag } from "../../shared/types.ts";
 
 interface TagInputProps {
@@ -45,7 +46,7 @@ export function TagInput({
     onTagsChange(tags.filter((t) => t !== tagValue));
   }
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+  function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter") {
       e.preventDefault();
       if (suggestions.length > 0) {

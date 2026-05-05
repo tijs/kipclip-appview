@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { FormEvent } from "react";
 import type {
   CheckDuplicatesResponse,
   EnrichedBookmark,
@@ -142,7 +143,7 @@ export function Save() {
     }
   }
 
-  async function handleSave(e: React.FormEvent) {
+  async function handleSave(e: FormEvent) {
     e.preventDefault();
     if (!url.trim()) return;
 

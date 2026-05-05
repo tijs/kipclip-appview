@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 function PdsOption({
   name,
   description,
@@ -8,7 +9,7 @@ function PdsOption({
   name: string;
   description: string;
   pdsUrl: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
   borderColor?: string;
 }) {
   return (
@@ -50,7 +51,7 @@ function ExternalOption({
   name: string;
   description: string;
   href: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
 }) {
   return (
     <a

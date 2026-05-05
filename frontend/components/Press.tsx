@@ -1,3 +1,4 @@
+import type { Key } from "react";
 import { PageShell } from "./PageShell.tsx";
 
 const CDN = "https://cdn.kipclip.com";
@@ -37,6 +38,7 @@ const assets = [
 
 function DownloadCard(
   { name, filename, description }: {
+    key?: Key | null;
     name: string;
     filename: string;
     description: string;

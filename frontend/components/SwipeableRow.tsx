@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from "react";
-import type { ReactNode } from "react";
-
+import type { Key, MouseEvent, ReactNode, TouchEvent } from "react";
 interface SwipeableRowProps {
+  key?: Key | null;
   children: ReactNode;
   onDelete: () => Promise<void>;
   disabled?: boolean;
@@ -46,7 +46,7 @@ export function SwipeableRow(
   }, [onDelete, state, animateClose]);
 
   const onTouchStart = useCallback(
-    (e: React.TouchEvent) => {
+    (e: TouchEvent) => {
       if (disabled || state === "deleting" || state === "removing") return;
       const touch = e.touches[0];
       startX.current = touch.clientX;
@@ -59,7 +59,7 @@ export function SwipeableRow(
   );
 
   const onTouchMove = useCallback(
-    (e: React.TouchEvent) => {
+    (e: TouchEvent) => {
       if (disabled || state === "deleting" || state === "removing") return;
 
       const touch = e.touches[0];
@@ -132,7 +132,7 @@ export function SwipeableRow(
 
   // Close if user taps outside the delete button area when open
   const onContentClick = useCallback(
-    (e: React.MouseEvent) => {
+    (e: MouseEvent) => {
       if (state === "open") {
         e.stopPropagation();
         e.preventDefault();

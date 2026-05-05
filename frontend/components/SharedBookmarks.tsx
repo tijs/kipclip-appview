@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { MouseEvent } from "react";
 import { toast } from "sonner";
 import { formatDate } from "../../shared/date-format.ts";
 import type { EnrichedBookmark } from "../../shared/types.ts";
@@ -94,7 +95,7 @@ export function SharedBookmarks({ did, encodedTags }: SharedBookmarksProps) {
     }
   }
 
-  function handleVisit(e: React.MouseEvent, url: string) {
+  function handleVisit(e: MouseEvent, url: string) {
     e.stopPropagation();
     globalThis.open(url, "_blank", "noopener,noreferrer");
   }
@@ -126,7 +127,7 @@ export function SharedBookmarks({ did, encodedTags }: SharedBookmarksProps) {
     }
   }
 
-  async function handleShare(e: React.MouseEvent, bookmark: any) {
+  async function handleShare(e: MouseEvent, bookmark: any) {
     e.stopPropagation();
 
     const shareData = {

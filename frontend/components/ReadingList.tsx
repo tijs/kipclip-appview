@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { Key } from "react";
 import { useApp } from "../context/AppContext.tsx";
 import { type DateFormatOption, formatDate } from "../../shared/date-format.ts";
 import type { EnrichedBookmark } from "../../shared/types.ts";
@@ -8,6 +9,7 @@ import { Tag } from "./Tag.tsx";
 
 function ReadingListCard(
   { bookmark, dateFormat, onMarkAsRead }: {
+    key?: Key | null;
     bookmark: EnrichedBookmark;
     dateFormat?: DateFormatOption;
     onMarkAsRead: (bookmark: EnrichedBookmark) => void;

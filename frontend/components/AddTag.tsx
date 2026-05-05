@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { FormEvent } from "react";
 import type { EnrichedTag } from "../../shared/types.ts";
 import { apiPost } from "../utils/api.ts";
 import { Button } from "./Button.tsx";
@@ -13,7 +14,7 @@ export function AddTag({ onClose, onTagAdded }: AddTagProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!value.trim()) return;
 

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { FormEvent } from "react";
 import type { EnrichedBookmark, EnrichedTag } from "../../shared/types.ts";
 import { getBaseUrl } from "../../shared/url-utils.ts";
 import { useApp } from "../context/AppContext.tsx";
@@ -59,7 +60,7 @@ export function AddBookmark({
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!url.trim()) return;
 

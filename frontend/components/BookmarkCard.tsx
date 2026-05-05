@@ -1,3 +1,4 @@
+import type { DragEvent, Key, MouseEvent } from "react";
 import { type DateFormatOption, formatDate } from "../../shared/date-format.ts";
 import type { EnrichedBookmark } from "../../shared/types.ts";
 import { Tag } from "./Tag.tsx";
@@ -51,6 +52,7 @@ export const ListIcon = ({ active }: { active: boolean }) => (
 );
 
 interface BookmarkCardProps {
+  key?: Key | null;
   bookmark: EnrichedBookmark;
   viewMode: ViewMode;
   isDragOver: boolean;
@@ -60,10 +62,10 @@ interface BookmarkCardProps {
   isSelected?: boolean;
   onClick: () => void;
   onTagClick?: (tag: string) => void;
-  onDragOver: (e: React.DragEvent) => void;
-  onDragEnter: (e: React.DragEvent) => void;
-  onDragLeave: (e: React.DragEvent) => void;
-  onDrop: (e: React.DragEvent) => void;
+  onDragOver: (e: DragEvent) => void;
+  onDragEnter: (e: DragEvent) => void;
+  onDragLeave: (e: DragEvent) => void;
+  onDrop: (e: DragEvent) => void;
   onImageError: () => void;
 }
 
@@ -72,7 +74,7 @@ function makeTagClickHandler(
   onTagClick?: (tag: string) => void,
 ) {
   if (!onTagClick) return undefined;
-  return (e: React.MouseEvent) => {
+  return (e: MouseEvent) => {
     e.stopPropagation();
     onTagClick(tag);
   };

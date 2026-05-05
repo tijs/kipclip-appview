@@ -1,28 +1,20 @@
 #!/usr/bin/env -S deno run -A
 /**
- * Targeted frontend type-check.
+ * Frontend type-check.
  *
- * Runs `deno check` against the esbuild entrypoint and fails only on the
- * error classes that actually break runtime:
+ * Runs `deno check` against the esbuild entrypoint and fails on every
+ * TypeScript error class except TS2875 (`npm:react@19/jsx-runtime` not
+ * resolvable). TS2875 is a Deno/npm interop quirk — esbuild handles JSX
+ * at build time so runtime is unaffected. Adding `@types/react` to the
+ * import map would silence it but isn't worth the dependency churn until
+ * phase 4 frontend rework.
  *
- *   TS2304  Cannot find name 'X' — missing component/value import
- *           (the EditTag <Button> bug → blank screen in production).
- *   TS2307  Cannot find module 'X' — missing module import.
- *
- * Pre-existing noise we tolerate (the bundle still works because esbuild
- * resolves these at build time):
- *
- *   TS2875  npm:react@19/jsx-runtime not resolvable — Deno/npm interop
- *           limitation; esbuild handles JSX.
- *   TS2503  Cannot find namespace 'React' — type-only, runtime fine.
- *   TS2322  Property 'key' does not exist — React reserved prop.
- *
- * Once those are cleaned up the whole `deno check` exit code can become
- * the gate; until then this script catches the catastrophic class.
+ * Everything else is fatal, including the EditTag-class regression
+ * (TS2304 Cannot find name → blank screen in production).
  */
 
 const ENTRYPOINT = "frontend/index.tsx";
-const FATAL_CODES = ["TS2304", "TS2307"];
+const IGNORED_CODES = new Set(["TS2875"]);
 
 const cmd = new Deno.Command("deno", {
   args: ["check", "--allow-import", ENTRYPOINT],
@@ -38,7 +30,7 @@ const fatalBlocks: string[] = [];
 for (let i = 0; i < lines.length; i++) {
   const codeMatch = lines[i].match(/TS\d+/);
   if (!codeMatch) continue;
-  if (!FATAL_CODES.includes(codeMatch[0])) continue;
+  if (IGNORED_CODES.has(codeMatch[0])) continue;
 
   // Capture the error line and a few following lines for context (file:line:col).
   const block = [lines[i]];
@@ -51,20 +43,20 @@ for (let i = 0; i < lines.length; i++) {
 
 if (fatalBlocks.length > 0) {
   console.error(
-    `❌ Frontend check failed: ${fatalBlocks.length} fatal error(s) ` +
-      `(${FATAL_CODES.join(", ")})\n`,
+    `❌ Frontend check failed: ${fatalBlocks.length} error(s) ` +
+      `(ignoring: ${[...IGNORED_CODES].join(", ")})\n`,
   );
   for (const block of fatalBlocks) {
     console.error(block);
     console.error("");
   }
   console.error(
-    "These are the same class of bug as the EditTag <Button> blank-screen " +
-      "regression. Add the missing import or fix the typo before pushing.",
+    "Fix these before pushing — they're the same class of bug as the EditTag",
+    "<Button> blank-screen regression.",
   );
   Deno.exit(1);
 }
 
 console.log(
-  `✅ Frontend check: no fatal errors (${FATAL_CODES.join(", ")} clean).`,
+  `✅ Frontend check: clean (only ${[...IGNORED_CODES].join(", ")} tolerated).`,
 );

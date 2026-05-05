@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { FormEvent } from "react";
 import type { EnrichedTag } from "../../shared/types.ts";
 import { useApp } from "../context/AppContext.tsx";
 import { apiDelete, apiGet, apiPut } from "../utils/api.ts";
@@ -23,7 +24,7 @@ export function EditTag(
   // Extract rkey from URI (format: at://did:plc:xxx/com.kipclip.tag/rkey)
   const rkey = tag.uri.split("/").pop()!;
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
 
     if (!value.trim()) {
