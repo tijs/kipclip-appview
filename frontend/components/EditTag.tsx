@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { EnrichedTag } from "../../shared/types.ts";
 import { useApp } from "../context/AppContext.tsx";
 import { apiDelete, apiGet, apiPut } from "../utils/api.ts";
+import { Button } from "./Button.tsx";
 
 interface EditTagProps {
   tag: EnrichedTag;
