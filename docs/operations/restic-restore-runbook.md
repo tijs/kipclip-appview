@@ -9,8 +9,9 @@ and for genuine disaster recovery.
 Nightly via `deploy/systemd/restic-backup.timer` (04:00 UTC):
 
 1. **Turso dump** — `tmp/kipclip-turso-dump.sql` Sessions, user_settings,
-   import_jobs, import_chunks, plus mirror tables for safety. Produced via
-   `turso db shell <db> .dump`.
+   import_jobs, import_chunks, plus mirror tables for safety. Produced by
+   `scripts/dump-turso-tables.ts` (a Deno script using the libSQL HTTP client —
+   no `turso` CLI required).
 2. **Local mirror snapshot** — `tmp/kipclip-mirror-snap.sqlite` SQLite
    hot-snapshot of `/var/lib/kipclip/mirror.db`. Defense in depth — the mirror
    is regenerable from PDS via TAP `getRepo`, but the snapshot makes recovery
@@ -24,10 +25,12 @@ Retention: 14 daily, 4 weekly, 6 monthly.
 ## Prerequisites
 
 - `restic` on PATH, authenticated to the Storage Box repo.
-- `/etc/kipclip/restic.env` populated with `RESTIC_REPOSITORY` and
-  `RESTIC_PASSWORD`.
-- For DR (not drill): `turso` CLI on PATH and authenticated, sufficient
-  privileges to create / write to a Turso DB.
+- `/etc/kipclip/restic.env` populated with `RESTIC_REPOSITORY`,
+  `RESTIC_PASSWORD`, and (for S3 backends) `AWS_ACCESS_KEY_ID` /
+  `AWS_SECRET_ACCESS_KEY`.
+- For DR (not drill): a way to apply the SQL dump back into Turso. Easiest is
+  `turso db shell <db> < dump.sql` (CLI install + `turso auth login`);
+  alternatively replay against a fresh libSQL DB and point the app at it.
 
 ## Drill procedure (verify only)
 
@@ -41,10 +44,12 @@ restic snapshots --compact
 # 2. Restore the latest snapshot to a scratch directory (does NOT touch live DBs).
 sudo /var/lib/kipclip/app/deploy/restic-restore.sh
 
-# 3. Inspect the Turso dump.
-less /tmp/kipclip-restore/tmp/kipclip-turso-dump.sql
-# Confirm: CREATE TABLE statements for iron_session_storage, user_settings,
-# import_jobs, bookmarks, etc. Some INSERT rows.
+# 3. Inspect the Turso dump (programmatic checks — agent-friendly).
+CT=$(grep -c '^CREATE TABLE' /tmp/kipclip-restore/tmp/kipclip-turso-dump.sql)
+IN=$(grep -c '^INSERT INTO'  /tmp/kipclip-restore/tmp/kipclip-turso-dump.sql)
+echo "CREATE TABLE: $CT (expect >= 8); INSERT INTO: $IN (expect > 0)"
+# Optional: replay into an in-memory sqlite to confirm the dump parses.
+sqlite3 :memory: < /tmp/kipclip-restore/tmp/kipclip-turso-dump.sql && echo "replay: ok"
 
 # 4. Sanity-check the local mirror snapshot.
 sqlite3 /tmp/kipclip-restore/tmp/kipclip-mirror-snap.sqlite \
@@ -57,7 +62,10 @@ sqlite3 /var/lib/kipclip/mirror.db \
   "SELECT 'bookmarks', COUNT(*) FROM bookmarks
    UNION ALL SELECT 'tags', COUNT(*) FROM tags;"
 
-# 6. Tear down the scratch dir.
+# 6. Tear down the scratch dir. The Turso dump contains plaintext OAuth
+#    tokens and DPoP private keys; shred before unlinking so the data
+#    doesn't sit in /tmp until reboot or filesystem reuse.
+shred -u /tmp/kipclip-restore/tmp/kipclip-turso-dump.sql 2>/dev/null || true
 rm -rf /tmp/kipclip-restore
 
 # 7. Record the drill in the operator log: date, snapshot ID, row counts,
@@ -130,10 +138,10 @@ Captured during the most recent drill. Update after each drill.
 
 ## Failure modes
 
-- **`turso db shell` returns empty dump.** Re-auth the CLI; check
-  `TURSO_DB_NAME` is correct in `/etc/kipclip/restic.env`. The script aborts if
-  the dump is empty, so this fails loud rather than silently storing a useless
-  snapshot.
+- **Deno dumper returns empty file.** Check that `TURSO_DATABASE_URL` and
+  `TURSO_AUTH_TOKEN` are present in `/etc/kipclip/env` and the app user can
+  reach Turso (curl the libSQL HTTP endpoint). The backup script aborts on empty
+  dump, so this fails loud rather than silently storing a useless snapshot.
 - **`restic check` fails.** Repo corruption. Investigate before next backup
   runs; do NOT prune until resolved (forget operations on a corrupt repo can
   lose data).

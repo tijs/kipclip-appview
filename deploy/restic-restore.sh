@@ -25,13 +25,20 @@ RESTORE_DIR="${RESTORE_DIR:-/tmp/kipclip-restore}"
 
 if [[ -f "$ENV_FILE" ]]; then
   # shellcheck disable=SC1090
+  set -a
   source "$ENV_FILE"
+  set +a
 else
   echo "ERROR: $ENV_FILE missing" >&2
   exit 1
 fi
 
+# Restore dir contains plaintext OAuth access/refresh tokens, DPoP
+# private keys, and session cookies in the Turso dump. Lock it down to
+# the invoking user only — no group/other access.
+umask 077
 mkdir -p "$RESTORE_DIR"
+chmod 0700 "$RESTORE_DIR"
 
 echo "==> Listing snapshots..."
 restic snapshots --compact

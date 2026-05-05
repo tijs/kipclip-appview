@@ -29,7 +29,7 @@ let localDb: DbClient | null = null;
 
 if (isTestDb) {
   // Mock client for tests - doesn't actually connect
-  console.log("✅ Using mock database (test mode)");
+  console.error("✅ Using mock database (test mode)");
   rawDb = {
     execute: (
       _query: { sql: string; args: unknown[] },
@@ -65,7 +65,7 @@ if (isTestDb) {
     },
   };
 
-  console.log(`✅ Using ${isLocal ? "local" : "Turso"} database`);
+  console.error(`✅ Using ${isLocal ? "local" : "Turso"} database`);
 
   // Optional second connection: local libSQL on the box. Only used when the
   // operator opts in by setting LOCAL_DB_URL. Always file: scheme — a remote
@@ -92,7 +92,7 @@ if (isTestDb) {
           return { rows };
         },
       };
-      console.log(`✅ Local libSQL initialized at ${localDbUrl}`);
+      console.error(`✅ Local libSQL initialized at ${localDbUrl}`);
     }
   }
 }
@@ -192,7 +192,7 @@ export async function mirrorRead<T>(
 export async function initializeTables() {
   // Skip migrations for test database
   if (isTestDb) {
-    console.log("⏭️ Skipping migrations (test mode)");
+    console.error("⏭️ Skipping migrations (test mode)");
     return;
   }
   const { runMigrations } = await import("./migrations.ts");
