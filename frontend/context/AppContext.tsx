@@ -45,13 +45,36 @@ const DEFAULT_PREFERENCES: UserPreferences = {
 // designed to prevent. Same threshold as the pre-phase-4 sync layer.
 const RATE_LIMIT_THRESHOLD = 50;
 
+// Defensive ceiling against a server bug returning a non-advancing cursor.
+// At ~50 records/page this allows 10 000 bookmarks before stopping; far
+// above any real library size. The cycle-detection branch fires first when
+// the same cursor repeats; this is the belt to that suspenders.
+const MAX_PAGINATION_PAGES = 200;
+
+/**
+ * Subsequent pages of /api/initial-data carry only the bookmark stream
+ * (cursor + rateLimit). settings / preferences / isSupporter / syncing
+ * are emitted on the first response only. Encoding the asymmetry here
+ * means a typo in the cursor loop fails to type-check rather than
+ * silently clobbering server meta.
+ */
+interface PaginationPage {
+  bookmarks: EnrichedBookmark[];
+  bookmarkCursor?: string;
+  annotationCursor?: string;
+  rateLimit?: { remaining: number; reset: number; limit: number };
+}
+
 interface PaginatedInitial {
   bookmarks: EnrichedBookmark[];
   settings: UserSettings;
   preferences: UserPreferences;
   isSupporter: boolean;
-  /** Mirror branch only: true while backfill is still in progress. */
-  syncing: boolean;
+  /**
+   * Mirror branch only: true while backfill is still in progress. Absent
+   * on PDS-fallback responses and on completed mirrors.
+   */
+  syncing?: boolean;
 }
 
 /**
@@ -81,8 +104,23 @@ async function fetchInitialPaginated(
   let annotationCursor = first.annotationCursor;
   let currentRateLimit = first.rateLimit;
   let pageNumber = 1;
+  let prevCursor: string | undefined;
 
   while (bookmarkCursor) {
+    if (bookmarkCursor === prevCursor) {
+      console.warn("Pagination cursor not advancing, breaking loop", {
+        cursor: bookmarkCursor,
+        pageNumber,
+      });
+      break;
+    }
+    if (pageNumber >= MAX_PAGINATION_PAGES) {
+      console.warn("Pagination depth ceiling reached, breaking loop", {
+        pageNumber,
+      });
+      break;
+    }
+    prevCursor = bookmarkCursor;
     pageNumber++;
     onProgress?.(pageNumber);
 
@@ -107,7 +145,7 @@ async function fetchInitialPaginated(
         `Failed to load page ${pageNumber}: ${response.status} ${body}`,
       );
     }
-    const page: InitialDataResponse = await response.json();
+    const page: PaginationPage = await response.json();
     if (page.rateLimit) currentRateLimit = page.rateLimit;
     if (page.bookmarks?.length > 0) bookmarks.push(...page.bookmarks);
     bookmarkCursor = page.bookmarkCursor;
@@ -123,7 +161,7 @@ async function fetchInitialPaginated(
     settings: first.settings,
     preferences: first.preferences,
     isSupporter: first.isSupporter,
-    syncing: first.syncing ?? false,
+    syncing: first.syncing,
   };
 }
 
@@ -137,13 +175,13 @@ async function fetchTagsList(): Promise<EnrichedTag[]> {
     const response = await apiGet("/api/tags");
     if (!response.ok) {
       const body = await response.text().catch(() => "");
-      console.warn(`fetchTags: ${response.status} ${body}`);
+      console.warn(`fetchTagsList: ${response.status} ${body}`);
       return [];
     }
     const data = (await response.json()) as ListTagsResponse;
     return data.tags ?? [];
   } catch (err) {
-    console.warn("fetchTags: network error", err);
+    console.warn("fetchTagsList: network error", err);
     return [];
   } finally {
     perf.end("tagsFetch");
@@ -166,6 +204,12 @@ interface AppState {
    * served from the mirror but backfill is still running for this DID.
    * Wired through to context so a follow-up can render an in-progress
    * indicator without another AppContext change.
+   *
+   * TODO(phase4-followup): consume this in the UI as a "still syncing your
+   * data" pill within 14 days of phase 4 merging (by ~2026-05-19). If the
+   * follow-up slips, remove this field rather than leaving dead context
+   * state. Tracking memo:
+   * memory/project_post_phase4_followups.md (item 1).
    */
   mirrorSyncing: boolean;
 }
@@ -310,7 +354,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   function applyServerMeta(data: PaginatedInitial) {
     setSettings(data.settings);
     setIsSupporter(data.isSupporter);
-    setMirrorSyncing(data.syncing);
+    setMirrorSyncing(data.syncing ?? false);
     if (data.preferences) {
       const localFormat = getDateFormat();
       const pdsFormat = data.preferences.dateFormat;
@@ -324,6 +368,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Shared in-flight guard: prevents concurrent loadInitialData /
+  // refreshData. Mount-time load, visibility refresh, pull-to-refresh,
+  // and post-import refresh all funnel through the same flag.
+  const refreshInFlightRef = useRef(false);
+
+  /** Shared fetch-and-apply body for initial load + refresh. */
+  async function fetchAndApply(onProgress?: (page: number) => void) {
+    const [data, tagsList] = await Promise.all([
+      fetchInitialPaginated(onProgress),
+      fetchTagsList(),
+    ]);
+    applyServerMeta(data);
+    setBookmarks(data.bookmarks);
+    setTags(tagsList);
+  }
+
   /**
    * Load initial bookmarks + tags from the AppView, paginating through
    * every page in a unified loop. No client-side cache: an AppView outage
@@ -331,47 +391,45 @@ export function AppProvider({ children }: { children: ReactNode }) {
    * 2026-05-05-001-refactor-phase-4 for the accepted regression.
    */
   async function loadInitialData() {
+    if (refreshInFlightRef.current) return;
+    refreshInFlightRef.current = true;
     perf.start("loadInitialData");
     setIsSyncing(true);
     try {
-      const [data, tagsList] = await Promise.all([
-        fetchInitialPaginated(),
-        fetchTagsList(),
-      ]);
-      applyServerMeta(data);
-      setBookmarks(data.bookmarks);
-      setTags(tagsList);
+      await fetchAndApply();
     } catch (err) {
       console.error("Failed to load initial data:", err);
       throw err;
     } finally {
+      refreshInFlightRef.current = false;
       setIsSyncing(false);
       perf.end("loadInitialData");
     }
   }
 
-  // Manual refresh: full re-fetch + repaginate. Guarded so visibilitychange
-  // and pull-to-refresh can both call it without racing.
-  const refreshInFlightRef = useRef(false);
+  // Manual refresh: full re-fetch + repaginate. Shares refreshInFlightRef
+  // with loadInitialData so visibilitychange + pull-to-refresh + initial
+  // mount can't race each other.
   async function refreshData(toastId?: string | number) {
     if (refreshInFlightRef.current) return;
     refreshInFlightRef.current = true;
     setIsSyncing(true);
     try {
-      const [data, tagsList] = await Promise.all([
-        fetchInitialPaginated((page) => {
-          if (toastId) {
-            toast(`Syncing bookmarks... (page ${page})`, { id: toastId });
-          }
-        }),
-        fetchTagsList(),
-      ]);
-      applyServerMeta(data);
-      setBookmarks(data.bookmarks);
-      setTags(tagsList);
+      await fetchAndApply((page) => {
+        if (toastId) {
+          toast(`Syncing bookmarks... (page ${page})`, { id: toastId });
+        }
+      });
       if (toastId) {
         toast.success("Bookmarks up to date", { id: toastId });
       }
+    } catch (err) {
+      // Mid-pagination failure: dismiss the progress toast and surface an
+      // error one. Without this the "Syncing... (page N)" toast leaks.
+      if (toastId) {
+        toast.error("Refresh failed", { id: toastId });
+      }
+      throw err;
     } finally {
       refreshInFlightRef.current = false;
       setIsSyncing(false);
@@ -389,9 +447,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (document.visibilityState !== "visible") return;
       const now = Date.now();
       if (now - lastSyncCheckRef.current < 60_000) return;
+      // Don't claim the 60s window if a refresh is already running —
+      // otherwise a short-circuited call would consume the slot and the
+      // user would wait another full window for the next refresh attempt.
+      if (refreshInFlightRef.current) return;
       lastSyncCheckRef.current = now;
       refreshData().catch((err) => {
         console.warn("Tab-focus sync failed:", err);
+        toast.error("Sync failed");
       });
     }
 

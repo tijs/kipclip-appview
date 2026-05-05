@@ -2,6 +2,37 @@
 
 All notable changes to kipclip are documented in this file.
 
+## [Unreleased]
+
+### Removed
+
+- Browser-side IndexedDB cache + sync/diff layer
+  (`frontend/cache/{db,sync,diff}.ts`). AppView mirror now serves bookmarks from
+  local libSQL on the box, so the client-side cache no longer adds value. Bundle
+  is ~4 KB smaller.
+
+### Changed
+
+- Initial bookmark load and refresh now fetch directly from `/api/initial-data`
+  with unified cursor pagination and rate-limit-aware throttling on the
+  PDS-fallback path
+- Tab-focus and pull-to-refresh share a single in-flight guard so concurrent
+  refreshes can no longer race each other
+- Logout no longer attempts to clear an IndexedDB cache that no longer exists
+
+### Fixed
+
+- AppView outage now surfaces a clear error screen with a retry button instead
+  of silently rendering an empty bookmark list
+- Mid-pagination refresh failures dismiss the in-progress sync toast and surface
+  an error toast instead of leaving the progress toast stuck
+
+### Notes
+
+- The "N bookmarks updated" cross-device awareness toast was retired alongside
+  the diff layer. A server-side "last viewed" indicator may reintroduce it in a
+  future release.
+
 ## [0.9.0] - 2026-04-17
 
 ### Fixed
