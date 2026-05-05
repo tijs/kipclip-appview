@@ -105,9 +105,12 @@ roll back DNS:
       records.
 - [ ] Wait for TTL (60s) to expire from caches.
 - [ ] Verify Deno Deploy is serving (it stays alive — never paused).
-- [ ] Set `MIRROR_DUAL_WRITE=off` on the box and restart so the box stops
-      dual-writing while the issue is investigated. Local mirror stays intact
-      for next attempt.
+- [ ] **Leave `MIRROR_DUAL_WRITE=on` by default.** TAP keeps the box's local
+      mirror fresh from the firehose so the next flip attempt has a current
+      replica. Disable dual-write **only if investigation pins the failure on
+      the dual-write path itself** (e.g., `mirror dual-write: local failed`
+      Sentry storm, local disk full, schema mismatch). Disabling preemptively
+      strands the mirror; re-flip then needs a full backfill.
 - [ ] Update Sentry, file an incident, schedule next attempt.
 
 ## Post-flip cleanup (T+72h, only after fully clean)
