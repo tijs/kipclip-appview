@@ -4,6 +4,26 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.10.3] - 2026-05-06
+
+### Fixed
+
+- `update.sh` body wrapped in a `main()` function so bash slurps the whole
+  definition before invoking it. Without this, `git reset --hard origin/main`
+  (added in v0.10.2) could splice old bytes (already read) with new bytes
+  (re-read at the next chunk boundary) when a future commit changed the script —
+  a self-rewrite race surfaced by the v0.10.x code review.
+- `loadVersionInfo()` in `routes/api/system.ts` now logs a warning before
+  returning FALLBACK. The original silent-FALLBACK behavior is what hid the
+  v0.10.1 manifest-path bug from monitoring.
+
+### Added
+
+- `KIPCLIP_MANIFEST_PATH` env var override for `routes/api/system.ts` so tests
+  can point at a fixture without clobbering `static/manifest.json`. Tests now
+  assert exact manifest values via `tests/fixtures/manifest.test.json`, locking
+  down the silent-FALLBACK regression.
+
 ## [0.10.2] - 2026-05-06
 
 ### Fixed
@@ -261,7 +281,8 @@ All notable changes to kipclip are documented in this file.
 - Responsive mobile and desktop layouts
 - Kip logo and "Find it, Kip it" tagline
 
-[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.10.2...HEAD
+[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.10.3...HEAD
+[0.10.3]: https://github.com/tijs/kipclip-appview/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/tijs/kipclip-appview/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/tijs/kipclip-appview/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/tijs/kipclip-appview/compare/v0.9.0...v0.10.0

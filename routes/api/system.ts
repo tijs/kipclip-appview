@@ -30,14 +30,15 @@ const FALLBACK: VersionInfo = {
 };
 
 async function loadVersionInfo(): Promise<VersionInfo> {
+  // KIPCLIP_MANIFEST_PATH lets tests point at a fixture without clobbering
+  // static/manifest.json, and gives operators an explicit knob if the
+  // systemd WorkingDirectory contract ever changes. Falls back to CWD-
+  // relative "static/manifest.json": systemd sets WorkingDirectory to the
+  // release dir (/var/lib/kipclip/current) and `deno task dev` runs from
+  // the repo root, so the fallback resolves correctly in both.
+  const path = Deno.env.get("KIPCLIP_MANIFEST_PATH") ?? "static/manifest.json";
   try {
-    // Read relative to CWD. systemd sets WorkingDirectory to the release
-    // dir (/var/lib/kipclip/current) and `deno task dev` runs from the
-    // repo root, so "static/manifest.json" resolves correctly in both.
-    // Avoid lib/file-server's import.meta.url resolution: this file lives
-    // at routes/api/ and would resolve relative to that, two levels too
-    // deep (it was designed for main.ts at the repo root).
-    const manifestContent = await Deno.readTextFile("static/manifest.json");
+    const manifestContent = await Deno.readTextFile(path);
     const manifest = JSON.parse(manifestContent);
     return {
       version: typeof manifest.version === "string"
@@ -50,7 +51,11 @@ async function loadVersionInfo(): Promise<VersionInfo> {
           ? manifest.buildTime
           : FALLBACK.builtAt),
     };
-  } catch {
+  } catch (err) {
+    // Surface the failure so silent FALLBACK ("unknown") doesn't go
+    // unnoticed in journalctl/Sentry — the v0.10.1 manifest-path bug
+    // shipped because nothing logged this catch.
+    console.warn(`[system] loadVersionInfo failed for ${path}:`, err);
     return FALLBACK;
   }
 }
