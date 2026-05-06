@@ -1,0 +1,13 @@
+[Unit]
+Description=kipclip pull-based release update (every 60s)
+
+[Timer]
+# Fire 30s after boot so the box re-converges quickly after a reboot,
+# then every 60s thereafter while the system is up.
+OnBootSec=30s
+OnUnitActiveSec=60s
+AccuracySec=5s
+Unit=kipclip-release.service
+
+[Install]
+WantedBy=timers.target

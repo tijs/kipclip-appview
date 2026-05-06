@@ -147,15 +147,23 @@ deno task dev
 ## Releases
 
 The project uses semantic versioning (currently pre-1.0). Versions are tracked
-in `CHANGELOG.md` and as annotated git tags.
+in `CHANGELOG.md` and as annotated git tags. The Hetzner production box pulls
+the latest `v*` tag merged into `main` on a 60s systemd timer and atomic-swaps
+to it (see `deploy/release/README.md`).
 
-To cut a new release:
+To cut a new release from any machine with push perms:
 
-1. Update `CHANGELOG.md` — add a new section at the top with the version and
-   date, listing changes under Added/Changed/Fixed headings
+1. Update `CHANGELOG.md` — rename `[Unreleased]` to `[vX.Y.Z] - YYYY-MM-DD` and
+   add a fresh `[Unreleased]` section above
 2. Commit the changelog update
-3. Tag the commit: `git tag -a v0.x.0 -m "v0.x.0 - Short description"`
+3. Tag the commit: `git tag -a vX.Y.Z -m "vX.Y.Z - Short description"`
 4. Push with tags: `git push origin main --tags`
+
+Within ~60s, the box swaps to the new tag. Verify with
+`curl https://kipclip.com/api/version`. The frontend Footer shows the running
+tag and links to the GitHub release page.
+
+Pin override / rollback / failure recovery: see `deploy/release/README.md`.
 
 Guidelines:
 

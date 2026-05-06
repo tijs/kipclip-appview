@@ -1,10 +1,33 @@
 #!/usr/bin/env bash
-# Deploy kipclip to the staging box from the operator's machine.
+# Deploy kipclip to the STAGING box from the operator's machine via rsync.
+#
+# IMPORTANT: production (kipclip.com / kipclip-box) uses the pull-based
+# release flow keyed on semver git tags. Push releases by tagging:
+#
+#     git tag -a vX.Y.Z -m "vX.Y.Z - description"
+#     git push origin main --tags
+#
+# See deploy/release/README.md for the full runbook. The box pulls
+# automatically within ~60s; this script must NOT be used to deploy to
+# production (it would silently overwrite /etc/caddy/Caddyfile and
+# bypass the atomic-swap release machinery).
+#
 # Usage: ./deploy/deploy.sh [host]
 #   host defaults to staging.kipclip.com
 set -euo pipefail
 
 HOST="${1:-staging.kipclip.com}"
+
+# Prod-host guard: refuse to deploy to production via rsync. The
+# pull-based release flow is the only supported path for kipclip.com.
+case "$HOST" in
+  kipclip.com|www.kipclip.com|kipclip-box|178.104.156.35)
+    echo "ERROR: this script targets staging only." >&2
+    echo "Production releases use the pull-based flow — tag a release" >&2
+    echo "and push tags. See deploy/release/README.md." >&2
+    exit 1
+    ;;
+esac
 APP_DIR="/var/lib/kipclip/app"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 

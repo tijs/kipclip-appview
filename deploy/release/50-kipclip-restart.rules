@@ -1,0 +1,18 @@
+// Allow the kipclip user to manage the kipclip + kipclip-release units
+// without sudo. Required by deploy/release/update.sh, which runs as the
+// kipclip user under the kipclip-release.timer.
+//
+// Installed to /etc/polkit-1/rules.d/50-kipclip-restart.rules by
+// deploy/release/bootstrap.sh.
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        subject.user == "kipclip") {
+        var unit = action.lookup("unit");
+        if (unit == "kipclip.service" ||
+            unit == "kipclip-release.service" ||
+            unit == "kipclip-release.timer") {
+            return polkit.Result.YES;
+        }
+    }
+    return polkit.Result.NOT_HANDLED;
+});

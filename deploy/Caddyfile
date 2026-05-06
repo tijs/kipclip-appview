@@ -34,26 +34,18 @@ staging.kipclip.com {
 	}
 }
 
-# Production apex + www. Commented out until phase 3 DNS flip — uncommenting
-# before DNS resolves to this box would cause Caddy to attempt Let's Encrypt
-# cert provisioning on every reload and burn through ACME rate limits.
-#
-# Activation steps at flip time:
-#   1. Confirm DNS A/AAAA records on kipclip.com + www.kipclip.com point at
-#      this box's public IP.
-#   2. Uncomment the blocks below.
-#   3. sudo systemctl reload caddy
-#   4. journalctl -u caddy -f — watch for successful ACME orders.
-#
-# kipclip.com {
-# 	import common
-#
-# 	log {
-# 		output file /var/log/caddy/kipclip.com.log
-# 		format console
-# 	}
-# }
-#
-# www.kipclip.com {
-# 	redir https://kipclip.com{uri} 308
-# }
+# Production apex + www. Activated on phase 3 DNS flip (2026-05-05). DNS
+# already resolves both names to this box, so Caddy can issue and renew
+# Let's Encrypt certs on every reload without ACME rate-limit risk.
+kipclip.com {
+	import common
+
+	log {
+		output file /var/log/caddy/kipclip.com.log
+		format console
+	}
+}
+
+www.kipclip.com {
+	redir https://kipclip.com{uri} 308
+}

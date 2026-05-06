@@ -1,6 +1,9 @@
 import { PageShell } from "./PageShell.tsx";
+import { releaseUrl, useVersion } from "../utils/version.ts";
 
 export function About() {
+  const info = useVersion();
+  const tagLink = info ? releaseUrl(info.version) : null;
   return (
     <PageShell>
       <section>
@@ -133,6 +136,25 @@ export function About() {
             Press Kit
           </a>
         </div>
+        {info && (
+          <p className="mt-6 text-sm text-gray-500">
+            Running {tagLink
+              ? (
+                <a
+                  href={tagLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-gray-700"
+                >
+                  {info.version}
+                </a>
+              )
+              : <span className="font-medium">{info.version}</span>} (sha{" "}
+            {info.sha}, built {info.builtAt !== "unknown"
+              ? new Date(info.builtAt).toLocaleString()
+              : "unknown"})
+          </p>
+        )}
       </section>
     </PageShell>
   );

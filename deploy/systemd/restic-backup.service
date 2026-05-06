@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=oneshot
 User=kipclip
 Group=kipclip
-ExecStart=/var/lib/kipclip/app/deploy/restic-backup.sh
+ExecStart=/var/lib/kipclip/current/deploy/restic-backup.sh
 EnvironmentFile=/etc/kipclip/restic.env
 
 # Hardening — restic + sqlite3 only need /tmp + /var/lib/kipclip + /var/lib/tap.
