@@ -175,6 +175,11 @@ EOF
   # (see deploy/release/kipclip.sudoers, installed by bootstrap.sh).
   sudo /bin/systemctl daemon-reload
 
+  # Capture the previous symlink target BEFORE the swap so health-check
+  # failure can roll back. Empty PREV_TARGET means this is the first
+  # release — no rollback option, only forward exit.
+  PREV_TARGET="$(readlink -f "$CURRENT_LINK" 2>/dev/null || echo "")"
+
   # Atomic swap. ln -sfn replaces the symlink atomically on Linux (no
   # brief unlinked window).
   log "Atomic swap: current -> $RELEASE_DIR"
@@ -198,7 +203,22 @@ EOF
 
   if [[ "${HEALTH_OK:-0}" != "1" ]]; then
     err "kipclip failed to come up after restart on $DESIRED_TAG"
-    err "current symlink is on $DESIRED_TAG; manual recovery may be needed"
+    if [[ -n "$PREV_TARGET" && "$PREV_TARGET" != "$RELEASE_DIR" ]]; then
+      err "rolling back symlink: current -> $PREV_TARGET"
+      ln -sfn "$PREV_TARGET" "$CURRENT_LINK"
+      sudo /bin/systemctl restart kipclip
+      # Verify the rollback came up. If it didn't, we're in deep trouble
+      # and an operator needs to intervene — but log enough to make that
+      # diagnosis fast.
+      sleep 1
+      if curl -fsS --max-time 3 "$HEALTH_URL" >/dev/null 2>&1; then
+        err "rolled back to $(basename "$PREV_TARGET") successfully"
+      else
+        err "rollback to $PREV_TARGET ALSO failed health check"
+      fi
+    else
+      err "no previous release to roll back to; manual recovery required"
+    fi
     err "check: journalctl -u kipclip -n 50"
     exit 1
   fi

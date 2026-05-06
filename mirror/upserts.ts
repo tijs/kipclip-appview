@@ -11,7 +11,7 @@
  * before writing — defends against caller bugs that would mix DIDs across rows.
  */
 
-import { mirrorWrite } from "../lib/db.ts";
+import { localDb, mirrorWrite, mirrorWriteEnabled, rawDb } from "../lib/db.ts";
 
 export interface BookmarkUpsert {
   uri: string;
@@ -279,4 +279,50 @@ export async function upsertTrackedDid(
       state.lastEventAt ?? null,
     ],
   });
+}
+
+/**
+ * Webhook replay protection. INSERT OR IGNORE returns rowsAffected = 1
+ * the first time we see eventId, 0 on replays. Caller must skip
+ * processing when this returns false — replaying a delete event after
+ * the user re-created the record would silently re-delete it.
+ *
+ * Single-DB write: only the local mirror DB tracks seen events. Turso
+ * doesn't need to know — the box is single-host, replay protection is a
+ * box-local concern. Goes through mirrorWriteEnabled() so behavior in
+ * dual-write-disabled mode (Turso-only) still gates on the rawDb copy.
+ */
+export async function markWebhookEventSeen(eventId: number): Promise<boolean> {
+  const db = mirrorWriteEnabled() && localDb ? localDb : rawDb;
+  const result = await db.execute({
+    sql: `
+      INSERT OR IGNORE INTO seen_webhook_events (event_id, seen_at)
+      VALUES (?, ?)
+    `,
+    args: [eventId, Date.now()],
+  });
+  return result.rowsAffected === 1;
+}
+
+/**
+ * GC seen_webhook_events older than the retention window. Called once
+ * at module load (process restart on every release swap covers cadence)
+ * so the table can't grow unbounded under steady webhook traffic.
+ * Default retention: 7 days, well past TAP's longest backoff window.
+ */
+export async function gcSeenWebhookEvents(
+  retentionMs = 7 * 24 * 60 * 60 * 1000,
+): Promise<void> {
+  const cutoff = Date.now() - retentionMs;
+  const db = mirrorWriteEnabled() && localDb ? localDb : rawDb;
+  try {
+    await db.execute({
+      sql: "DELETE FROM seen_webhook_events WHERE seen_at < ?",
+      args: [cutoff],
+    });
+  } catch (err) {
+    // GC is opportunistic — failure is logged but doesn't block the
+    // process. Worst case the table grows a bit until next restart.
+    console.warn("[webhook-gc] failed to prune seen_webhook_events:", err);
+  }
 }

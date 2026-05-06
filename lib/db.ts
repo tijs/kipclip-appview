@@ -21,7 +21,7 @@ const localDbUrl = Deno.env.get("LOCAL_DB_URL");
 interface DbClient {
   execute: (
     query: { sql: string; args: unknown[] },
-  ) => Promise<{ rows: unknown[][] }>;
+  ) => Promise<{ rows: unknown[][]; rowsAffected: number }>;
 }
 
 let rawDb: DbClient;
@@ -33,9 +33,9 @@ if (isTestDb) {
   rawDb = {
     execute: (
       _query: { sql: string; args: unknown[] },
-    ): Promise<{ rows: unknown[][] }> => {
+    ): Promise<{ rows: unknown[][]; rowsAffected: number }> => {
       // Return empty results for all queries in test mode
-      return Promise.resolve({ rows: [] });
+      return Promise.resolve({ rows: [], rowsAffected: 0 });
     },
   };
 } else {
@@ -54,14 +54,14 @@ if (isTestDb) {
   rawDb = {
     execute: async (
       query: { sql: string; args: unknown[] },
-    ): Promise<{ rows: unknown[][] }> => {
+    ): Promise<{ rows: unknown[][]; rowsAffected: number }> => {
       const result = await client.execute({
         sql: query.sql,
         args: query.args as any,
       });
       // Convert Row objects to arrays (Object.values)
       const rows = result.rows.map((row) => Object.values(row));
-      return { rows };
+      return { rows, rowsAffected: Number(result.rowsAffected ?? 0) };
     },
   };
 
@@ -89,13 +89,13 @@ if (isTestDb) {
         localDb = {
           execute: async (
             query: { sql: string; args: unknown[] },
-          ): Promise<{ rows: unknown[][] }> => {
+          ): Promise<{ rows: unknown[][]; rowsAffected: number }> => {
             const result = await localClient.execute({
               sql: query.sql,
               args: query.args as any,
             });
             const rows = result.rows.map((row) => Object.values(row));
-            return { rows };
+            return { rows, rowsAffected: Number(result.rowsAffected ?? 0) };
           },
         };
         console.error(`✅ Local libSQL initialized at ${localDbUrl}`);

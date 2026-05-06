@@ -1,16 +1,21 @@
 /**
  * System API routes for release observability.
  *
- *   GET /api/version  -- returns the running release tag, sha, and build
- *                        timestamp baked into static/manifest.json by
- *                        scripts/build-frontend.ts at release time.
- *   GET /api/health   -- liveness probe. Returns 200 with the same version
- *                        string so monitors can verify both up-ness and
- *                        which release is up.
+ *   GET  /api/version     -- returns the running release tag, sha, and
+ *                            build timestamp baked into static/manifest.json
+ *                            by scripts/build-frontend.ts at release time.
+ *   GET  /api/health      -- liveness probe. Returns 200 with the same
+ *                            version string so monitors can verify both
+ *                            up-ness and which release is up.
+ *   POST /api/csp-report  -- receives Content-Security-Policy violation
+ *                            reports. Logs to stderr (Sentry-aggregated).
+ *                            Browsers POST application/csp-report or
+ *                            application/reports+json depending on the
+ *                            directive; both are body-text-logged as-is.
  *
- * Both endpoints are unauthenticated GETs. Neither exposes PII -- only
- * release metadata. Manifest is read once at module load and cached for
- * the lifetime of the process; restart picks up new release metadata
+ * GET endpoints are unauthenticated and expose no PII -- only release
+ * metadata. Manifest is read once at module load and cached for the
+ * lifetime of the process; restart picks up new release metadata
  * (intended -- the deno serve process is restarted on every release
  * swap by the kipclip-release timer).
  */
@@ -72,6 +77,27 @@ export function registerSystemRoutes(app: App<unknown>): App<unknown> {
   app = app.get("/api/health", async () => {
     const info = await versionInfoPromise;
     return Response.json({ ok: true, version: info.version });
+  });
+
+  // CSP violation report sink. Endpoint exists ahead of CSP enforcement
+  // (security plan U5) so the policy can ship with `report-to` pointing
+  // here on day one — Report-Only without a sink is per-session console
+  // noise that monitoring can't see (doc-review SEC-005). Logs raw body
+  // to stderr; production journalctl/Sentry aggregate from there.
+  app = app.post("/api/csp-report", async (ctx) => {
+    try {
+      const body = await ctx.req.text();
+      // Body is small JSON (<2KB typical). Truncate at 4KB defensively
+      // so a hostile or buggy reporter can't pin our log buffer.
+      const truncated = body.length > 4096
+        ? body.slice(0, 4096) + "...[truncated]"
+        : body;
+      console.warn("[csp-report]", truncated);
+    } catch (err) {
+      console.error("[csp-report] body read error", err);
+    }
+    // 204: browsers don't act on the response, so no body needed.
+    return new Response(null, { status: 204 });
   });
 
   return app;

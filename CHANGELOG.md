@@ -4,6 +4,35 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-05-06
+
+### Added
+
+- Webhook replay protection. New `seen_webhook_events` mirror table
+  (migration 008) dedupes by TAP event id; replays return
+  `{applied:false, replayed:true}` without re-running the event. Closes the
+  doc-review concern that a captured webhook payload could be replayed to
+  re-delete a record after the user re-created it.
+- `/api/csp-report` endpoint logs Content-Security-Policy violation reports to
+  stderr (Sentry-aggregated). Endpoint exists ahead of CSP enforcement so the
+  eventual policy can ship with `report-to` pointing here on day one —
+  browser-console inspection alone gives no production signal.
+- Self-hosted `static/actor-typeahead-0.2.2.js` (was loaded from
+  `https://esm.sh` at runtime) with SRI integrity attribute on the script tag.
+  Closes the supply-chain trust on esm.sh and pins stable bytes. Refresh on
+  version bump: `openssl dgst -sha384 -binary FILE | openssl base64 -A`.
+
+### Changed
+
+- `update.sh` now rolls the `current` symlink back to the previous release if
+  the post-restart health check fails 5x. Previously the symlink stayed on the
+  broken release; an operator had to recover via the pin file. Fall-through
+  still exits 1 so the timer surfaces the failure in journalctl.
+- `scripts/build-frontend.ts` now logs a warning when `KIPCLIP_VERSION` or
+  `KIPCLIP_SHA` is unset and the script falls back to `git`. Release builds run
+  in `git archive`-stripped dirs where git fails — silent fallback is what hid
+  v0.10.1's `sha:"unknown"` in production.
+
 ## [0.10.3] - 2026-05-06
 
 ### Fixed
@@ -281,7 +310,8 @@ All notable changes to kipclip are documented in this file.
 - Responsive mobile and desktop layouts
 - Kip logo and "Find it, Kip it" tagline
 
-[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.10.3...HEAD
+[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/tijs/kipclip-appview/compare/v0.10.3...v0.11.0
 [0.10.3]: https://github.com/tijs/kipclip-appview/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/tijs/kipclip-appview/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/tijs/kipclip-appview/compare/v0.10.0...v0.10.1

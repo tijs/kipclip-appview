@@ -240,6 +240,12 @@ Deno.test("POST /api/sync/hook - 403 when URL hostname is not localhost", async 
   assertEquals(res.status, 403);
 });
 
+// Auto-incrementing event id. The mirror's replay-protection layer
+// (mirror/upserts.ts markWebhookEventSeen) dedupes by id, so distinct
+// recordEvent() calls within a test must produce distinct ids.
+// Tests that intentionally redeliver the same event capture the result
+// of one recordEvent() call and reuse it.
+let _nextEventId = 1;
 function recordEvent(
   collection: string,
   rkey: string,
@@ -250,7 +256,7 @@ function recordEvent(
   did = SESSION_DID,
 ) {
   return {
-    id: 1,
+    id: _nextEventId++,
     type: "record",
     record: {
       live,
@@ -566,4 +572,43 @@ Deno.test("POST /api/sync/hook - preferences delete removes row", async () => {
   );
   const { getMirrorPreferences } = await import("../mirror/queries.ts");
   assertEquals(await getMirrorPreferences(SESSION_DID), null);
+});
+
+Deno.test("POST /api/sync/hook - replayed event is rejected (replayed:true)", async () => {
+  await clearMirrorTables();
+  const evt = recordEvent(
+    "community.lexicon.bookmarks.bookmark",
+    "rep1",
+    "create",
+    {
+      subject: "https://example.com/replay",
+      createdAt: "2026-05-06T00:00:00.000Z",
+    },
+    "bafyRep1",
+  );
+  // First delivery: applied:true.
+  const r1 = await handler(
+    new Request("http://127.0.0.1:8000/api/sync/hook", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(evt),
+    }),
+  );
+  assertEquals((await r1.json()).applied, true);
+
+  // Second delivery of the SAME event id: replayed:true, applied:false.
+  // Without replay protection, an attacker capturing this event's payload
+  // could re-deliver a delete after the user re-created the record.
+  const r2 = await handler(
+    new Request("http://127.0.0.1:8000/api/sync/hook", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(evt),
+    }),
+  );
+  const body2 = await r2.json();
+  assertEquals(r2.status, 200);
+  assertEquals(body2.applied, false);
+  assertEquals(body2.replayed, true);
+  assertEquals(body2.id, evt.id);
 });

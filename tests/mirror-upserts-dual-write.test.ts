@@ -25,7 +25,7 @@ const DID = "did:plc:dualwrite";
 interface FakeDb {
   execute: (
     q: { sql: string; args: unknown[] },
-  ) => Promise<{ rows: unknown[][] }>;
+  ) => Promise<{ rows: unknown[][]; rowsAffected: number }>;
 }
 
 function setFlag(on: boolean) {
@@ -45,14 +45,18 @@ Deno.test("mirrorWriteEnabled - flag on + localDb null → false", () => {
 });
 
 Deno.test("mirrorWriteEnabled - flag off + localDb set → false", () => {
-  installFakeLocal({ execute: () => Promise.resolve({ rows: [] }) });
+  installFakeLocal({
+    execute: () => Promise.resolve({ rows: [], rowsAffected: 0 }),
+  });
   setFlag(false);
   assertEquals(mirrorWriteEnabled(), false);
   installFakeLocal(null);
 });
 
 Deno.test("mirrorWriteEnabled - flag on + localDb set → true", () => {
-  installFakeLocal({ execute: () => Promise.resolve({ rows: [] }) });
+  installFakeLocal({
+    execute: () => Promise.resolve({ rows: [], rowsAffected: 0 }),
+  });
   setFlag(true);
   assertEquals(mirrorWriteEnabled(), true);
   setFlag(false);
@@ -90,7 +94,7 @@ Deno.test("mirrorWrite - flag on + both healthy → both receive the row", async
   installFakeLocal({
     execute: (q) => {
       localCalls.push(q);
-      return Promise.resolve({ rows: [] });
+      return Promise.resolve({ rows: [], rowsAffected: 0 });
     },
   });
   setFlag(true);
@@ -122,7 +126,7 @@ Deno.test("mirrorWrite - flag on + Turso throws → local committed, helper reso
   installFakeLocal({
     execute: (q) => {
       localCalls.push(q);
-      return Promise.resolve({ rows: [] });
+      return Promise.resolve({ rows: [], rowsAffected: 0 });
     },
   });
   setFlag(true);
@@ -177,7 +181,7 @@ Deno.test("upsertBookmark - flag on routes through mirrorWrite to both DBs", asy
   installFakeLocal({
     execute: (q) => {
       localCalls.push(q);
-      return Promise.resolve({ rows: [] });
+      return Promise.resolve({ rows: [], rowsAffected: 0 });
     },
   });
   setFlag(true);

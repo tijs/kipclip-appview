@@ -29,6 +29,13 @@ async function generateContentHash(content: Uint8Array): Promise<string> {
 async function resolveVersion(): Promise<string> {
   const fromEnv = Deno.env.get("KIPCLIP_VERSION");
   if (fromEnv && fromEnv.trim().length > 0) return fromEnv.trim();
+  // Local dev path. Release builds set KIPCLIP_VERSION via update.sh; if
+  // we're here in a release dir (no .git), git will fail and the manifest
+  // ships "dev" — exactly the silent-fallback shape that hid v0.10.1.
+  console.warn(
+    "[build] KIPCLIP_VERSION env not set; falling back to `git describe`. " +
+      "Release builds must set this — release dirs lack .git.",
+  );
   try {
     const cmd = new Deno.Command("git", {
       args: ["describe", "--tags", "--abbrev=0", "--match", "v*"],
@@ -50,6 +57,10 @@ async function resolveSha(): Promise<string> {
   // The release script can pre-resolve the sha and pass it in.
   const fromEnv = Deno.env.get("KIPCLIP_SHA");
   if (fromEnv && fromEnv.trim().length > 0) return fromEnv.trim();
+  console.warn(
+    "[build] KIPCLIP_SHA env not set; falling back to `git rev-parse HEAD`. " +
+      "Release builds must set this — release dirs lack .git.",
+  );
   try {
     const cmd = new Deno.Command("git", {
       args: ["rev-parse", "--short", "HEAD"],

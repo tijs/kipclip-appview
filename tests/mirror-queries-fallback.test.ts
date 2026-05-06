@@ -68,7 +68,7 @@ Deno.test("mirrorRead - flag on + local healthy → local serves, Turso untouche
   _setTestLocalDb({
     execute: (_q) => {
       localCalls++;
-      return Promise.resolve({ rows: [[42]] });
+      return Promise.resolve({ rows: [[42]], rowsAffected: 0 });
     },
   });
   // Patch rawDb.execute to count calls.

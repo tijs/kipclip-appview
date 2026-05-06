@@ -22,6 +22,8 @@ import {
   deleteBookmark,
   deletePreferences,
   deleteTag,
+  gcSeenWebhookEvents,
+  markWebhookEventSeen,
   upsertAnnotation,
   upsertBookmark,
   upsertPreferences,
@@ -66,9 +68,17 @@ export interface WebhookResult {
   id?: number;
   type?: string;
   applied: boolean;
+  replayed?: boolean;
 }
 
 const ACK_ASYNC = Deno.env.get("MIRROR_WEBHOOK_ACK_ASYNC") === "1";
+
+// Opportunistic GC at module load. Process restart on every release swap
+// gives this a free trigger; under steady webhook traffic the table
+// would otherwise grow unbounded.
+gcSeenWebhookEvents().catch((err) => {
+  console.warn("[webhook] startup gc failed (non-fatal):", err);
+});
 
 export async function handleWebhookRequest(req: Request): Promise<Response> {
   let body: MarshallableEvt;
@@ -76,6 +86,24 @@ export async function handleWebhookRequest(req: Request): Promise<Response> {
     body = await req.json();
   } catch {
     return Response.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  // Replay protection. TAP assigns a monotonically-increasing id per
+  // outbox event. If we've seen this id before, return 200 immediately
+  // without re-running the event — replaying a delete after the user
+  // re-created the record would otherwise silently re-delete it. Events
+  // without an id (TAP shouldn't send these, but be defensive) bypass
+  // dedup and rely on the idempotent upsert layer alone.
+  if (typeof body.id === "number") {
+    const firstTime = await markWebhookEventSeen(body.id);
+    if (!firstTime) {
+      return Response.json({
+        id: body.id,
+        type: body.type,
+        applied: false,
+        replayed: true,
+      });
+    }
   }
 
   if (ACK_ASYNC) {

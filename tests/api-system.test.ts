@@ -46,3 +46,41 @@ Deno.test("GET /api/version is unauthenticated (no session required)", async () 
   const res = await handler(req);
   assertEquals(res.status, 200);
 });
+
+Deno.test("POST /api/csp-report accepts violation report and returns 204", async () => {
+  // Browsers POST a CSP violation report when a directive is violated.
+  // The endpoint exists ahead of CSP enforcement so the policy can ship
+  // with `report-to` pointing here on day one. 204 = no body, browser
+  // takes no action, ack-only sink.
+  const reportBody = JSON.stringify({
+    "csp-report": {
+      "document-uri": "https://kipclip.com/",
+      "violated-directive": "script-src",
+      "blocked-uri": "https://evil.example.com/x.js",
+    },
+  });
+  const req = new Request("https://kipclip.com/api/csp-report", {
+    method: "POST",
+    headers: { "Content-Type": "application/csp-report" },
+    body: reportBody,
+  });
+  const res = await handler(req);
+  assertEquals(res.status, 204);
+  // 204 must have empty body — browsers ignore it but spec compliance
+  // matters for proxies that strip non-empty 204 responses.
+  const text = await res.text();
+  assertEquals(text, "");
+});
+
+Deno.test("POST /api/csp-report truncates oversized body without erroring", async () => {
+  // Hostile or buggy reporters could ship a huge body. Endpoint must
+  // truncate at 4KB internally and still return 204.
+  const huge = JSON.stringify({ "csp-report": { dump: "x".repeat(10_000) } });
+  const req = new Request("https://kipclip.com/api/csp-report", {
+    method: "POST",
+    headers: { "Content-Type": "application/csp-report" },
+    body: huge,
+  });
+  const res = await handler(req);
+  assertEquals(res.status, 204);
+});

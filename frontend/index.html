@@ -86,9 +86,18 @@
 
     <link rel="stylesheet" href="/frontend/style.css">
     <script src="/static/twind.js"></script>
+    <!--
+      Self-hosted from esm.sh @ jsr/@tijs/actor-typeahead@0.2.2 (es2022 bundle).
+      Fetched via: curl -sL 'https://esm.sh/@jsr/tijs__actor-typeahead@0.2.2/es2022/tijs__actor-typeahead.bundle.mjs'
+      Closes the supply-chain trust on esm.sh (doc-review SEC-004) and lets us
+      pin SRI on stable bytes. Refresh both file + integrity hash on version
+      bump:  openssl dgst -sha384 -binary FILE | openssl base64 -A
+    -->
     <script
       type="module"
-      src="https://esm.sh/jsr/@tijs/actor-typeahead@0.2.2"
+      src="/static/actor-typeahead-0.2.2.js"
+      integrity="sha384-oNIrLiDQQ8PDlF8pA6ytYjHoAL9mh3RKmh2LnY+26Nyx1E6L3WAD+xS6THSyUMxs"
+      crossorigin="anonymous"
     ></script>
   </head>
   <body>

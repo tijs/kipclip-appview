@@ -99,4 +99,17 @@ export const MIRROR_MIGRATIONS: MigrationEntry[] = [
       )
     `,
   },
+  {
+    version: "008",
+    description:
+      "Create seen_webhook_events for replay protection on /api/sync/hook",
+    sql: `
+      CREATE TABLE IF NOT EXISTS seen_webhook_events (
+        event_id INTEGER PRIMARY KEY,
+        seen_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_seen_webhook_events_seen_at
+        ON seen_webhook_events(seen_at)
+    `,
+  },
 ];
