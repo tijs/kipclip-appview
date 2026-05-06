@@ -91,7 +91,13 @@ fi
 
 # Step 3: install / refresh systemd units. Source files live under the
 # pull-source clone so this picks up whatever shape the latest main has.
+#
+# Pre-create the SENTRY_RELEASE drop-in directory so the
+# kipclip-release.service unit's ReadWritePaths resolves at namespace
+# setup time. Without this, systemd fails the unit with status
+# 226/NAMESPACE before update.sh ever runs.
 log "Installing systemd units"
+mkdir -p /etc/systemd/system/kipclip.service.d
 install -m 0644 "${SOURCE_DIR}/deploy/systemd/kipclip.service" \
   /etc/systemd/system/kipclip.service
 install -m 0644 "${SOURCE_DIR}/deploy/systemd/restic-backup.service" \
