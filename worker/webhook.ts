@@ -77,17 +77,16 @@ const ACK_ASYNC = Deno.env.get("MIRROR_WEBHOOK_ACK_ASYNC") === "1";
 // `respond @hook 403` rule is the primary barrier; this check catches
 // drift (e.g., a new vhost block forgetting `import common`).
 //
-// Auth shape: TAP's webhook client (cmd/tap/webhook_client.go) sends
-// `Authorization: Basic admin:<TAP_ADMIN_PASSWORD>` on every webhook
-// when TAP_ADMIN_PASSWORD is set on the TAP side. So
-// `TAP_WEBHOOK_SECRET` on this side MUST be set to the same value as
-// TAP's TAP_ADMIN_PASSWORD env var. (TAP currently couples inbound
-// admin auth and outbound webhook auth into the same secret — see
-// upstream issue if this is ever decoupled.)
+// Auth shape: by design, TAP reuses `TAP_ADMIN_PASSWORD` for outbound
+// webhook auth (cmd/tap/webhook_client.go calls `req.SetBasicAuth(
+// "admin", adminPassword)`). This is documented in indigo's
+// cmd/tap/README.md "Authentication" section. So `TAP_WEBHOOK_SECRET`
+// on this side MUST be set to the same value as TAP's
+// `TAP_ADMIN_PASSWORD` env var.
 //
 // We also accept `Authorization: Bearer <secret>` for forward-compat
-// in case TAP (or a future webhook source) ships with a separate
-// outbound-webhook auth.
+// in case a future TAP version (or another webhook source) ships with
+// a separate outbound-webhook auth header.
 //
 // Rollout policy: env var unset = check disabled (current behavior
 // preserved). Set the secret on both kipclip and TAP simultaneously in
