@@ -4,6 +4,29 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-05-06
+
+### Security
+
+- **TAP webhook shared secret.** `worker/webhook.ts` now enforces an
+  `Authorization: Bearer <secret>` header check when `TAP_WEBHOOK_SECRET` is set
+  in kipclip's env. Defense-in-depth behind Caddy's `respond @hook 403` matcher
+  — closes the gap where a Caddy config drift (a vhost forgetting
+  `import common`, or a new public hostname block missing the rule) would have
+  left `/api/sync/hook` exposed to the internet. Constant-time comparison
+  (SHA-256 hash both sides, then byte-XOR) avoids leaking secret length via
+  timing.
+- Env-var-gated rollout: leave `TAP_WEBHOOK_SECRET` unset until TAP is also
+  configured to send the matching bearer. Once both are set, leave them set —
+  the unset path is a phased-rollout convenience, not a permanent escape hatch.
+  See `deploy/release/README.md` "TAP webhook shared secret" section for the
+  coordinated rollout procedure.
+
+### Changed
+
+- `deploy/tap.config.example` documents the new `webhook.authorization_bearer`
+  field and the required match against kipclip's `TAP_WEBHOOK_SECRET`.
+
 ## [0.12.0] - 2026-05-06
 
 ### Security
@@ -334,7 +357,8 @@ All notable changes to kipclip are documented in this file.
 - Responsive mobile and desktop layouts
 - Kip logo and "Find it, Kip it" tagline
 
-[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/tijs/kipclip-appview/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/tijs/kipclip-appview/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/tijs/kipclip-appview/compare/v0.10.3...v0.11.0
 [0.10.3]: https://github.com/tijs/kipclip-appview/compare/v0.10.2...v0.10.3

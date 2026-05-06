@@ -30,7 +30,9 @@ Verify:
 
 ```bash
 curl https://kipclip.com/api/version
-# { "version": "vX.Y.Z", "sha": "...", "builtAt": "..." }
+# { "version": "vX.Y.Z" }
+# (sha + builtAt are operator-only since v0.12.0; ssh and read
+# /var/lib/kipclip/current/static/manifest.json for the full set)
 
 ssh kipclip-box "journalctl -u kipclip-release.service -n 30 --no-pager"
 ```
@@ -68,8 +70,9 @@ Two options:
 
 ## Bootstrap-redo (config changes)
 
-When `deploy/Caddyfile`, `deploy/systemd/*.service`, or
-`deploy/release/*.{service,timer,rules}` shapes need to update:
+When `deploy/Caddyfile`, `deploy/systemd/*.service`,
+`deploy/release/*.{service,timer,rules}`, or `deploy/release/kipclip.sudoers`
+need to update:
 
 ```bash
 ssh kipclip-box "cd /var/lib/kipclip/source && sudo git pull && \
@@ -80,19 +83,60 @@ This is the only path that writes to `/etc/caddy/`, `/etc/systemd/`, or
 `/etc/sudoers.d/`. The 60s auto-release flow never touches them — the structural
 fix that prevents the phase 4 Caddyfile-clobber bug recurring.
 
+## TAP webhook shared secret
+
+`worker/webhook.ts` enforces an `Authorization: Bearer <secret>` check when the
+`TAP_WEBHOOK_SECRET` env var is set on kipclip. This is defense-in-depth behind
+the Caddy `respond @hook 403` rule — Caddy is the primary barrier, the bearer
+catches config drift.
+
+Rollout (must be coordinated; both sides need the same secret to be set in the
+same maintenance window):
+
+1. Generate a 32+-char secret: `openssl rand -hex 32`
+2. On the box, append to `/etc/kipclip/env`: `TAP_WEBHOOK_SECRET=<secret>`
+3. On the box, set `webhook.authorization_bearer: "<secret>"` in
+   `/etc/tap/config.yaml` (matches the kipclip env var exactly)
+4. Restart both services: `sudo systemctl restart tap kipclip` (TAP must restart
+   first so the next webhook delivery carries the new bearer; if kipclip
+   restarts first and TAP hasn't picked up the secret, every webhook 401s for
+   the gap)
+5. Verify in journalctl: `journalctl -u kipclip -n 20 | grep webhook` should NOT
+   show "TAP_WEBHOOK_SECRET not set" warning.
+
+Until both sides are configured, leave both unset. kipclip's check is
+env-var-gated — unset env = no check, current behavior preserved.
+
+## Env file permissions audit
+
+`deploy/release/check-env-perms.sh` verifies that `/etc/kipclip/env`,
+`/etc/kipclip/restic.env`, and `/etc/tap/env` have the expected ownership and
+mode. `bootstrap.sh` runs it at the end of bootstrap; an operator can re-run it
+on demand:
+
+```bash
+ssh kipclip-box "sudo /var/lib/kipclip/source/deploy/release/check-env-perms.sh"
+```
+
+A failure exits 1 with the offending file(s) named. Common cause: the operator
+edited an env file with `sudo vi` and the new file inherited the editor's umask,
+dropping `kipclip` group access. Fix:
+`sudo chown root:kipclip /etc/kipclip/env && sudo chmod 0640 /etc/kipclip/env`.
+
 ## What lives where on the box
 
-| Path                                                 | Owner   | Purpose                                                                                     |
-| ---------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------- |
-| `/var/lib/kipclip/source/`                           | kipclip | Pull-source git clone. `update.sh` runs `git fetch` here every 60s.                         |
-| `/var/lib/kipclip/releases/<tag>/`                   | kipclip | Materialised release trees. Last 5 retained, older GC'd.                                    |
-| `/var/lib/kipclip/current`                           | kipclip | Symlink to the running release dir. `kipclip.service` resolves through this.                |
-| `/var/lib/kipclip/mirror.db`                         | kipclip | Local libSQL mirror. Outside release dirs — survives swaps.                                 |
-| `/etc/kipclip/env`                                   | root    | App env file. Bootstrap-managed (never written by `update.sh`).                             |
-| `/etc/kipclip/restic.env`                            | root    | Restic backup credentials. Bootstrap-managed.                                               |
-| `/etc/kipclip/release-pin`                           | root    | Optional pin override (a single tag). Empty/missing = use latest.                           |
-| `/etc/systemd/system/kipclip.service.d/release.conf` | root    | Drop-in written by `update.sh` at swap time, holding `Environment="SENTRY_RELEASE=vX.Y.Z"`. |
-| `/etc/caddy/Caddyfile`                               | root    | Bootstrap-managed.                                                                          |
+| Path                                                 | Owner        | Purpose                                                                                     |
+| ---------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------- |
+| `/var/lib/kipclip/source/`                           | kipclip      | Pull-source git clone. `update.sh` runs `git fetch` here every 60s.                         |
+| `/var/lib/kipclip/releases/<tag>/`                   | kipclip      | Materialised release trees. Last 5 retained, older GC'd.                                    |
+| `/var/lib/kipclip/current`                           | kipclip      | Symlink to the running release dir. `kipclip.service` resolves through this.                |
+| `/var/lib/kipclip/mirror.db`                         | kipclip      | Local libSQL mirror. Outside release dirs — survives swaps.                                 |
+| `/etc/kipclip/env`                                   | root:kipclip | App env file (`0640`). Bootstrap-managed (never written by `update.sh`).                    |
+| `/etc/kipclip/restic.env`                            | root         | Restic backup credentials (`0600`). Bootstrap-managed.                                      |
+| `/etc/kipclip/release-pin`                           | root:kipclip | Optional pin override (a single tag, `0644`). Empty/missing = use latest.                   |
+| `/etc/tap/env`                                       | root:tap     | TAP env file (`0640`). Bootstrap-managed.                                                   |
+| `/etc/systemd/system/kipclip.service.d/release.conf` | root         | Drop-in written by `update.sh` at swap time, holding `Environment="SENTRY_RELEASE=vX.Y.Z"`. |
+| `/etc/caddy/Caddyfile`                               | root         | Bootstrap-managed.                                                                          |
 
 ## Failure modes
 

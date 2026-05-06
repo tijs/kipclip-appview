@@ -73,6 +73,51 @@ export interface WebhookResult {
 
 const ACK_ASYNC = Deno.env.get("MIRROR_WEBHOOK_ACK_ASYNC") === "1";
 
+// Defense-in-depth shared secret between TAP and kipclip. The Caddy
+// `respond @hook 403` rule is the primary barrier; this check catches
+// drift (e.g., a new vhost block forgetting `import common`).
+//
+// Rollout policy: env var unset = check disabled (current behavior
+// preserved). Set the secret on both kipclip and TAP simultaneously in
+// one maintenance window to avoid a window where webhooks 401 because
+// only one side knows the secret. Once production has the secret,
+// leave it set — the unset path is a phased-rollout convenience, not
+// a permanent escape hatch.
+//
+// Read fresh on every request (not cached at module load) so tests
+// can toggle behavior between cases. The env-read cost is sub-µs and
+// the webhook path is already DB-bound.
+function tapWebhookSecret(): string {
+  return Deno.env.get("TAP_WEBHOOK_SECRET")?.trim() ?? "";
+}
+
+// Single startup warning so an operator notices a misconfigured prod.
+if (tapWebhookSecret().length === 0) {
+  console.warn(
+    "[webhook] TAP_WEBHOOK_SECRET not set — Authorization-header check disabled. " +
+      "Set this env var on production once TAP is sending the matching header.",
+  );
+}
+
+/**
+ * Constant-time equality check for the shared secret. Hashing both
+ * sides to fixed-length SHA-256 digests dodges length-leak via
+ * short-circuit when inputs differ in length, and the byte-XOR loop
+ * runs in constant time relative to input length.
+ */
+async function constantTimeEqual(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const aHash = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", enc.encode(a)),
+  );
+  const bHash = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", enc.encode(b)),
+  );
+  let diff = 0;
+  for (let i = 0; i < aHash.length; i++) diff |= aHash[i] ^ bHash[i];
+  return diff === 0;
+}
+
 // Opportunistic GC at module load. Process restart on every release swap
 // gives this a free trigger; under steady webhook traffic the table
 // would otherwise grow unbounded.
@@ -81,6 +126,20 @@ gcSeenWebhookEvents().catch((err) => {
 });
 
 export async function handleWebhookRequest(req: Request): Promise<Response> {
+  // Auth gate. When TAP_WEBHOOK_SECRET is set, require a matching
+  // Bearer token in the Authorization header. Empty body on 401 to
+  // avoid leaking implementation details to a probing attacker. The
+  // body is NOT parsed before this check so an unauthenticated request
+  // never touches the JSON parser or the mirror DB.
+  const secret = tapWebhookSecret();
+  if (secret.length > 0) {
+    const authz = req.headers.get("Authorization") ?? "";
+    const provided = authz.startsWith("Bearer ") ? authz.slice(7) : "";
+    if (provided.length === 0 || !await constantTimeEqual(provided, secret)) {
+      return new Response(null, { status: 401 });
+    }
+  }
+
   let body: MarshallableEvt;
   try {
     body = await req.json();

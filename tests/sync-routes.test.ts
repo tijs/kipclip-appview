@@ -574,6 +574,116 @@ Deno.test("POST /api/sync/hook - preferences delete removes row", async () => {
   assertEquals(await getMirrorPreferences(SESSION_DID), null);
 });
 
+Deno.test("POST /api/sync/hook - TAP_WEBHOOK_SECRET unset → no auth required", async () => {
+  await clearMirrorTables();
+  Deno.env.delete("TAP_WEBHOOK_SECRET");
+  const evt = recordEvent(
+    "community.lexicon.bookmarks.bookmark",
+    "noauth",
+    "create",
+    {
+      subject: "https://example.com/noauth",
+      createdAt: "2026-05-06T00:00:00.000Z",
+    },
+    "bafyNoAuth",
+  );
+  const r = await handler(
+    new Request("http://127.0.0.1:8000/api/sync/hook", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(evt),
+    }),
+  );
+  assertEquals(r.status, 200);
+  assertEquals((await r.json()).applied, true);
+});
+
+Deno.test("POST /api/sync/hook - secret set + missing header → 401", async () => {
+  Deno.env.set("TAP_WEBHOOK_SECRET", "test-secret-abc");
+  try {
+    const evt = recordEvent(
+      "community.lexicon.bookmarks.bookmark",
+      "missing",
+      "create",
+      {
+        subject: "https://example.com/missing",
+        createdAt: "2026-05-06T00:00:00.000Z",
+      },
+      "bafyMissing",
+    );
+    const r = await handler(
+      new Request("http://127.0.0.1:8000/api/sync/hook", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(evt),
+      }),
+    );
+    assertEquals(r.status, 401);
+  } finally {
+    Deno.env.delete("TAP_WEBHOOK_SECRET");
+  }
+});
+
+Deno.test("POST /api/sync/hook - secret set + wrong bearer → 401", async () => {
+  Deno.env.set("TAP_WEBHOOK_SECRET", "test-secret-abc");
+  try {
+    const evt = recordEvent(
+      "community.lexicon.bookmarks.bookmark",
+      "wrong",
+      "create",
+      {
+        subject: "https://example.com/wrong",
+        createdAt: "2026-05-06T00:00:00.000Z",
+      },
+      "bafyWrong",
+    );
+    const r = await handler(
+      new Request("http://127.0.0.1:8000/api/sync/hook", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer not-the-secret",
+        },
+        body: JSON.stringify(evt),
+      }),
+    );
+    assertEquals(r.status, 401);
+  } finally {
+    Deno.env.delete("TAP_WEBHOOK_SECRET");
+  }
+});
+
+Deno.test("POST /api/sync/hook - secret set + correct bearer → 200", async () => {
+  await clearMirrorTables();
+  Deno.env.set("TAP_WEBHOOK_SECRET", "test-secret-abc");
+  try {
+    const evt = recordEvent(
+      "community.lexicon.bookmarks.bookmark",
+      "right",
+      "create",
+      {
+        subject: "https://example.com/right",
+        createdAt: "2026-05-06T00:00:00.000Z",
+      },
+      "bafyRight",
+    );
+    const r = await handler(
+      new Request("http://127.0.0.1:8000/api/sync/hook", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer test-secret-abc",
+        },
+        body: JSON.stringify(evt),
+      }),
+    );
+    assertEquals(r.status, 200);
+    assertEquals((await r.json()).applied, true);
+  } finally {
+    Deno.env.delete("TAP_WEBHOOK_SECRET");
+  }
+});
+
 Deno.test("POST /api/sync/hook - replayed event is rejected (replayed:true)", async () => {
   await clearMirrorTables();
   const evt = recordEvent(
