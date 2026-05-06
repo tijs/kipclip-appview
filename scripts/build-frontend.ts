@@ -45,6 +45,11 @@ async function resolveVersion(): Promise<string> {
 }
 
 async function resolveSha(): Promise<string> {
+  // Release-time builds run inside /var/lib/kipclip/releases/<tag>/, which
+  // is materialised via `git archive | tar -x` and therefore has no .git.
+  // The release script can pre-resolve the sha and pass it in.
+  const fromEnv = Deno.env.get("KIPCLIP_SHA");
+  if (fromEnv && fromEnv.trim().length > 0) return fromEnv.trim();
   try {
     const cmd = new Deno.Command("git", {
       args: ["rev-parse", "--short", "HEAD"],

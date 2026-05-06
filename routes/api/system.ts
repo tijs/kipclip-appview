@@ -16,7 +16,6 @@
  */
 
 import type { App } from "@fresh/core";
-import { readFile } from "../../lib/file-server.ts";
 
 interface VersionInfo {
   version: string;
@@ -32,10 +31,13 @@ const FALLBACK: VersionInfo = {
 
 async function loadVersionInfo(): Promise<VersionInfo> {
   try {
-    const manifestContent = await readFile(
-      "/static/manifest.json",
-      import.meta.url,
-    );
+    // Read relative to CWD. systemd sets WorkingDirectory to the release
+    // dir (/var/lib/kipclip/current) and `deno task dev` runs from the
+    // repo root, so "static/manifest.json" resolves correctly in both.
+    // Avoid lib/file-server's import.meta.url resolution: this file lives
+    // at routes/api/ and would resolve relative to that, two levels too
+    // deep (it was designed for main.ts at the repo root).
+    const manifestContent = await Deno.readTextFile("static/manifest.json");
     const manifest = JSON.parse(manifestContent);
     return {
       version: typeof manifest.version === "string"

@@ -130,12 +130,18 @@ mkdir -p "$RELEASE_DIR"
 log "Materialising $DESIRED_TAG into $RELEASE_DIR"
 git archive --format=tar "$DESIRED_TAG" | tar -x -C "$RELEASE_DIR"
 
-# Build. KIPCLIP_VERSION is consumed by scripts/build-frontend.ts to
-# bake the version into static/manifest.json.
-log "Building $DESIRED_TAG"
+# Build. KIPCLIP_VERSION + KIPCLIP_SHA are consumed by
+# scripts/build-frontend.ts to bake release metadata into
+# static/manifest.json. The release dir is materialised via
+# `git archive | tar -x` and has no .git, so we resolve the sha here in
+# the source clone (which does have .git) and pass it through.
+RELEASE_SHA="$(git rev-parse --short "$DESIRED_TAG^{commit}")"
+log "Building $DESIRED_TAG (sha $RELEASE_SHA)"
 (
   cd "$RELEASE_DIR"
-  KIPCLIP_VERSION="$DESIRED_TAG" "$DENO_BIN" task build
+  KIPCLIP_VERSION="$DESIRED_TAG" \
+    KIPCLIP_SHA="$RELEASE_SHA" \
+    "$DENO_BIN" task build
 )
 
 echo "$DESIRED_TAG" > "${RELEASE_DIR}/.version"

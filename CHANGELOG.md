@@ -4,6 +4,18 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-05-06
+
+### Fixed
+
+- `/api/version` returned `unknown` because `routes/api/system.ts` resolved
+  `static/manifest.json` relative to its own location (`routes/api/`), two
+  directories deep from the repo root. Read via `Deno.readTextFile` from the
+  release CWD instead.
+- Build-time `sha` field was `unknown` in production because release dirs are
+  materialised via `git archive | tar -x` and have no `.git`. The release script
+  now pre-resolves the sha in the source clone and passes it via `KIPCLIP_SHA`.
+
 ## [0.10.0] - 2026-05-06
 
 ### Added
@@ -240,7 +252,8 @@ All notable changes to kipclip are documented in this file.
 - Responsive mobile and desktop layouts
 - Kip logo and "Find it, Kip it" tagline
 
-[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/tijs/kipclip-appview/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/tijs/kipclip-appview/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/tijs/kipclip-appview/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/tijs/kipclip-appview/compare/v0.7.0...v0.8.0
