@@ -77,12 +77,23 @@ const ACK_ASYNC = Deno.env.get("MIRROR_WEBHOOK_ACK_ASYNC") === "1";
 // `respond @hook 403` rule is the primary barrier; this check catches
 // drift (e.g., a new vhost block forgetting `import common`).
 //
+// Auth shape: TAP's webhook client (cmd/tap/webhook_client.go) sends
+// `Authorization: Basic admin:<TAP_ADMIN_PASSWORD>` on every webhook
+// when TAP_ADMIN_PASSWORD is set on the TAP side. So
+// `TAP_WEBHOOK_SECRET` on this side MUST be set to the same value as
+// TAP's TAP_ADMIN_PASSWORD env var. (TAP currently couples inbound
+// admin auth and outbound webhook auth into the same secret — see
+// upstream issue if this is ever decoupled.)
+//
+// We also accept `Authorization: Bearer <secret>` for forward-compat
+// in case TAP (or a future webhook source) ships with a separate
+// outbound-webhook auth.
+//
 // Rollout policy: env var unset = check disabled (current behavior
 // preserved). Set the secret on both kipclip and TAP simultaneously in
-// one maintenance window to avoid a window where webhooks 401 because
-// only one side knows the secret. Once production has the secret,
-// leave it set — the unset path is a phased-rollout convenience, not
-// a permanent escape hatch.
+// one maintenance window. Once production has the secret, leave it
+// set — the unset path is a phased-rollout convenience, not a
+// permanent escape hatch.
 //
 // Read fresh on every request (not cached at module load) so tests
 // can toggle behavior between cases. The env-read cost is sub-µs and
@@ -118,6 +129,38 @@ async function constantTimeEqual(a: string, b: string): Promise<boolean> {
   return diff === 0;
 }
 
+/**
+ * Extract the webhook secret from an Authorization header value.
+ *
+ * - `Bearer <secret>` → returns `<secret>`
+ * - `Basic <base64(admin:<secret>)>` → returns `<secret>` when
+ *   username is "admin" (matches TAP's webhook_client.go shape).
+ *   Other usernames return null so a leaked unrelated Basic-auth
+ *   token can't authenticate the webhook.
+ * - Anything else → null
+ */
+function extractWebhookSecret(authz: string): string | null {
+  if (authz.startsWith("Bearer ")) {
+    const v = authz.slice(7).trim();
+    return v.length > 0 ? v : null;
+  }
+  if (authz.startsWith("Basic ")) {
+    let decoded: string;
+    try {
+      decoded = atob(authz.slice(6).trim());
+    } catch {
+      return null;
+    }
+    const sep = decoded.indexOf(":");
+    if (sep < 0) return null;
+    const user = decoded.slice(0, sep);
+    const pass = decoded.slice(sep + 1);
+    if (user !== "admin") return null;
+    return pass.length > 0 ? pass : null;
+  }
+  return null;
+}
+
 // Opportunistic GC at module load. Process restart on every release swap
 // gives this a free trigger; under steady webhook traffic the table
 // would otherwise grow unbounded.
@@ -127,15 +170,21 @@ gcSeenWebhookEvents().catch((err) => {
 
 export async function handleWebhookRequest(req: Request): Promise<Response> {
   // Auth gate. When TAP_WEBHOOK_SECRET is set, require a matching
-  // Bearer token in the Authorization header. Empty body on 401 to
-  // avoid leaking implementation details to a probing attacker. The
-  // body is NOT parsed before this check so an unauthenticated request
-  // never touches the JSON parser or the mirror DB.
+  // Authorization header. Two shapes accepted:
+  //   - `Basic <base64(admin:<secret>)>` — what TAP sends today
+  //     (cmd/tap/webhook_client.go calls req.SetBasicAuth("admin",
+  //     adminPassword)).
+  //   - `Bearer <secret>` — forward-compat for a future TAP that
+  //     decouples outbound webhook auth from admin auth.
+  // Empty body on 401 to avoid leaking implementation details to a
+  // probing attacker. The body is NOT parsed before this check so an
+  // unauthenticated request never touches the JSON parser or the
+  // mirror DB.
   const secret = tapWebhookSecret();
   if (secret.length > 0) {
     const authz = req.headers.get("Authorization") ?? "";
-    const provided = authz.startsWith("Bearer ") ? authz.slice(7) : "";
-    if (provided.length === 0 || !await constantTimeEqual(provided, secret)) {
+    const provided = extractWebhookSecret(authz);
+    if (provided === null || !await constantTimeEqual(provided, secret)) {
       return new Response(null, { status: 401 });
     }
   }

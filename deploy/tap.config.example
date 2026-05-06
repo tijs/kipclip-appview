@@ -13,21 +13,24 @@ filter:
 
 webhook:
   url: "http://127.0.0.1:8000/api/sync/hook"
-  # Defense-in-depth shared secret between TAP and kipclip.
+  # NOTE: TAP doesn't have a separate webhook auth setting. It REUSES
+  # TAP_ADMIN_PASSWORD as both the inbound HTTP API basic-auth password
+  # AND the outbound webhook auth (sent as `Authorization: Basic
+  # admin:<password>` on every webhook delivery — see
+  # cmd/tap/webhook_client.go in bluesky-social/indigo).
   #
-  # When `Authorization: Bearer <secret>` is sent on every webhook AND
-  # kipclip's TAP_WEBHOOK_SECRET env var matches, the kipclip-side
-  # check in worker/webhook.ts handleWebhookRequest enforces the bearer
-  # token before parsing the body. The Caddy `respond @hook 403`
-  # matcher in deploy/Caddyfile is the primary barrier; the bearer is
-  # what catches config drift.
+  # To enable defense-in-depth on kipclip's webhook receiver:
+  #   1. Set TAP_ADMIN_PASSWORD in /etc/tap/env (TAP side).
+  #   2. Set TAP_WEBHOOK_SECRET to the SAME value in /etc/kipclip/env
+  #      (kipclip side — worker/webhook.ts validates Basic admin:<pw>
+  #      AND Bearer <secret> for forward-compat).
+  #   3. Restart both services in the same maintenance window.
   #
-  # Rollout policy: leave both sides unset until coordinated. When
-  # ready, set kipclip's TAP_WEBHOOK_SECRET in /etc/kipclip/env and add
-  # the matching value here, then restart both services in the same
-  # maintenance window. Generate a 32+-char random secret:
+  # Generate a 32+-char random secret:
   #   openssl rand -hex 32
-  authorization_bearer: ""  # set to match TAP_WEBHOOK_SECRET on kipclip
+  #
+  # The Caddy `respond @hook 403` matcher in deploy/Caddyfile is the
+  # primary barrier; the auth check catches config drift.
 
 control:
   # HTTP control plane for adding/removing tracked DIDs.

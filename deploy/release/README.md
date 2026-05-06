@@ -85,24 +85,34 @@ fix that prevents the phase 4 Caddyfile-clobber bug recurring.
 
 ## TAP webhook shared secret
 
-`worker/webhook.ts` enforces an `Authorization: Bearer <secret>` check when the
-`TAP_WEBHOOK_SECRET` env var is set on kipclip. This is defense-in-depth behind
-the Caddy `respond @hook 403` rule — Caddy is the primary barrier, the bearer
-catches config drift.
+`worker/webhook.ts` enforces an Authorization-header check when
+`TAP_WEBHOOK_SECRET` is set on kipclip. Two header shapes accepted:
 
-Rollout (must be coordinated; both sides need the same secret to be set in the
-same maintenance window):
+- `Basic admin:<secret>` — what TAP currently sends (it reuses
+  `TAP_ADMIN_PASSWORD` for outbound webhook auth via
+  `cmd/tap/webhook_client.go`).
+- `Bearer <secret>` — forward-compat for a future TAP that decouples outbound
+  webhook auth from admin auth.
+
+Defense-in-depth behind Caddy `respond @hook 403` — Caddy is the primary
+barrier, the bearer/basic check catches config drift.
+
+Rollout (must be coordinated; both sides need the same secret in the same
+maintenance window — TAP currently uses one secret for both inbound API auth and
+outbound webhook auth, so changing it rotates both at once):
 
 1. Generate a 32+-char secret: `openssl rand -hex 32`
-2. On the box, append to `/etc/kipclip/env`: `TAP_WEBHOOK_SECRET=<secret>`
-3. On the box, set `webhook.authorization_bearer: "<secret>"` in
-   `/etc/tap/config.yaml` (matches the kipclip env var exactly)
+2. On the box, set `TAP_ADMIN_PASSWORD=<secret>` in `/etc/tap/env`. This doubles
+   as the outbound webhook auth (TAP sends it as Basic `admin:<password>`).
+3. On the box, set `TAP_WEBHOOK_SECRET=<secret>` in `/etc/kipclip/env` to the
+   same value.
 4. Restart both services: `sudo systemctl restart tap kipclip` (TAP must restart
-   first so the next webhook delivery carries the new bearer; if kipclip
-   restarts first and TAP hasn't picked up the secret, every webhook 401s for
-   the gap)
+   first so the next webhook delivery carries the new password; if kipclip
+   restarts first and TAP hasn't picked up the new secret, every webhook 401s
+   for the gap).
 5. Verify in journalctl: `journalctl -u kipclip -n 20 | grep webhook` should NOT
-   show "TAP_WEBHOOK_SECRET not set" warning.
+   show "TAP_WEBHOOK_SECRET not set" warning. TAP's outbound webhook delivery
+   should succeed (no retries piling up).
 
 Until both sides are configured, leave both unset. kipclip's check is
 env-var-gated — unset env = no check, current behavior preserved.

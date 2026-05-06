@@ -4,6 +4,32 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-05-06
+
+### Security
+
+- **Webhook Basic-auth shape** — `worker/webhook.ts` now also accepts
+  `Authorization: Basic admin:<secret>` (in addition to the existing
+  `Bearer <secret>`). TAP's webhook client already sends this shape:
+  `cmd/tap/webhook_client.go` calls
+  `req.SetBasicAuth("admin",
+  TAP_ADMIN_PASSWORD)` whenever the env var is set.
+  Without this, the shared secret check from v0.13.0 was unenforceable in
+  practice because TAP doesn't currently support a separate Bearer header.
+- The Basic-auth path validates the username is exactly `admin` (matches TAP's
+  shape) so a leaked unrelated Basic-auth header from another service can't
+  authenticate the webhook endpoint.
+
+### Operator action required
+
+- To enable webhook auth in production: set `TAP_ADMIN_PASSWORD` in
+  `/etc/tap/env` to a 32+-char random secret and set the same value as
+  `TAP_WEBHOOK_SECRET` in `/etc/kipclip/env`. Restart `tap` first, then
+  `kipclip`. TAP's `TAP_ADMIN_PASSWORD` doubles as both the inbound HTTP-API
+  basic-auth AND the outbound webhook auth — rotating it rotates both. See
+  `deploy/release/README.md` "TAP webhook shared secret" for the coordinated
+  rollout procedure.
+
 ## [0.14.0] - 2026-05-06
 
 ### Security
@@ -393,7 +419,8 @@ All notable changes to kipclip are documented in this file.
 - Responsive mobile and desktop layouts
 - Kip logo and "Find it, Kip it" tagline
 
-[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/tijs/kipclip-appview/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/tijs/kipclip-appview/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/tijs/kipclip-appview/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/tijs/kipclip-appview/compare/v0.11.0...v0.12.0

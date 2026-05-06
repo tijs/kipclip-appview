@@ -684,6 +684,103 @@ Deno.test("POST /api/sync/hook - secret set + correct bearer → 200", async () 
   }
 });
 
+Deno.test("POST /api/sync/hook - secret set + correct Basic admin auth → 200 (TAP shape)", async () => {
+  // TAP's webhook_client.go sends Authorization: Basic admin:<password>
+  // when TAP_ADMIN_PASSWORD is set. kipclip's TAP_WEBHOOK_SECRET must
+  // equal that password for the check to pass.
+  await clearMirrorTables();
+  Deno.env.set("TAP_WEBHOOK_SECRET", "tap-admin-pw");
+  try {
+    const evt = recordEvent(
+      "community.lexicon.bookmarks.bookmark",
+      "basic-ok",
+      "create",
+      {
+        subject: "https://example.com/basic-ok",
+        createdAt: "2026-05-06T00:00:00.000Z",
+      },
+      "bafyBasicOk",
+    );
+    const basic = "Basic " + btoa("admin:tap-admin-pw");
+    const r = await handler(
+      new Request("http://127.0.0.1:8000/api/sync/hook", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: basic,
+        },
+        body: JSON.stringify(evt),
+      }),
+    );
+    assertEquals(r.status, 200);
+    assertEquals((await r.json()).applied, true);
+  } finally {
+    Deno.env.delete("TAP_WEBHOOK_SECRET");
+  }
+});
+
+Deno.test("POST /api/sync/hook - Basic auth with wrong username → 401", async () => {
+  // Defense against a leaked Basic-auth header from an unrelated
+  // service. Only username "admin" is accepted (matches TAP's shape).
+  Deno.env.set("TAP_WEBHOOK_SECRET", "tap-admin-pw");
+  try {
+    const evt = recordEvent(
+      "community.lexicon.bookmarks.bookmark",
+      "basic-user",
+      "create",
+      {
+        subject: "https://example.com/basic-user",
+        createdAt: "2026-05-06T00:00:00.000Z",
+      },
+      "bafyBasicUser",
+    );
+    const basic = "Basic " + btoa("not-admin:tap-admin-pw");
+    const r = await handler(
+      new Request("http://127.0.0.1:8000/api/sync/hook", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: basic,
+        },
+        body: JSON.stringify(evt),
+      }),
+    );
+    assertEquals(r.status, 401);
+  } finally {
+    Deno.env.delete("TAP_WEBHOOK_SECRET");
+  }
+});
+
+Deno.test("POST /api/sync/hook - Basic auth with wrong password → 401", async () => {
+  Deno.env.set("TAP_WEBHOOK_SECRET", "tap-admin-pw");
+  try {
+    const evt = recordEvent(
+      "community.lexicon.bookmarks.bookmark",
+      "basic-pw",
+      "create",
+      {
+        subject: "https://example.com/basic-pw",
+        createdAt: "2026-05-06T00:00:00.000Z",
+      },
+      "bafyBasicPw",
+    );
+    const basic = "Basic " + btoa("admin:wrong-pw");
+    const r = await handler(
+      new Request("http://127.0.0.1:8000/api/sync/hook", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: basic,
+        },
+        body: JSON.stringify(evt),
+      }),
+    );
+    assertEquals(r.status, 401);
+  } finally {
+    Deno.env.delete("TAP_WEBHOOK_SECRET");
+  }
+});
+
 Deno.test("POST /api/sync/hook - replayed event is rejected (replayed:true)", async () => {
   await clearMirrorTables();
   const evt = recordEvent(
