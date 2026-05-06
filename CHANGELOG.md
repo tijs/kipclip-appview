@@ -4,6 +4,17 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-05-06
+
+### Fixed
+
+- Reverted the trailing `""` argument experiment in
+  `deploy/release/kipclip.sudoers`. It required a literal empty arg instead of
+  restricting trailing args, so `sudo systemctl
+  daemon-reload` was rejected.
+  Sudoers default with explicit args is already exact-arg match — the original
+  spec without `""` is correct.
+
 ## [0.15.0] - 2026-05-06
 
 ### Security
@@ -329,7 +340,8 @@ All notable changes to kipclip are documented in this file.
 - Responsive mobile and desktop layouts
 - Kip logo and "Find it, Kip it" tagline
 
-[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.15.1...HEAD
+[0.15.1]: https://github.com/tijs/kipclip-appview/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/tijs/kipclip-appview/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/tijs/kipclip-appview/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/tijs/kipclip-appview/compare/v0.12.0...v0.13.0

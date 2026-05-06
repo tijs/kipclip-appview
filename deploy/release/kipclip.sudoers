@@ -12,17 +12,17 @@
 # is the idiomatic Debian path for "let user X run command Y without a
 # password."
 #
-# IMPORTANT: trailing `""` on each command spec forces exact-arg match.
-# Without it, sudoers semantics permit ANY trailing args, e.g.
-# `sudo systemctl restart kipclip --foo` or `sudo systemctl restart
-# other-unit` would be allowed because the prefix matches. The empty
-# arg-list literal locks each command to its exact form. Future scripts
-# that need extra flags must update this file in lockstep with their
-# call site, which is the right level of friction.
+# Sudoers default with explicit args is already exact-arg match: when a
+# Cmnd has args specified, the user's args must match those args. So
+# `kipclip ... /bin/systemctl restart kipclip` matches ONLY
+# `sudo /bin/systemctl restart kipclip` — `--foo` or a different unit
+# name does NOT match. (The trailing `""` experiment in v0.12.0 was
+# wrong — it required a literal empty argument and broke release ticks.
+# Reverted in v0.15.1.)
 #
 # !requiretty is scoped via the `!/bin/systemctl` qualifier so it only
 # loosens tty-checks for these systemctl invocations — modern Debian
 # defaults already to !requiretty, but pinning it here protects against
 # global-default flips in future Debian versions.
 Defaults!/bin/systemctl !requiretty
-kipclip ALL=(root) NOPASSWD: /bin/systemctl restart kipclip "", /bin/systemctl daemon-reload ""
+kipclip ALL=(root) NOPASSWD: /bin/systemctl restart kipclip, /bin/systemctl daemon-reload
