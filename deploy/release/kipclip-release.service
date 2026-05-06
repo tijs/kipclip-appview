@@ -14,9 +14,10 @@ ExecStart=/var/lib/kipclip/source/deploy/release/update.sh
 # grants NOPASSWD on those two commands only.
 StandardOutput=journal
 StandardError=journal
-# Hardening — release script needs writable /var/lib/kipclip and
-# /etc/systemd/system/kipclip.service.d for the SENTRY_RELEASE drop-in.
-NoNewPrivileges=true
+# Hardening. NoNewPrivileges is intentionally NOT set: update.sh must
+# elevate via sudo for `systemctl restart kipclip` and
+# `systemctl daemon-reload`. The actual privilege ceiling is bounded by
+# the sudoers drop-in (NOPASSWD on those two commands only).
 PrivateTmp=true
 ProtectHome=true
 ReadWritePaths=/var/lib/kipclip /etc/systemd/system/kipclip.service.d
