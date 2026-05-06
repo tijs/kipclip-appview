@@ -11,6 +11,7 @@ import type {
   EnrichedBookmark,
   EnrichedTag,
   InitialDataResponse,
+  ListTagsResponse,
   SessionInfo,
   UserPreferences,
   UserSettings,
@@ -19,25 +20,6 @@ import { getDateFormat, setDateFormat } from "../../shared/date-format.ts";
 import { apiGet, apiPatch, apiPost, apiPut } from "../utils/api.ts";
 import type { SupporterStatusResponse } from "../../shared/types.ts";
 import { perf } from "../perf.ts";
-import {
-  deleteBookmarkFromCache,
-  deleteTagFromCache,
-  getCachedBookmarks,
-  getCachedTags,
-  openCacheDb,
-  putBookmark as putBookmarkToCache,
-  putBookmarks,
-  putTag as putTagToCache,
-  putTags,
-  upsertBookmarks,
-} from "../cache/db.ts";
-import {
-  fetchFirstPage,
-  fetchTags,
-  loadRemainingPages,
-  writeToCache,
-} from "../cache/sync.ts";
-import { mergeFirstPageDiff } from "../cache/diff.ts";
 import { toast } from "sonner";
 import {
   buildTagIndex,
@@ -49,26 +31,6 @@ import {
   toggleTagInQuery,
 } from "../../shared/search-query.ts";
 
-const STALE_SESSION_MS = 60 * 60 * 1000; // 1 hour
-
-function isSessionStale(did: string): boolean {
-  try {
-    const raw = localStorage.getItem(`kipclip-last-visit-${did}`);
-    if (!raw) return true; // First visit = treat as stale
-    return Date.now() - Number(raw) > STALE_SESSION_MS;
-  } catch {
-    return true; // localStorage unavailable = treat as stale
-  }
-}
-
-function markSessionVisited(did: string) {
-  try {
-    localStorage.setItem(`kipclip-last-visit-${did}`, String(Date.now()));
-  } catch {
-    // localStorage unavailable (private browsing) — ignore
-  }
-}
-
 const DEFAULT_SETTINGS: UserSettings = {
   instapaperEnabled: false,
 };
@@ -77,6 +39,154 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   dateFormat: "us",
   readingListTag: "toread",
 };
+
+// PDS-fallback throttle: pause pagination when remaining calls drop below
+// this threshold to avoid the 30-min lockout this whole migration was
+// designed to prevent. Same threshold as the pre-phase-4 sync layer.
+const RATE_LIMIT_THRESHOLD = 50;
+
+// Defensive ceiling against a server bug returning a non-advancing cursor.
+// At ~50 records/page this allows 10 000 bookmarks before stopping; far
+// above any real library size. The cycle-detection branch fires first when
+// the same cursor repeats; this is the belt to that suspenders.
+const MAX_PAGINATION_PAGES = 200;
+
+/**
+ * Subsequent pages of /api/initial-data carry only the bookmark stream
+ * (cursor + rateLimit). settings / preferences / isSupporter / syncing
+ * are emitted on the first response only. Encoding the asymmetry here
+ * means a typo in the cursor loop fails to type-check rather than
+ * silently clobbering server meta.
+ */
+interface PaginationPage {
+  bookmarks: EnrichedBookmark[];
+  bookmarkCursor?: string;
+  annotationCursor?: string;
+  rateLimit?: { remaining: number; reset: number; limit: number };
+}
+
+interface PaginatedInitial {
+  bookmarks: EnrichedBookmark[];
+  settings: UserSettings;
+  preferences: UserPreferences;
+  isSupporter: boolean;
+  /**
+   * Mirror branch only: true while backfill is still in progress. Absent
+   * on PDS-fallback responses and on completed mirrors.
+   */
+  syncing?: boolean;
+}
+
+/**
+ * Fetch /api/initial-data and walk every bookmarkCursor page until the
+ * server omits it. Both the mirror branch and the PDS-fallback branch
+ * paginate the same way; the PDS branch additionally returns
+ * annotationCursor + rateLimit on each page, which we forward and honor.
+ *
+ * Settings / preferences / isSupporter / syncing are taken only from the
+ * first response — subsequent pages do not re-emit them.
+ */
+async function fetchInitialPaginated(
+  onProgress?: (page: number) => void,
+): Promise<PaginatedInitial> {
+  perf.start("initialDataPaginated");
+  const firstResponse = await apiGet("/api/initial-data");
+  if (!firstResponse.ok) {
+    const body = await firstResponse.text().catch(() => "");
+    throw new Error(
+      `Failed to load initial data: ${firstResponse.status} ${body}`,
+    );
+  }
+  const first: InitialDataResponse = await firstResponse.json();
+
+  const bookmarks: EnrichedBookmark[] = [...first.bookmarks];
+  let bookmarkCursor = first.bookmarkCursor;
+  let annotationCursor = first.annotationCursor;
+  let currentRateLimit = first.rateLimit;
+  let pageNumber = 1;
+  let prevCursor: string | undefined;
+
+  while (bookmarkCursor) {
+    if (bookmarkCursor === prevCursor) {
+      console.warn("Pagination cursor not advancing, breaking loop", {
+        cursor: bookmarkCursor,
+        pageNumber,
+      });
+      break;
+    }
+    if (pageNumber >= MAX_PAGINATION_PAGES) {
+      console.warn("Pagination depth ceiling reached, breaking loop", {
+        pageNumber,
+      });
+      break;
+    }
+    prevCursor = bookmarkCursor;
+    pageNumber++;
+    onProgress?.(pageNumber);
+
+    if (currentRateLimit && currentRateLimit.remaining < RATE_LIMIT_THRESHOLD) {
+      const waitMs = Math.max(0, currentRateLimit.reset * 1000 - Date.now()) +
+        500;
+      console.warn("PDS rate limit low, pausing sync", {
+        remaining: currentRateLimit.remaining,
+        waitMs,
+      });
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
+
+    const params = new URLSearchParams();
+    params.set("bookmarkCursor", bookmarkCursor);
+    if (annotationCursor) params.set("annotationCursor", annotationCursor);
+
+    const response = await apiGet(`/api/initial-data?${params}`);
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new Error(
+        `Failed to load page ${pageNumber}: ${response.status} ${body}`,
+      );
+    }
+    const page: PaginationPage = await response.json();
+    if (page.rateLimit) currentRateLimit = page.rateLimit;
+    if (page.bookmarks?.length > 0) bookmarks.push(...page.bookmarks);
+    bookmarkCursor = page.bookmarkCursor;
+    annotationCursor = page.annotationCursor;
+  }
+
+  // Newest-first ordering across all merged pages.
+  bookmarks.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+  perf.end("initialDataPaginated");
+  return {
+    bookmarks,
+    settings: first.settings,
+    preferences: first.preferences,
+    isSupporter: first.isSupporter,
+    syncing: first.syncing,
+  };
+}
+
+/**
+ * Fetch /api/tags. Fail-soft so a transient tag-fetch error does not block
+ * the bookmark render path (we fire bookmarks + tags in parallel).
+ */
+async function fetchTagsList(): Promise<EnrichedTag[]> {
+  perf.start("tagsFetch");
+  try {
+    const response = await apiGet("/api/tags");
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      console.warn(`fetchTagsList: ${response.status} ${body}`);
+      return [];
+    }
+    const data = (await response.json()) as ListTagsResponse;
+    return data.tags ?? [];
+  } catch (err) {
+    console.warn("fetchTagsList: network error", err);
+    return [];
+  } finally {
+    perf.end("tagsFetch");
+  }
+}
 
 interface AppState {
   session: SessionInfo | null;
@@ -89,6 +199,19 @@ interface AppState {
   bookmarkSearchQuery: string;
   readingListSearchQuery: string;
   isSupporter: boolean;
+  /**
+   * Server-reported mirror-backfill flag. True when /api/initial-data was
+   * served from the mirror but backfill is still running for this DID.
+   * Wired through to context so a follow-up can render an in-progress
+   * indicator without another AppContext change.
+   *
+   * TODO(phase4-followup): consume this in the UI as a "still syncing your
+   * data" pill within 14 days of phase 4 merging (by ~2026-05-19). If the
+   * follow-up slips, remove this field rather than leaving dead context
+   * state. Tracking memo:
+   * memory/project_post_phase4_followups.md (item 1).
+   */
+  mirrorSyncing: boolean;
 }
 
 interface AppContextValue extends AppState {
@@ -111,7 +234,7 @@ interface AppContextValue extends AppState {
 
   // Combined initial data loading (avoids token refresh race condition)
   loadInitialData: () => Promise<void>;
-  // Force a full refresh (bypasses cache, fetches all pages)
+  // Force a full refresh, paginating through every page.
   refreshData: (toastId?: string | number) => Promise<void>;
 
   // Filter actions
@@ -135,7 +258,7 @@ interface AppContextValue extends AppState {
   setBookmarkSearchQuery: (query: string) => void;
   setReadingListSearchQuery: (query: string) => void;
 
-  // Sync state
+  // Sync state (in-flight indicator for the loading spinner)
   isSyncing: boolean;
 
   // Computed values
@@ -178,12 +301,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [readingListSearchQuery, setReadingListSearchQuery] = useState("");
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSupporter, setIsSupporter] = useState(false);
-
-  // Ref to current bookmarks for race-condition-safe merging during sync.
-  const bookmarksRef = useRef<EnrichedBookmark[]>([]);
-  useEffect(() => {
-    bookmarksRef.current = bookmarks;
-  }, [bookmarks]);
+  const [mirrorSyncing, setMirrorSyncing] = useState(false);
 
   // Bookmark actions
   async function loadBookmarks() {
@@ -202,47 +320,41 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   function addBookmark(bookmark: EnrichedBookmark) {
     setBookmarks((prev) => [bookmark, ...prev]);
-    putBookmarkToCache(bookmark).catch(() => {});
   }
 
   function updateBookmark(bookmark: EnrichedBookmark) {
     setBookmarks((prev) =>
       prev.map((b) => b.uri === bookmark.uri ? bookmark : b)
     );
-    putBookmarkToCache(bookmark).catch(() => {});
   }
 
   function deleteBookmark(uri: string) {
     setBookmarks((prev) => prev.filter((b) => b.uri !== uri));
-    deleteBookmarkFromCache(uri).catch(() => {});
   }
 
   // Tag actions
   async function loadTags() {
-    const tagsList = await fetchTags();
+    const tagsList = await fetchTagsList();
     setTags(tagsList);
-    putTags(tagsList).catch(() => {});
   }
 
   function addTag(tag: EnrichedTag) {
     setTags((prev) => [tag, ...prev]);
-    putTagToCache(tag).catch(() => {});
   }
 
   function updateTag(tag: EnrichedTag) {
     setTags((prev) => prev.map((t) => t.uri === tag.uri ? tag : t));
-    putTagToCache(tag).catch(() => {});
   }
 
   function deleteTag(uri: string) {
     setTags((prev) => prev.filter((t) => t.uri !== uri));
-    deleteTagFromCache(uri).catch(() => {});
   }
 
-  /** Apply settings/preferences from server response */
-  function applyServerMeta(data: InitialDataResponse) {
+  /** Apply settings/preferences/isSupporter from the first /api/initial-data response. */
+  function applyServerMeta(data: PaginatedInitial) {
     setSettings(data.settings);
     setIsSupporter(data.isSupporter);
+    setMirrorSyncing(data.syncing ?? false);
     if (data.preferences) {
       const localFormat = getDateFormat();
       const pdsFormat = data.preferences.dateFormat;
@@ -256,169 +368,77 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Shared in-flight guard: prevents concurrent loadInitialData /
+  // refreshData. Mount-time load, visibility refresh, pull-to-refresh,
+  // and post-import refresh all funnel through the same flag.
+  const refreshInFlightRef = useRef(false);
+
+  /** Shared fetch-and-apply body for initial load + refresh. */
+  async function fetchAndApply(onProgress?: (page: number) => void) {
+    const [data, tagsList] = await Promise.all([
+      fetchInitialPaginated(onProgress),
+      fetchTagsList(),
+    ]);
+    applyServerMeta(data);
+    setBookmarks(data.bookmarks);
+    setTags(tagsList);
+  }
+
   /**
-   * Load initial data with cache-first strategy + first-page diff.
-   *
-   * Cache hit: show cached data immediately, then fetch first page in
-   * background and diff URIs+CIDs to find additions/edits. Upsert
-   * changes into cache without re-fetching everything.
-   *
-   * Cache miss: fetch first page, render immediately, then paginate
-   * remaining pages in background with rate-limit-aware throttling.
+   * Load initial bookmarks + tags from the AppView, paginating through
+   * every page in a unified loop. No client-side cache: an AppView outage
+   * surfaces as a hard error rather than a stale-cache render. See plan
+   * 2026-05-05-001-refactor-phase-4 for the accepted regression.
    */
   async function loadInitialData() {
+    if (refreshInFlightRef.current) return;
+    refreshInFlightRef.current = true;
     perf.start("loadInitialData");
     setIsSyncing(true);
-
     try {
-      if (session) {
-        await openCacheDb(session.did);
-      }
-
-      const [cachedBookmarks, cachedTags] = await Promise.all([
-        getCachedBookmarks(),
-        getCachedTags(),
-      ]);
-      const hasCache = cachedBookmarks !== null && cachedTags !== null;
-
-      if (hasCache) {
-        // Cache hit: render immediately
-        setBookmarks(cachedBookmarks);
-        setTags(cachedTags);
-
-        // Background: fetch first page and diff against cache.
-        // Same logic for stale and fresh sessions — only difference is toast.
-        // newestFirst: true uses a cursor trick to get newest TID bookmarks on
-        // page 1 (needed because old imported hex rkeys would otherwise dominate).
-        const isStale = session ? isSessionStale(session.did) : false;
-        const toastId = isStale ? toast("Syncing bookmarks...") : undefined;
-        try {
-          const [data, tagsList] = await Promise.all([
-            fetchFirstPage({ newestFirst: true }),
-            fetchTags(),
-          ]);
-          applyServerMeta(data);
-          setTags(tagsList);
-          putTags(tagsList).catch(() => {});
-
-          // All bookmarks deleted on another device → clear local cache
-          if (data.bookmarks.length === 0 && !data.bookmarkCursor) {
-            setBookmarks([]);
-            putBookmarks([]).catch(() => {});
-            if (session) markSessionVisited(session.did);
-            if (toastId) toast.success("Bookmarks synced", { id: toastId });
-            return;
-          }
-
-          const result = mergeFirstPageDiff(
-            data.bookmarks,
-            bookmarksRef.current,
-          );
-          if (result) {
-            setBookmarks(result.merged);
-            upsertBookmarks(result.changed).catch(() => {});
-            const msg = `${result.changed.length} bookmark${
-              result.changed.length === 1 ? "" : "s"
-            } updated`;
-            if (toastId) {
-              toast.success(msg, { id: toastId });
-            } else {
-              toast(msg);
-            }
-          } else if (toastId) {
-            toast.success("Bookmarks up to date", { id: toastId });
-          }
-          if (session) markSessionVisited(session.did);
-        } catch (err) {
-          console.warn("Background first-page diff failed:", err);
-          if (toastId) {
-            toast.error("Sync failed — showing cached data", { id: toastId });
-          }
-        }
-      } else {
-        // Cache miss (cold start): fetch first page + tags in parallel,
-        // render, then paginate remaining bookmark pages in background.
-        const [data, tagsList] = await Promise.all([
-          fetchFirstPage(),
-          fetchTags(),
-        ]);
-        applyServerMeta(data);
-
-        // Render first page immediately
-        setBookmarks(data.bookmarks);
-        setTags(tagsList);
-
-        if (data.bookmarkCursor) {
-          // Paginate remaining pages in background
-          const result = await loadRemainingPages(data);
-          if (result.complete) {
-            setBookmarks(result.bookmarks);
-          }
-          // Write full set to cache
-          await writeToCache({
-            bookmarks: result.complete ? result.bookmarks : data.bookmarks,
-            tags: tagsList,
-          });
-        } else {
-          // Only one page — write directly
-          await writeToCache({ bookmarks: data.bookmarks, tags: tagsList });
-        }
-        if (session) markSessionVisited(session.did);
-      }
+      await fetchAndApply();
     } catch (err) {
       console.error("Failed to load initial data:", err);
       throw err;
     } finally {
+      refreshInFlightRef.current = false;
       setIsSyncing(false);
       perf.end("loadInitialData");
     }
   }
 
-  // Manual refresh: full fetch from server with rate-limit-aware pagination.
-  // Guarded against concurrent calls to protect PDS rate limits.
-  // Optional toastId allows callers to update an existing toast with progress.
-  const refreshInFlightRef = useRef(false);
+  // Manual refresh: full re-fetch + repaginate. Shares refreshInFlightRef
+  // with loadInitialData so visibilitychange + pull-to-refresh + initial
+  // mount can't race each other.
   async function refreshData(toastId?: string | number) {
     if (refreshInFlightRef.current) return;
     refreshInFlightRef.current = true;
     setIsSyncing(true);
     try {
-      const previousCount = bookmarksRef.current.length;
-      const [data, tagsList] = await Promise.all([
-        fetchFirstPage(),
-        fetchTags(),
-      ]);
-      applyServerMeta(data);
-      const result = await loadRemainingPages(data, (page) => {
+      await fetchAndApply((page) => {
         if (toastId) {
           toast(`Syncing bookmarks... (page ${page})`, { id: toastId });
         }
       });
-      if (result.complete) {
-        setBookmarks(result.bookmarks);
-        setTags(tagsList);
-        await writeToCache({ bookmarks: result.bookmarks, tags: tagsList });
-        if (session) markSessionVisited(session.did);
-        const diff = result.bookmarks.length - previousCount;
-        if (toastId) {
-          if (diff > 0) {
-            toast.success(
-              `Synced — ${diff} new bookmark${diff === 1 ? "" : "s"}`,
-              { id: toastId },
-            );
-          } else {
-            toast.success("Bookmarks up to date", { id: toastId });
-          }
-        }
+      if (toastId) {
+        toast.success("Bookmarks up to date", { id: toastId });
       }
+    } catch (err) {
+      // Mid-pagination failure: dismiss the progress toast and surface an
+      // error one. Without this the "Syncing... (page N)" toast leaks.
+      if (toastId) {
+        toast.error("Refresh failed", { id: toastId });
+      }
+      throw err;
     } finally {
       refreshInFlightRef.current = false;
       setIsSyncing(false);
     }
   }
 
-  // Tab re-focus: fetch first page and diff against cache (debounced 60s).
-  // No separate sync-check — the diff itself detects changes.
+  // Tab re-focus: refetch (debounced 60s). Mirror reads are cheap but
+  // mobile foreground transitions can fire many visibility events in a
+  // burst — debounce keeps the network quiet.
   const lastSyncCheckRef = useRef(Date.now());
   useEffect(() => {
     if (!session) return;
@@ -427,41 +447,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (document.visibilityState !== "visible") return;
       const now = Date.now();
       if (now - lastSyncCheckRef.current < 60_000) return;
+      // Don't claim the 60s window if a refresh is already running —
+      // otherwise a short-circuited call would consume the slot and the
+      // user would wait another full window for the next refresh attempt.
+      if (refreshInFlightRef.current) return;
       lastSyncCheckRef.current = now;
-
-      // Re-run the same first-page diff as loadInitialData (cache-hit path).
-      // This is idempotent — if nothing changed, no state updates happen.
-      (async () => {
-        setIsSyncing(true);
-        try {
-          const [data, tagsList] = await Promise.all([
-            fetchFirstPage({ newestFirst: true }),
-            fetchTags(),
-          ]);
-          applyServerMeta(data);
-          setTags(tagsList);
-          putTags(tagsList).catch(() => {});
-
-          const result = mergeFirstPageDiff(
-            data.bookmarks,
-            bookmarksRef.current,
-          );
-          if (result) {
-            setBookmarks(result.merged);
-            upsertBookmarks(result.changed).catch(() => {});
-            toast(
-              `${result.changed.length} bookmark${
-                result.changed.length === 1 ? "" : "s"
-              } updated`,
-            );
-          }
-          if (session) markSessionVisited(session.did);
-        } catch (err) {
-          console.warn("Tab-focus sync failed:", err);
-        } finally {
-          setIsSyncing(false);
-        }
-      })();
+      refreshData().catch((err) => {
+        console.warn("Tab-focus sync failed:", err);
+        toast.error("Sync failed");
+      });
     }
 
     function handlePageShow(e: PageTransitionEvent) {
@@ -684,6 +678,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     bookmarkSearchQuery,
     readingListSearchQuery,
     isSupporter,
+    mirrorSyncing,
     refreshSupporterStatus,
     setSession,
     setBookmarks,

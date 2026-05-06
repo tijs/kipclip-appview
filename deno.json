@@ -17,7 +17,6 @@
     "@sentry/deno": "npm:@sentry/deno@10.34.0",
     "esbuild": "npm:esbuild@0.27.2",
     "html-entities": "npm:html-entities@2.6.0",
-    "idb": "npm:idb@8",
     "react": "npm:react@19.2.3",
     "react-dom": "npm:react-dom@19.2.3",
     "react-dom/client": "npm:react-dom@19.2.3/client",

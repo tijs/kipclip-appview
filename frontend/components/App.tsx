@@ -18,7 +18,6 @@ import { PrivacyPolicy } from "./PrivacyPolicy.tsx";
 import { TermsOfUse } from "./TermsOfUse.tsx";
 import { useApp } from "../context/AppContext.tsx";
 import { apiPost } from "../utils/api.ts";
-import { clearAll as clearCache } from "../cache/db.ts";
 import { saveIdentity } from "../utils/saved-identities.ts";
 
 type ViewType = "bookmarks" | "reading-list";
@@ -27,6 +26,7 @@ export function App() {
   const { session, setSession, loadInitialData, isSupporter } = useApp();
   const [loading, setLoading] = useState(true);
   const [dataLoading, setDataLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [currentPath, setCurrentPath] = useState(globalThis.location.pathname);
   const [currentView, setCurrentView] = useState<ViewType>("bookmarks");
 
@@ -52,17 +52,25 @@ export function App() {
     return () => globalThis.removeEventListener("popstate", handlePopState);
   }, []);
 
+  function runInitialLoad() {
+    setLoadError(null);
+    setDataLoading(true);
+    loadInitialData()
+      .catch((error) => {
+        console.error("Failed to load initial data:", error);
+        setLoadError(
+          error instanceof Error ? error.message : String(error),
+        );
+      })
+      .finally(() => {
+        setDataLoading(false);
+      });
+  }
+
   // Load initial data after session is confirmed
   useEffect(() => {
     if (session && !dataLoading) {
-      setDataLoading(true);
-      loadInitialData()
-        .catch((error) => {
-          console.error("Failed to load initial data:", error);
-        })
-        .finally(() => {
-          setDataLoading(false);
-        });
+      runInitialLoad();
     }
   }, [session]);
 
@@ -87,14 +95,6 @@ export function App() {
   async function handleLogout() {
     try {
       await apiPost("/api/auth/logout");
-      await clearCache();
-      if (session?.did) {
-        try {
-          localStorage.removeItem(`kipclip-last-visit-${session.did}`);
-        } catch {
-          // localStorage unavailable — ignore
-        }
-      }
       setSession(null);
     } catch (error) {
       console.error("Failed to logout:", error);
@@ -163,6 +163,29 @@ export function App() {
 
   if (!session) {
     return <Login />;
+  }
+
+  // AppView fetch failed (post phase 4 there is no client-side fallback
+  // store). Surface a hard error with retry rather than rendering an
+  // empty bookmark list, which would silently look like a logged-out
+  // user with zero bookmarks.
+  if (loadError) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen px-4 text-center">
+        <p className="text-red-600 mb-2">
+          Couldn't load your bookmarks.
+        </p>
+        <p className="text-gray-500 text-sm mb-6">{loadError}</p>
+        <button
+          type="button"
+          onClick={runInitialLoad}
+          className="px-4 py-2 rounded-lg bg-coral text-white"
+          style={{ backgroundColor: "var(--coral)" }}
+        >
+          Try Again
+        </button>
+      </div>
+    );
   }
 
   // Settings page - requires session and loaded data
