@@ -10,6 +10,8 @@ import {
   BOOKMARK_COLLECTION,
   createAuthErrorResponse,
   createNewTagRecords,
+  fetchOwnerAnnotationRecord,
+  fetchOwnerBookmarkRecord,
   getSessionFromRequest,
   setSessionCookie,
 } from "../../lib/route-utils.ts";
@@ -240,34 +242,17 @@ async function updateBookmarkTags(
   const rkey = extractRkey(uri);
   if (!rkey) throw new Error(`Invalid URI: ${uri}`);
 
-  // Fetch current bookmark and annotation in parallel
-  const bookmarkParams = new URLSearchParams({
-    repo: oauthSession.did,
-    collection: BOOKMARK_COLLECTION,
-    rkey,
-  });
-  const annParams = new URLSearchParams({
-    repo: oauthSession.did,
-    collection: ANNOTATION_COLLECTION,
-    rkey,
-  });
-
-  const [getResponse, annRes] = await Promise.all([
-    oauthSession.makeRequest(
-      "GET",
-      `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.getRecord?${bookmarkParams}`,
-    ),
-    oauthSession.makeRequest(
-      "GET",
-      `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.getRecord?${annParams}`,
-    ).catch(() => null),
+  // Fetch current bookmark and annotation in parallel — mirror-aware,
+  // PDS fallback on miss/error.
+  const [currentRecord, currentAnnotation] = await Promise.all([
+    fetchOwnerBookmarkRecord(oauthSession, rkey),
+    fetchOwnerAnnotationRecord(oauthSession, rkey).catch(() => null),
   ]);
 
-  if (!getResponse.ok) {
-    throw new Error(`Failed to get bookmark: ${await getResponse.text()}`);
+  if (!currentRecord) {
+    throw new Error(`Failed to get bookmark: ${rkey} not found`);
   }
 
-  const currentRecord = await getResponse.json();
   const currentTags: string[] = currentRecord.value.tags || [];
 
   // Compute new tags (case-insensitive)
@@ -312,10 +297,9 @@ async function updateBookmarkTags(
   const putData = await putResult.json();
 
   // Build enriched bookmark from annotation data
-  let annotation: AnnotationRecord | undefined;
-  if (annRes?.ok) {
-    annotation = (await annRes.json()).value as AnnotationRecord;
-  }
+  const annotation: AnnotationRecord | undefined = currentAnnotation
+    ? (currentAnnotation.value as AnnotationRecord)
+    : undefined;
 
   return mapBookmarkRecord({ ...putData, value: record }, annotation);
 }

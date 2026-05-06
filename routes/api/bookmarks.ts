@@ -17,6 +17,8 @@ import {
   BOOKMARK_COLLECTION,
   createAuthErrorResponse,
   createNewTagRecords,
+  fetchOwnerAnnotationRecord,
+  fetchOwnerBookmarkRecord,
   fetchOwnerBookmarkRecords,
   fetchOwnerTagRecords,
   getSessionFromRequest,
@@ -294,34 +296,16 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         }
       }
 
-      // Fetch existing bookmark and annotation in parallel
-      const bookmarkParams = new URLSearchParams({
-        repo: oauthSession.did,
-        collection: BOOKMARK_COLLECTION,
-        rkey,
-      });
-      const annParams = new URLSearchParams({
-        repo: oauthSession.did,
-        collection: ANNOTATION_COLLECTION,
-        rkey,
-      });
-      const [getResponse, annRes] = await Promise.all([
-        oauthSession.makeRequest(
-          "GET",
-          `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.getRecord?${bookmarkParams}`,
-        ),
-        oauthSession.makeRequest(
-          "GET",
-          `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.getRecord?${annParams}`,
-        ).catch(() => null),
+      // Fetch existing bookmark and annotation in parallel — mirror-aware,
+      // PDS fallback on miss/error.
+      const [currentRecord, currentAnnotation] = await Promise.all([
+        fetchOwnerBookmarkRecord(oauthSession, rkey),
+        fetchOwnerAnnotationRecord(oauthSession, rkey).catch(() => null),
       ]);
 
-      if (!getResponse.ok) {
-        const errorText = await getResponse.text();
-        throw new Error(`Failed to get record: ${errorText}`);
+      if (!currentRecord) {
+        throw new Error(`Failed to get record: bookmark ${rkey} not found`);
       }
-
-      const currentRecord = await getResponse.json();
       const bookmarkUri = currentRecord.uri;
       const subject = body.url || currentRecord.value.subject;
 
@@ -333,10 +317,8 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
       };
 
       // Extract existing annotation data to preserve favicon/image
-      let existingAnnotation: Partial<AnnotationRecord> = {};
-      if (annRes?.ok) {
-        existingAnnotation = (await annRes.json()).value || {};
-      }
+      const existingAnnotation: Partial<AnnotationRecord> =
+        currentAnnotation?.value ?? {};
 
       // Resolve enrichment: prefer body values, then annotation, then $enriched
       const enriched = currentRecord.value.$enriched || {};
@@ -466,40 +448,18 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
 
       const rkey = ctx.params.rkey;
 
-      const getParams = new URLSearchParams({
-        repo: oauthSession.did,
-        collection: BOOKMARK_COLLECTION,
-        rkey,
-      });
-      const getResponse = await oauthSession.makeRequest(
-        "GET",
-        `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.getRecord?${getParams}`,
-      );
-
-      if (!getResponse.ok) {
-        const errorText = await getResponse.text();
-        throw new Error(`Failed to get record: ${errorText}`);
+      const currentRecord = await fetchOwnerBookmarkRecord(oauthSession, rkey);
+      if (!currentRecord) {
+        throw new Error(`Failed to get record: bookmark ${rkey} not found`);
       }
-
-      const currentRecord = await getResponse.json();
       const metadata = await extractUrlMetadata(currentRecord.value.subject);
 
       // Preserve existing note from annotation
-      let existingNote: string | undefined;
-      try {
-        const annParams = new URLSearchParams({
-          repo: oauthSession.did,
-          collection: ANNOTATION_COLLECTION,
-          rkey,
-        });
-        const annRes = await oauthSession.makeRequest(
-          "GET",
-          `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.getRecord?${annParams}`,
-        );
-        if (annRes.ok) {
-          existingNote = (await annRes.json()).value?.note;
-        }
-      } catch { /* no annotation yet */ }
+      const currentAnnotation = await fetchOwnerAnnotationRecord(
+        oauthSession,
+        rkey,
+      ).catch(() => null);
+      const existingNote: string | undefined = currentAnnotation?.value?.note;
 
       // Write to annotation sidecar
       const annotation: AnnotationRecord = {

@@ -11,15 +11,19 @@ import { clearMirrorTables, rawDb } from "./mirror-test-setup.ts";
 import { assertEquals } from "@std/assert";
 import { _resetMirrorModeCache } from "../lib/mirror-config.ts";
 import {
+  fetchOwnerAnnotationRecord,
+  fetchOwnerBookmarkRecord,
   fetchOwnerBookmarkRecords,
+  fetchOwnerTagRecord,
   fetchOwnerTagRecords,
 } from "../lib/route-utils.ts";
 import {
+  upsertAnnotation,
   upsertBookmark,
   upsertTag,
   upsertTrackedDid,
 } from "../mirror/upserts.ts";
-import { createMockSession } from "./test-helpers.ts";
+import { createMockSession, createPdsResponse } from "./test-helpers.ts";
 import { listRecordsResponse } from "./test-helpers.ts";
 
 const DID = "did:plc:helpers";
@@ -363,5 +367,93 @@ Deno.test("fetchOwnerTagRecords - forcePds bypasses mirror", async () => {
   const records = await fetchOwnerTagRecords(session, { forcePds: true });
   assertEquals(records.length, 1);
   assertEquals(records[0].value.value, "FromPds");
+  setMode("off");
+});
+
+// ---------------------------------------------------------------------------
+// Per-rkey single-record helpers
+// ---------------------------------------------------------------------------
+
+Deno.test("fetchOwnerBookmarkRecord - tracked + mirror hit → returns mirror record (no PDS)", async () => {
+  await clearMirrorTables();
+  setMode("read");
+  await seedTracked();
+  await seedBookmark("a");
+
+  // PDS would 200 with success-shape if leaked through; assert mirror shape.
+  const session = createMockSession({ did: DID });
+  const rec = await fetchOwnerBookmarkRecord(session, "a");
+  assertEquals(rec?.cid, "bafya");
+  assertEquals(rec?.value.subject, "https://example.com/a");
+  setMode("off");
+});
+
+Deno.test("fetchOwnerBookmarkRecord - tracked + mirror miss → PDS fallback (sync gap safety)", async () => {
+  await clearMirrorTables();
+  setMode("read");
+  await seedTracked();
+  // Mirror has nothing for rkey 'gap'.
+
+  const session = createMockSession({
+    did: DID,
+    defaultPdsResponse: createPdsResponse({
+      uri: `at://${DID}/community.lexicon.bookmarks.bookmark/gap`,
+      cid: "pdsGap",
+      value: { subject: "https://gap.example", createdAt: "2026", tags: [] },
+    }),
+  });
+  const rec = await fetchOwnerBookmarkRecord(session, "gap");
+  assertEquals(rec?.cid, "pdsGap"); // fell through to PDS
+  setMode("off");
+});
+
+Deno.test("fetchOwnerTagRecord - tracked + mirror hit → mirror record", async () => {
+  await clearMirrorTables();
+  setMode("read");
+  await seedTracked();
+  await seedTag("t1", "news");
+
+  const session = createMockSession({ did: DID });
+  const rec = await fetchOwnerTagRecord(session, "t1");
+  assertEquals(rec?.cid, "tagt1");
+  assertEquals(rec?.value.value, "news");
+  setMode("off");
+});
+
+Deno.test("fetchOwnerAnnotationRecord - tracked + mirror hit → mirror record", async () => {
+  await clearMirrorTables();
+  setMode("read");
+  await seedTracked();
+  const annUri = `at://${DID}/com.kipclip.annotation/x`;
+  await upsertAnnotation({
+    uri: annUri,
+    did: DID,
+    rkey: "x",
+    cid: "annx",
+    subject: `at://${DID}/community.lexicon.bookmarks.bookmark/x`,
+    title: "Hello",
+    note: "n",
+  });
+
+  const session = createMockSession({ did: DID });
+  const rec = await fetchOwnerAnnotationRecord(session, "x");
+  assertEquals(rec?.cid, "annx");
+  assertEquals(rec?.value.title, "Hello");
+  assertEquals(rec?.value.note, "n");
+  setMode("off");
+});
+
+Deno.test("fetchOwnerAnnotationRecord - tracked + mirror miss → PDS fallback (404 → null)", async () => {
+  await clearMirrorTables();
+  setMode("read");
+  await seedTracked();
+
+  // PDS returns 404 — helper should return null cleanly.
+  const session = createMockSession({
+    did: DID,
+    defaultPdsResponse: new Response("not found", { status: 404 }),
+  });
+  const rec = await fetchOwnerAnnotationRecord(session, "missing");
+  assertEquals(rec, null);
   setMode("off");
 });

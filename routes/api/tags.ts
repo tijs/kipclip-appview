@@ -8,6 +8,7 @@ import {
   BOOKMARK_COLLECTION,
   createAuthErrorResponse,
   fetchOwnerBookmarkRecords,
+  fetchOwnerTagRecord,
   fetchOwnerTagRecords,
   getSessionFromRequest,
   listAllRecords,
@@ -199,23 +200,11 @@ export function registerTagRoutes(app: App<any>): App<any> {
         );
       }
 
-      // Get current record
-      const getParams = new URLSearchParams({
-        repo: oauthSession.did,
-        collection: TAG_COLLECTION,
-        rkey,
-      });
-      const getResponse = await oauthSession.makeRequest(
-        "GET",
-        `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.getRecord?${getParams}`,
-      );
-
-      if (!getResponse.ok) {
-        const errorText = await getResponse.text();
-        throw new Error(`Failed to get record: ${errorText}`);
+      // Get current record (mirror-aware, PDS fallback on miss/error)
+      const currentRecord = await fetchOwnerTagRecord(oauthSession, rkey);
+      if (!currentRecord) {
+        throw new Error(`Failed to get record: tag ${rkey} not found`);
       }
-
-      const currentRecord = await getResponse.json();
       const oldValue = currentRecord.value.value;
 
       // If value hasn't changed (exact match), return success
@@ -334,23 +323,11 @@ export function registerTagRoutes(app: App<any>): App<any> {
 
       const rkey = ctx.params.rkey;
 
-      // Get the tag
-      const getParams = new URLSearchParams({
-        repo: oauthSession.did,
-        collection: TAG_COLLECTION,
-        rkey,
-      });
-      const getResponse = await oauthSession.makeRequest(
-        "GET",
-        `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.getRecord?${getParams}`,
-      );
-
-      if (!getResponse.ok) {
-        const errorText = await getResponse.text();
-        throw new Error(`Failed to get tag: ${errorText}`);
+      // Get the tag (mirror-aware, PDS fallback on miss/error)
+      const tagData = await fetchOwnerTagRecord(oauthSession, rkey);
+      if (!tagData) {
+        throw new Error(`Failed to get tag: tag ${rkey} not found`);
       }
-
-      const tagData = await getResponse.json();
       const tagValue = tagData.value.value;
 
       // List all bookmarks
@@ -380,23 +357,11 @@ export function registerTagRoutes(app: App<any>): App<any> {
 
       const rkey = ctx.params.rkey;
 
-      // Get the tag
-      const getParams = new URLSearchParams({
-        repo: oauthSession.did,
-        collection: TAG_COLLECTION,
-        rkey,
-      });
-      const getResponse = await oauthSession.makeRequest(
-        "GET",
-        `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.getRecord?${getParams}`,
-      );
-
-      if (!getResponse.ok) {
-        const errorText = await getResponse.text();
-        throw new Error(`Failed to get tag: ${errorText}`);
+      // Get the tag (mirror-aware, PDS fallback on miss/error)
+      const tagData = await fetchOwnerTagRecord(oauthSession, rkey);
+      if (!tagData) {
+        throw new Error(`Failed to get tag: tag ${rkey} not found`);
       }
-
-      const tagData = await getResponse.json();
       const tagValue = tagData.value.value;
 
       // Remove tag from all bookmarks

@@ -210,6 +210,61 @@ export async function getBookmark(
   return rowToBookmark(r.rows[0]);
 }
 
+/** Single tag by URI. */
+export async function getTag(uri: string): Promise<EnrichedTag | null> {
+  const r = await mirrorRead((db) =>
+    db.execute({
+      sql: "SELECT uri, cid, value, created_at FROM tags WHERE uri = ?",
+      args: [uri],
+    })
+  );
+  if (!r.rows || r.rows.length === 0) return null;
+  const [u, cid, value, createdAt] = r.rows[0] as (string | null)[];
+  return {
+    uri: String(u),
+    cid: String(cid),
+    value: String(value),
+    createdAt: String(createdAt),
+  };
+}
+
+export interface EnrichedAnnotation {
+  uri: string;
+  cid: string;
+  subject: string;
+  title: string | null;
+  description: string | null;
+  favicon: string | null;
+  image: string | null;
+  note: string | null;
+}
+
+/** Single annotation sidecar by URI. */
+export async function getAnnotation(
+  uri: string,
+): Promise<EnrichedAnnotation | null> {
+  const r = await mirrorRead((db) =>
+    db.execute({
+      sql: `SELECT uri, cid, subject, title, description, favicon, image, note
+         FROM annotations WHERE uri = ?`,
+      args: [uri],
+    })
+  );
+  if (!r.rows || r.rows.length === 0) return null;
+  const [u, cid, subject, title, description, favicon, image, note] = r
+    .rows[0] as (string | null)[];
+  return {
+    uri: String(u),
+    cid: String(cid),
+    subject: String(subject),
+    title: title as string | null,
+    description: description as string | null,
+    favicon: favicon as string | null,
+    image: image as string | null,
+    note: note as string | null,
+  };
+}
+
 /** All tags for a DID. */
 export async function listTags(did: string): Promise<EnrichedTag[]> {
   const r = await mirrorRead((db) =>

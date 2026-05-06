@@ -5,7 +5,13 @@
 import { getClearSessionCookie, getSessionFromRequest } from "./session.ts";
 import { tagIncludes } from "../shared/tag-utils.ts";
 import { shouldReadFromMirror } from "./mirror-config.ts";
-import { listAllBookmarks, listTags } from "../mirror/queries.ts";
+import {
+  getAnnotation,
+  getBookmark,
+  getTag,
+  listAllBookmarks,
+  listTags,
+} from "../mirror/queries.ts";
 import { captureMessage } from "./sentry.ts";
 
 /** AT Protocol collection names */
@@ -293,6 +299,148 @@ export async function fetchOwnerTagRecords(
     }
   }
   return await listAllRecords(oauthSession, TAG_COLLECTION);
+}
+
+/**
+ * Mirror-aware single-record fetch, shaped like a PDS `getRecord` response:
+ *   `{uri, cid, value}`
+ *
+ * Behavior matches the list-shape helpers above except for one key
+ * difference: a mirror MISS (row not present) falls through to PDS rather
+ * than returning null. Single-record reads are typically read-before-write
+ * paths (PUT bookmark, PUT/DELETE tag, refresh metadata) and a sync-gap
+ * miss should not 404 a record the user can edit. Steady-state mirror hit
+ * still drops PDS reads to zero.
+ *
+ * Returns `null` when the record genuinely does not exist (PDS 404).
+ */
+async function pdsGetRecord(
+  oauthSession: any,
+  collection: string,
+  rkey: string,
+): Promise<{ uri: string; cid: string; value: any } | null> {
+  const params = new URLSearchParams({
+    repo: oauthSession.did,
+    collection,
+    rkey,
+  });
+  const res = await oauthSession.makeRequest(
+    "GET",
+    `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.getRecord?${params}`,
+  );
+  if (!res.ok) {
+    if (res.status === 404) return null;
+    const errorText = await res.text();
+    throw new Error(`getRecord ${collection}/${rkey} failed: ${errorText}`);
+  }
+  return await res.json();
+}
+
+export async function fetchOwnerBookmarkRecord(
+  oauthSession: any,
+  rkey: string,
+): Promise<{ uri: string; cid: string; value: any } | null> {
+  const decision = await shouldReadFromMirror(oauthSession.did);
+  if (decision.fromMirror) {
+    try {
+      const uri = `at://${oauthSession.did}/${BOOKMARK_COLLECTION}/${rkey}`;
+      const b = await getBookmark(uri);
+      if (b) {
+        return {
+          uri: b.uri,
+          cid: b.cid,
+          value: {
+            subject: b.subject,
+            createdAt: b.createdAt,
+            tags: b.tags,
+          },
+        };
+      }
+    } catch (err) {
+      captureMessage(
+        "mirror read fallback to PDS",
+        "warning",
+        {
+          did: oauthSession.did,
+          op: "fetchOwnerBookmarkRecord",
+          error: String(err),
+        },
+      );
+    }
+  }
+  return await pdsGetRecord(oauthSession, BOOKMARK_COLLECTION, rkey);
+}
+
+export async function fetchOwnerTagRecord(
+  oauthSession: any,
+  rkey: string,
+): Promise<{ uri: string; cid: string; value: any } | null> {
+  const decision = await shouldReadFromMirror(oauthSession.did);
+  if (decision.fromMirror) {
+    try {
+      const uri = `at://${oauthSession.did}/${TAG_COLLECTION}/${rkey}`;
+      const t = await getTag(uri);
+      if (t) {
+        return {
+          uri: t.uri,
+          cid: t.cid,
+          value: {
+            value: t.value,
+            createdAt: t.createdAt,
+          },
+        };
+      }
+    } catch (err) {
+      captureMessage(
+        "mirror read fallback to PDS",
+        "warning",
+        {
+          did: oauthSession.did,
+          op: "fetchOwnerTagRecord",
+          error: String(err),
+        },
+      );
+    }
+  }
+  return await pdsGetRecord(oauthSession, TAG_COLLECTION, rkey);
+}
+
+export async function fetchOwnerAnnotationRecord(
+  oauthSession: any,
+  rkey: string,
+): Promise<{ uri: string; cid: string; value: any } | null> {
+  const decision = await shouldReadFromMirror(oauthSession.did);
+  if (decision.fromMirror) {
+    try {
+      const uri = `at://${oauthSession.did}/${ANNOTATION_COLLECTION}/${rkey}`;
+      const a = await getAnnotation(uri);
+      if (a) {
+        return {
+          uri: a.uri,
+          cid: a.cid,
+          value: {
+            subject: a.subject,
+            title: a.title ?? undefined,
+            description: a.description ?? undefined,
+            favicon: a.favicon ?? undefined,
+            image: a.image ?? undefined,
+            note: a.note ?? undefined,
+          },
+        };
+      }
+    } catch (err) {
+      captureMessage(
+        "mirror read fallback to PDS",
+        "warning",
+        {
+          did: oauthSession.did,
+          op: "fetchOwnerAnnotationRecord",
+          error: String(err),
+        },
+      );
+    }
+  }
+  return await pdsGetRecord(oauthSession, ANNOTATION_COLLECTION, rkey);
 }
 
 /** Re-export for convenience */
