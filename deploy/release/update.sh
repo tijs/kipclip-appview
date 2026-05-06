@@ -80,6 +80,13 @@ log "Fetching tags from $REPO_URL"
 # propagates so a fetch failure shows up in journalctl.
 git fetch --tags --prune origin "$BRANCH" >/dev/null
 
+# Keep the source clone's working tree in sync with origin/main. update.sh
+# itself runs from this tree, so without the reset, fixes to the release
+# script never take effect on the box (they'd ship via tag but the timer
+# would keep running the bootstrap-time copy of update.sh). Hard reset is
+# safe in source/ — the operator never edits files here.
+git reset --hard "origin/${BRANCH}" >/dev/null
+
 # Resolve desired tag.
 PIN=""
 if [[ -s "$PIN_FILE" ]]; then
