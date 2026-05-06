@@ -101,11 +101,18 @@ install -m 0644 "${SOURCE_DIR}/deploy/release/kipclip-release.service" \
 install -m 0644 "${SOURCE_DIR}/deploy/release/kipclip-release.timer" \
   /etc/systemd/system/kipclip-release.timer
 
-# Step 4: install polkit rule so kipclip-release can restart kipclip
-# without sudo.
-log "Installing polkit rule for kipclip user systemctl access"
-install -m 0644 "${SOURCE_DIR}/deploy/release/50-kipclip-restart.rules" \
-  /etc/polkit-1/rules.d/50-kipclip-restart.rules
+# Step 4: install sudoers drop-in granting the kipclip user NOPASSWD on
+# the two systemctl commands update.sh needs (`restart kipclip` and
+# `daemon-reload`). Validate with visudo before moving into place — a
+# bad sudoers file can lock the operator out of the box.
+log "Installing sudoers drop-in for kipclip user systemctl access"
+TMP_SUDOERS="$(mktemp)"
+trap 'rm -f "$TMP_SUDOERS"' EXIT
+install -m 0440 "${SOURCE_DIR}/deploy/release/kipclip.sudoers" "$TMP_SUDOERS"
+visudo -c -f "$TMP_SUDOERS" >/dev/null
+install -m 0440 "$TMP_SUDOERS" /etc/sudoers.d/kipclip
+rm -f "$TMP_SUDOERS"
+trap - EXIT
 
 systemctl daemon-reload
 systemctl enable --now kipclip-release.timer

@@ -58,6 +58,7 @@ require_tool git
 require_tool curl
 require_tool flock
 require_tool systemctl
+require_tool sudo
 [[ -x "$DENO_BIN" ]] || { err "deno binary not found at $DENO_BIN"; exit 1; }
 
 # Acquire lock. Non-blocking — concurrent tick exits 0 silently. Long
@@ -148,7 +149,9 @@ cat > "$SYSTEMD_DROPIN_FILE" <<EOF
 [Service]
 Environment="SENTRY_RELEASE=${DESIRED_TAG}"
 EOF
-systemctl daemon-reload
+# Sudoers grants kipclip NOPASSWD on these two commands only
+# (see deploy/release/kipclip.sudoers, installed by bootstrap.sh).
+sudo /bin/systemctl daemon-reload
 
 # Atomic swap. ln -sfn replaces the symlink atomically on Linux (no
 # brief unlinked window).
@@ -157,7 +160,7 @@ ln -sfn "$RELEASE_DIR" "$CURRENT_LINK"
 
 # Restart picks up the new working directory + new SENTRY_RELEASE env.
 log "Restarting kipclip"
-systemctl restart kipclip
+sudo /bin/systemctl restart kipclip
 
 # Health check. Sleep+retry; the deno serve takes ~1s to bind port 8000.
 log "Health-checking $HEALTH_URL"

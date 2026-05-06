@@ -77,8 +77,8 @@ ssh kipclip-box "cd /var/lib/kipclip/source && sudo git pull && \
 ```
 
 This is the only path that writes to `/etc/caddy/`, `/etc/systemd/`, or
-`/etc/polkit-1/rules.d/`. The 60s auto-release flow never touches them — the
-structural fix that prevents the phase 4 Caddyfile-clobber bug recurring.
+`/etc/sudoers.d/`. The 60s auto-release flow never touches them — the structural
+fix that prevents the phase 4 Caddyfile-clobber bug recurring.
 
 ## What lives where on the box
 

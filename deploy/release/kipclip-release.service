@@ -9,9 +9,9 @@ User=kipclip
 Group=kipclip
 ExecStart=/var/lib/kipclip/source/deploy/release/update.sh
 # update.sh writes /etc/systemd/system/kipclip.service.d/release.conf and
-# runs systemctl daemon-reload + systemctl restart kipclip. Those calls
-# go through polkit (see /etc/polkit-1/rules.d/50-kipclip-restart.rules
-# installed by bootstrap.sh).
+# runs `sudo systemctl daemon-reload` + `sudo systemctl restart kipclip`.
+# The sudoers drop-in at /etc/sudoers.d/kipclip (installed by bootstrap.sh)
+# grants NOPASSWD on those two commands only.
 StandardOutput=journal
 StandardError=journal
 # Hardening — release script needs writable /var/lib/kipclip and

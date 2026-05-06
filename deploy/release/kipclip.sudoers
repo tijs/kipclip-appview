@@ -1,0 +1,15 @@
+# Allow the kipclip user to manage the kipclip + kipclip-release units
+# (start/restart/reload) AND to call `systemctl daemon-reload` without
+# password. Both are required by deploy/release/update.sh, which runs
+# as the kipclip user under the kipclip-release.timer.
+#
+# Installed to /etc/sudoers.d/kipclip by deploy/release/bootstrap.sh.
+# Validated with `visudo -c -f /etc/sudoers.d/kipclip` before being
+# moved into place.
+#
+# Why sudoers and not polkit? The Hetzner box runs minimal Debian
+# without policykit installed. Sudoers is already on every server and
+# is the idiomatic Debian path for "let user X run command Y without a
+# password."
+Defaults!/bin/systemctl !requiretty
+kipclip ALL=(root) NOPASSWD: /bin/systemctl restart kipclip, /bin/systemctl daemon-reload
