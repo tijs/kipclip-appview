@@ -98,6 +98,11 @@ fi
 # 226/NAMESPACE before update.sh ever runs.
 log "Installing systemd units"
 mkdir -p /etc/systemd/system/kipclip.service.d
+# kipclip user writes /etc/systemd/system/kipclip.service.d/release.conf
+# at every release swap (carries SENTRY_RELEASE for the next restart).
+# Drop-in dir is owned by kipclip so the write doesn't need sudo.
+chown "${KIPCLIP_USER}:${KIPCLIP_GROUP}" /etc/systemd/system/kipclip.service.d
+chmod 0755 /etc/systemd/system/kipclip.service.d
 install -m 0644 "${SOURCE_DIR}/deploy/systemd/kipclip.service" \
   /etc/systemd/system/kipclip.service
 install -m 0644 "${SOURCE_DIR}/deploy/systemd/restic-backup.service" \
