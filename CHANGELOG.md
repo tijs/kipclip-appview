@@ -4,6 +4,15 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.15.2] - 2026-05-06
+
+### Changed
+
+- Edit and delete paths (PUT bookmark, refresh metadata, tag rename / delete /
+  usage, bulk tag add/remove) now read from the local mirror first and only
+  hit the user's PDS when the mirror genuinely doesn't have the record. Cuts
+  PDS reads on a heavy editor session to roughly the number of writes.
+
 ## [0.15.1] - 2026-05-06
 
 ### Fixed
