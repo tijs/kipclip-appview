@@ -16,6 +16,51 @@
 	@hook path /api/sync/hook
 	respond @hook 403
 
+	# Security headers. main.ts middleware also sets X-Frame-Options /
+	# X-Content-Type-Options / Referrer-Policy / Permissions-Policy on
+	# every response — Caddy here is belt-and-suspenders for static
+	# assets and the 403 path above (which never reaches the app).
+	#
+	# CSP rationale:
+	#   default-src 'self'              — fail-closed default
+	#   script-src 'self' https://esm.sh https://scripts.simpleanalyticscdn.com
+	#                                   — bundle.js (self), actor-typeahead
+	#                                     (self-hosted from v0.11.0; esm.sh
+	#                                     allowance kept as belt-and-
+	#                                     suspenders for future inline
+	#                                     loaders), simpleanalytics
+	#   style-src 'self' 'unsafe-inline' — Twind runtime injects <style>;
+	#                                     React inline style={{}} attrs
+	#   img-src 'self' https: data: blob: — bookmarks render arbitrary
+	#                                     remote favicons + OG images via
+	#                                     user PDS records, so https: is
+	#                                     unavoidable
+	#   font-src 'self' data:           — emoji fonts inline as data URIs
+	#   connect-src 'self' + bsky/atprotofans/analytics — OAuth + Bluesky
+	#                                     + supporter check + analytics
+	#                                     beacon
+	#   frame-ancestors 'none'          — clickjacking; mirrors X-Frame-
+	#                                     Options: DENY in main.ts:74
+	#   form-action 'self'              — only POST to own origin
+	#   base-uri 'self'                 — block <base> hijack
+	#   object-src 'none'               — no Flash/plugin objects
+	#   upgrade-insecure-requests       — production is fully HTTPS
+	#   report-to csp-endpoint          — violations go to /api/csp-report
+	#                                     (see Report-To header below)
+	# IMPORTANT: starting in Report-Only so violations log to /api/csp-report
+	# without breaking the page. After ~24-48h of production traffic, flip
+	# to enforcing by changing the header name to `Content-Security-Policy`.
+	# The grep pass over `frontend/` for fetch/XHR/Image targets cannot catch
+	# dynamic URL construction or third-party libraries' own requests, so
+	# Report-Only is the only safe first deploy. Self-hosted PDS users are
+	# the highest-likelihood missing entry — connect-src will need their PDS
+	# host added (or relaxed to `https:`) before flipping to enforcing.
+	header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' https://esm.sh https://scripts.simpleanalyticscdn.com; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; font-src 'self' data:; connect-src 'self' https://*.bsky.social https://*.bsky.network https://bsky.social https://public.api.bsky.app https://atprotofans.com https://queue.simpleanalyticscdn.com; frame-ancestors 'none'; form-action 'self'; base-uri 'self'; object-src 'none'; upgrade-insecure-requests; report-to csp-endpoint"
+	header Report-To `{"group":"csp-endpoint","max_age":10886400,"endpoints":[{"url":"/api/csp-report"}]}`
+	header X-Content-Type-Options "nosniff"
+	header Referrer-Policy "strict-origin-when-cross-origin"
+	header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), magnetometer=(), gyroscope=()"
+
 	# HSTS once we're live on the apex. Safe to keep on staging too.
 	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 

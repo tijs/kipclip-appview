@@ -4,6 +4,42 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-05-06
+
+### Security
+
+- **Subresource Integrity on the bundle.** `scripts/build-frontend.ts` now
+  computes sha384 of the final bundle bytes (post sourceMappingURL rewrite — the
+  actual bytes the browser fetches) and emits the `integrity` field into
+  `static/manifest.json`. `routes/static.ts` injects
+  `integrity="sha384-..." crossorigin="anonymous"` onto the bundle script tag at
+  HTML render time. Browsers refuse to execute the bundle if the bytes don't
+  match the digest, defending against CDN / origin compromise. Closes the
+  bundle-half of doc-review SEC-004.
+- **Content-Security-Policy at Caddy edge (Report-Only).** New `(common)`
+  snippet header in `deploy/Caddyfile` ships a CSP policy in Report-Only mode.
+  Violations log to `/api/csp-report` (Sentry-aggregated) without breaking the
+  page. After 24-48h of production traffic with the violations reviewed, flip
+  the header name to `Content-Security-Policy` to enforce. The policy allowlists
+  `'self'` + Bluesky API + atprotofans + simpleanalytics + esm.sh (script-src
+  belt-and-suspenders); self-hosted PDS hosts are the most likely missing entry
+  to surface in the Report-Only window.
+- **Other security headers consolidated at Caddy.** X-Content-Type-Options,
+  Referrer-Policy, Permissions-Policy now also set in Caddy (in addition to the
+  existing `main.ts` middleware), so static assets and the `respond @hook 403`
+  path also carry them. Duplicate headers with matching values are harmless; if
+  they ever drift, the most-restrictive value wins per the CSP spec.
+
+### Operator action required
+
+- **Bootstrap re-run** to apply the new Caddyfile:
+  `ssh kipclip-box "cd /var/lib/kipclip/source && sudo git pull &&
+  sudo bash deploy/release/bootstrap.sh"`.
+  The 60s auto-release flow ships the bundle SRI immediately but does NOT touch
+  `/etc/caddy/`. Until bootstrap re-runs, the CSP header is not in effect.
+- **Sudoers tightening from v0.12.0** also requires bootstrap re-run for the
+  same reason. Both can land in one bootstrap pass.
+
 ## [0.13.0] - 2026-05-06
 
 ### Security
@@ -357,7 +393,8 @@ All notable changes to kipclip are documented in this file.
 - Responsive mobile and desktop layouts
 - Kip logo and "Find it, Kip it" tagline
 
-[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/tijs/kipclip-appview/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/tijs/kipclip-appview/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/tijs/kipclip-appview/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/tijs/kipclip-appview/compare/v0.10.3...v0.11.0

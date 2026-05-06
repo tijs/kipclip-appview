@@ -19,6 +19,25 @@ async function generateContentHash(content: Uint8Array): Promise<string> {
 }
 
 /**
+ * Generate an SRI integrity attribute value: `sha384-<base64-digest>`.
+ * Browsers verify the bundle bytes match this digest before executing
+ * the script, defending against CDN/origin compromise. The digest must
+ * be computed over the EXACT bytes the browser receives — including
+ * any post-build text rewrites (e.g., sourceMappingURL).
+ */
+async function generateIntegrityHash(content: Uint8Array): Promise<string> {
+  const hashBuffer = await crypto.subtle.digest("SHA-384", content);
+  // Base64-encode without using encodeBase64 (not in @std/encoding 1.x);
+  // build-time only, so the byte-loop cost is irrelevant.
+  const bytes = new Uint8Array(hashBuffer);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return `sha384-${btoa(binary)}`;
+}
+
+/**
  * Resolve the running release version. The release script (deploy/release/
  * update.sh) sets KIPCLIP_VERSION when it builds in a release dir; local dev
  * usually runs without it set, so fall back to the latest semver tag, then to
@@ -160,7 +179,15 @@ try {
     /\/\/# sourceMappingURL=bundle\.js\.map/,
     `//# sourceMappingURL=${bundleFileName}.map`,
   );
-  await Deno.writeTextFile(bundlePath, bundleText);
+  // Encode the FINAL bundle bytes (post-sourcemap-URL-rewrite) — this
+  // is what the browser fetches, and SRI must hash exactly those bytes.
+  const finalBundleBytes = new TextEncoder().encode(bundleText);
+  await Deno.writeFile(bundlePath, finalBundleBytes);
+
+  // Compute SRI integrity for the bundle. Goes into manifest.json so
+  // the request-time HTML render (routes/static.ts) can inject the
+  // integrity attribute on the script tag.
+  const bundleIntegrity = await generateIntegrityHash(finalBundleBytes);
 
   // Write sourcemap if present
   if (sourcemapOutput) {
@@ -174,12 +201,13 @@ try {
   }
 
   // Write manifest.json for runtime bundle lookup. Version + sha + builtAt
-  // are exposed via /api/version (routes/api/system.ts) so the running
-  // release is observable from the browser, monitoring, and Sentry.
+  // ride along so /api/version can expose them; integrity is consumed by
+  // routes/static.ts at HTML render time.
   const builtAt = new Date().toISOString();
   const [version, sha] = await Promise.all([resolveVersion(), resolveSha()]);
   const manifest = {
     "bundle.js": bundleFileName,
+    integrity: bundleIntegrity,
     buildTime: builtAt,
     version,
     sha,
@@ -196,6 +224,7 @@ try {
   console.log(`✅ Frontend bundle built in ${elapsed}ms`);
   console.log(`   Output: ${bundlePath} (${outputSizeKB} KB)`);
   console.log(`   Hash: ${contentHash}`);
+  console.log(`   SRI: ${bundleIntegrity}`);
   console.log(`   Version: ${version} (sha ${sha})`);
 } catch (error) {
   console.error("❌ Build failed:", error);

@@ -4,15 +4,33 @@
  */
 
 import type { App } from "@fresh/core";
-import { getBundleFileName, readFile, serveFile } from "../lib/file-server.ts";
+import {
+  getBundleFileName,
+  getBundleIntegrity,
+  readFile,
+  serveFile,
+} from "../lib/file-server.ts";
 import { decodeTagsFromUrl } from "../shared/utils.ts";
 
-// Cache the bundle filename and base URL
+// Cache the bundle filename, integrity hash, and base URL
 let cachedBundleFileName: string | null = null;
+let cachedBundleIntegrity: string | null = null;
 let baseModuleUrl: string | null = null;
 
 /**
- * Get the HTML template with the correct hashed bundle filename injected.
+ * Get the HTML template with the correct hashed bundle filename + SRI
+ * integrity attribute injected.
+ *
+ * SRI rationale: scripts/build-frontend.ts hashes the final bundle
+ * bytes (post sourcemap-URL rewrite) and writes the digest to
+ * static/manifest.json. This function reads it back and injects
+ * `integrity="<hash>" crossorigin="anonymous"` onto the bundle script
+ * tag. If a CDN (or anyone in the response path) tampers with the
+ * bundle, browsers refuse to execute it.
+ *
+ * Dev fallback: when manifest.json is absent (no build run) the
+ * integrity is null and the original `src="/static/bundle.js"` token is
+ * left untouched — adding `integrity=""` would block execution.
  */
 async function getHtmlWithBundle(): Promise<string> {
   if (!baseModuleUrl) {
@@ -21,18 +39,33 @@ async function getHtmlWithBundle(): Promise<string> {
     );
   }
 
-  // Lazy load the bundle filename
+  // Lazy load the bundle filename + integrity
   if (!cachedBundleFileName) {
     cachedBundleFileName = await getBundleFileName(baseModuleUrl);
+    cachedBundleIntegrity = await getBundleIntegrity(baseModuleUrl);
   }
 
   let html = await readFile("/frontend/index.html", baseModuleUrl);
 
-  // Replace the bundle reference with the hashed version
+  // Replace the bundle reference with the hashed version + SRI
+  // attributes. The two-step regex (1) rewrites src=, (2) inserts the
+  // integrity + crossorigin attrs after the closing > of the script
+  // tag. Matching the closing > tightens the boundary so the regex
+  // can't accidentally match a different script tag.
   html = html.replace(
     /src="\/static\/bundle\.js"/,
     `src="/static/${cachedBundleFileName}"`,
   );
+  if (cachedBundleIntegrity) {
+    html = html.replace(
+      new RegExp(
+        `(<script[^>]*src="/static/${
+          cachedBundleFileName.replace(/\./g, "\\.")
+        }"[^>]*?)></script>`,
+      ),
+      `$1 integrity="${cachedBundleIntegrity}" crossorigin="anonymous"></script>`,
+    );
+  }
 
   return html;
 }

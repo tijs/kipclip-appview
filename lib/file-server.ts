@@ -124,3 +124,25 @@ export async function getBundleFileName(baseUrl: string): Promise<string> {
     return "bundle.js";
   }
 }
+
+/**
+ * Read the bundle manifest's SRI integrity attribute (e.g.,
+ * "sha384-..."). Returns null when the manifest is absent (dev) or the
+ * field is missing (older manifest format). Callers must handle null
+ * by omitting the integrity attribute on the script tag — adding
+ * integrity="" would block the script from executing.
+ */
+export async function getBundleIntegrity(
+  baseUrl: string,
+): Promise<string | null> {
+  try {
+    const manifestContent = await readFile("/static/manifest.json", baseUrl);
+    const manifest = JSON.parse(manifestContent);
+    const integrity = manifest["integrity"];
+    return typeof integrity === "string" && integrity.length > 0
+      ? integrity
+      : null;
+  } catch {
+    return null;
+  }
+}
