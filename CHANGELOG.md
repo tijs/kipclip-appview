@@ -8,159 +8,69 @@ All notable changes to kipclip are documented in this file.
 
 ### Security
 
-- **Webhook Basic-auth shape** — `worker/webhook.ts` now also accepts
-  `Authorization: Basic admin:<secret>` (in addition to the existing
-  `Bearer <secret>`). TAP's webhook client already sends this shape:
-  `cmd/tap/webhook_client.go` calls
-  `req.SetBasicAuth("admin",
-  TAP_ADMIN_PASSWORD)` whenever the env var is set.
-  Without this, the shared secret check from v0.13.0 was unenforceable in
-  practice because TAP doesn't currently support a separate Bearer header.
-- The Basic-auth path validates the username is exactly `admin` (matches TAP's
-  shape) so a leaked unrelated Basic-auth header from another service can't
-  authenticate the webhook endpoint.
-
-### Operator action required
-
-- To enable webhook auth in production: set `TAP_ADMIN_PASSWORD` in
-  `/etc/tap/env` to a 32+-char random secret and set the same value as
-  `TAP_WEBHOOK_SECRET` in `/etc/kipclip/env`. Restart `tap` first, then
-  `kipclip`. TAP's `TAP_ADMIN_PASSWORD` doubles as both the inbound HTTP-API
-  basic-auth AND the outbound webhook auth — rotating it rotates both. See
-  `deploy/release/README.md` "TAP webhook shared secret" for the coordinated
-  rollout procedure.
+- Webhook receiver now also accepts `Authorization: Basic admin:<secret>` to
+  match TAP's outbound webhook auth shape (in addition to `Bearer <secret>`).
+  Username must be `admin`.
 
 ## [0.14.0] - 2026-05-06
 
 ### Security
 
-- **Subresource Integrity on the bundle.** `scripts/build-frontend.ts` now
-  computes sha384 of the final bundle bytes (post sourceMappingURL rewrite — the
-  actual bytes the browser fetches) and emits the `integrity` field into
-  `static/manifest.json`. `routes/static.ts` injects
-  `integrity="sha384-..." crossorigin="anonymous"` onto the bundle script tag at
-  HTML render time. Browsers refuse to execute the bundle if the bytes don't
-  match the digest, defending against CDN / origin compromise. Closes the
-  bundle-half of doc-review SEC-004.
-- **Content-Security-Policy at Caddy edge (Report-Only).** New `(common)`
-  snippet header in `deploy/Caddyfile` ships a CSP policy in Report-Only mode.
-  Violations log to `/api/csp-report` (Sentry-aggregated) without breaking the
-  page. After 24-48h of production traffic with the violations reviewed, flip
-  the header name to `Content-Security-Policy` to enforce. The policy allowlists
-  `'self'` + Bluesky API + atprotofans + simpleanalytics + esm.sh (script-src
-  belt-and-suspenders); self-hosted PDS hosts are the most likely missing entry
-  to surface in the Report-Only window.
-- **Other security headers consolidated at Caddy.** X-Content-Type-Options,
-  Referrer-Policy, Permissions-Policy now also set in Caddy (in addition to the
-  existing `main.ts` middleware), so static assets and the `respond @hook 403`
-  path also carry them. Duplicate headers with matching values are harmless; if
-  they ever drift, the most-restrictive value wins per the CSP spec.
-
-### Operator action required
-
-- **Bootstrap re-run** to apply the new Caddyfile:
-  `ssh kipclip-box "cd /var/lib/kipclip/source && sudo git pull &&
-  sudo bash deploy/release/bootstrap.sh"`.
-  The 60s auto-release flow ships the bundle SRI immediately but does NOT touch
-  `/etc/caddy/`. Until bootstrap re-runs, the CSP header is not in effect.
-- **Sudoers tightening from v0.12.0** also requires bootstrap re-run for the
-  same reason. Both can land in one bootstrap pass.
+- Subresource Integrity (sha384) on the bundle script tag. Browsers refuse to
+  execute the bundle if the bytes don't match the digest.
+- Content-Security-Policy at the Caddy edge in Report-Only mode. Violations log
+  to `/api/csp-report`. Allowlists `'self'` plus Bluesky API, atprotofans,
+  simpleanalytics, esm.sh.
+- X-Content-Type-Options, Referrer-Policy, and Permissions-Policy headers now
+  also set at the Caddy edge (in addition to the app middleware) to cover static
+  and 403 responses.
 
 ## [0.13.0] - 2026-05-06
 
 ### Security
 
-- **TAP webhook shared secret.** `worker/webhook.ts` now enforces an
-  `Authorization: Bearer <secret>` header check when `TAP_WEBHOOK_SECRET` is set
-  in kipclip's env. Defense-in-depth behind Caddy's `respond @hook 403` matcher
-  — closes the gap where a Caddy config drift (a vhost forgetting
-  `import common`, or a new public hostname block missing the rule) would have
-  left `/api/sync/hook` exposed to the internet. Constant-time comparison
-  (SHA-256 hash both sides, then byte-XOR) avoids leaking secret length via
-  timing.
-- Env-var-gated rollout: leave `TAP_WEBHOOK_SECRET` unset until TAP is also
-  configured to send the matching bearer. Once both are set, leave them set —
-  the unset path is a phased-rollout convenience, not a permanent escape hatch.
-  See `deploy/release/README.md` "TAP webhook shared secret" section for the
-  coordinated rollout procedure.
-
-### Changed
-
-- `deploy/tap.config.example` documents the new `webhook.authorization_bearer`
-  field and the required match against kipclip's `TAP_WEBHOOK_SECRET`.
+- Webhook receiver enforces an Authorization-header check when
+  `TAP_WEBHOOK_SECRET` is set. Constant-time compare. Defense-in-depth behind
+  the Caddy localhost-only rule.
 
 ## [0.12.0] - 2026-05-06
 
 ### Security
 
-- **Sudoers tightened to exact-arg match.** `deploy/release/kipclip.sudoers` now
-  uses trailing `""` on each command spec so the kipclip user cannot pass extra
-  args to the sudo'd systemctl invocations. Without this, sudoers default
-  semantics permit any trailing args, including a different unit name.
-- **`/api/version` no longer exposes sha or builtAt.** Public response is
-  `{version}` only. The full manifest stays on disk at `static/manifest.json`
-  for operators with shell access. Removes a precision-data leak that an
-  attacker could use for exploit-kit selection.
-- **Env file permissions audit.** New `deploy/release/check-env-perms.sh`
-  verifies that `/etc/kipclip/env`, `/etc/kipclip/restic.env`, and
-  `/etc/tap/env` have the correct ownership and mode. Each file has its own
-  expected tuple; `0640 root:root` would silently break `kipclip.service` and is
-  explicitly rejected. Run automatically by `bootstrap.sh`; an operator can
-  re-run it on demand after editing env files.
+- Sudoers grants tightened to exact-arg match.
+- Env file permissions audit script (`deploy/release/check-env-perms.sh`) added
+  and run during bootstrap.
 
 ### Removed
 
-- `sha` and `builtAt` from the `/api/version` response. Frontend code that
-  depended on them (About page) now shows the version tag only.
+- `sha` and `builtAt` from the public `/api/version` response. Only `version` is
+  returned now. The About page no longer displays them.
 
 ## [0.11.0] - 2026-05-06
 
 ### Added
 
-- Webhook replay protection. New `seen_webhook_events` mirror table
-  (migration 008) dedupes by TAP event id; replays return
-  `{applied:false, replayed:true}` without re-running the event. Closes the
-  doc-review concern that a captured webhook payload could be replayed to
-  re-delete a record after the user re-created it.
-- `/api/csp-report` endpoint logs Content-Security-Policy violation reports to
-  stderr (Sentry-aggregated). Endpoint exists ahead of CSP enforcement so the
-  eventual policy can ship with `report-to` pointing here on day one —
-  browser-console inspection alone gives no production signal.
-- Self-hosted `static/actor-typeahead-0.2.2.js` (was loaded from
-  `https://esm.sh` at runtime) with SRI integrity attribute on the script tag.
-  Closes the supply-chain trust on esm.sh and pins stable bytes. Refresh on
-  version bump: `openssl dgst -sha384 -binary FILE | openssl base64 -A`.
+- Webhook replay protection: duplicate TAP event ids are rejected without
+  reprocessing. Defends against captured-payload replay (e.g., re-delivering a
+  delete event after the user re-created the record).
+- `/api/csp-report` endpoint accepts CSP violation reports.
+- `actor-typeahead` script is now self-hosted with SRI integrity, replacing the
+  runtime fetch from esm.sh.
 
 ### Changed
 
-- `update.sh` now rolls the `current` symlink back to the previous release if
-  the post-restart health check fails 5x. Previously the symlink stayed on the
-  broken release; an operator had to recover via the pin file. Fall-through
-  still exits 1 so the timer surfaces the failure in journalctl.
-- `scripts/build-frontend.ts` now logs a warning when `KIPCLIP_VERSION` or
-  `KIPCLIP_SHA` is unset and the script falls back to `git`. Release builds run
-  in `git archive`-stripped dirs where git fails — silent fallback is what hid
-  v0.10.1's `sha:"unknown"` in production.
+- The release tick now rolls the `current` symlink back to the previous release
+  when the post-restart health check fails. Previously the symlink stayed on the
+  broken release.
 
 ## [0.10.3] - 2026-05-06
 
 ### Fixed
 
-- `update.sh` body wrapped in a `main()` function so bash slurps the whole
-  definition before invoking it. Without this, `git reset --hard origin/main`
-  (added in v0.10.2) could splice old bytes (already read) with new bytes
-  (re-read at the next chunk boundary) when a future commit changed the script —
-  a self-rewrite race surfaced by the v0.10.x code review.
-- `loadVersionInfo()` in `routes/api/system.ts` now logs a warning before
-  returning FALLBACK. The original silent-FALLBACK behavior is what hid the
-  v0.10.1 manifest-path bug from monitoring.
-
-### Added
-
-- `KIPCLIP_MANIFEST_PATH` env var override for `routes/api/system.ts` so tests
-  can point at a fixture without clobbering `static/manifest.json`. Tests now
-  assert exact manifest values via `tests/fixtures/manifest.test.json`, locking
-  down the silent-FALLBACK regression.
+- `/api/version` now logs a warning when the manifest read fails, instead of
+  silently returning `unknown`.
+- Hardened the release script against a self-rewrite race during in-place
+  updates.
 
 ## [0.10.2] - 2026-05-06
 
