@@ -75,7 +75,9 @@ fi
 cd "$SOURCE_DIR"
 
 log "Fetching tags from $REPO_URL"
-git fetch --tags --prune origin "$BRANCH" >/dev/null 2>&1
+# stdout silenced (stays quiet on the no-op happy path) but stderr
+# propagates so a fetch failure shows up in journalctl.
+git fetch --tags --prune origin "$BRANCH" >/dev/null
 
 # Resolve desired tag.
 PIN=""
@@ -115,11 +117,11 @@ fi
 log "Releasing $DESIRED_TAG (was: ${CURRENT_VERSION:-none})"
 
 RELEASE_DIR="${RELEASES_DIR}/${DESIRED_TAG}"
-if [[ -d "$RELEASE_DIR" ]]; then
-  sublog "Release dir exists; rebuilding in place"
-else
-  mkdir -p "$RELEASE_DIR"
-fi
+# Always start clean. Re-running on a tag means a previous attempt
+# failed mid-way; reusing that dir would mix stale files (`git archive |
+# tar -x` is additive, so files removed in the new tag would survive).
+rm -rf "$RELEASE_DIR"
+mkdir -p "$RELEASE_DIR"
 
 # Materialise the tag's tree into the release dir. `git archive | tar`
 # avoids a full second .git in the release dir (saves disk + keeps the
