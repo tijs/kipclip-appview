@@ -1,10 +1,17 @@
 #!/usr/bin/env bash
-# Deploy kipclip to the staging box from the operator's machine.
-# Usage: ./deploy/deploy.sh [host]
-#   host defaults to staging.kipclip.com
+# Deploy kipclip to the production box from the operator's machine.
+#
+# Usage:
+#   ./deploy/deploy.sh                      # deploys to kipclip-box (production)
+#   ./deploy/deploy.sh staging.kipclip.com  # deploys to staging
+#   ./deploy/deploy.sh kipclip-box          # explicit production host
+#
+# Production target since the phase 3 DNS flip (2026-05-05). The
+# `kipclip-box` ssh alias resolves via ~/.ssh/config; defaulting to staging
+# would silently leave production stale.
 set -euo pipefail
 
-HOST="${1:-staging.kipclip.com}"
+HOST="${1:-kipclip-box}"
 APP_DIR="/var/lib/kipclip/app"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
