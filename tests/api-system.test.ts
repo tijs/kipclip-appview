@@ -18,17 +18,24 @@ import { initOAuth } from "../lib/oauth-config.ts";
 initOAuth(new Request("https://kipclip.com"));
 const handler = app.handler();
 
-Deno.test("GET /api/version returns fixture manifest values, not FALLBACK", async () => {
+Deno.test("GET /api/version returns version only (no sha/builtAt leak)", async () => {
   const req = new Request("https://kipclip.com/api/version");
   const res = await handler(req);
   assertEquals(res.status, 200);
   const body = await res.json();
-  // Exact fixture values from tests/test-setup.ts. If any of these come
-  // back as "unknown", manifest read silently fell back to FALLBACK —
-  // which is exactly the v0.10.1 regression this test guards against.
+  // Exact fixture value from tests/test-setup.ts. If this comes back as
+  // "unknown", manifest read silently fell back to FALLBACK — the
+  // v0.10.1 regression this test guards against.
   assertEquals(body.version, "v-test");
-  assertEquals(body.sha, "testsha");
-  assertEquals(body.builtAt, "2026-05-06T00:00:00.000Z");
+  // Security hardening U2: sha and builtAt were dropped from the public
+  // response. They give an attacker exploit-kit precision and aren't
+  // needed by any non-operator caller. Operators with shell access can
+  // still read static/manifest.json.
+  assertEquals(body.sha, undefined);
+  assertEquals(body.builtAt, undefined);
+  // Lock the response shape — adding fields here is a deliberate
+  // regression on the security tightening.
+  assertEquals(Object.keys(body).sort(), ["version"]);
 });
 
 Deno.test("GET /api/health returns ok + version from manifest", async () => {

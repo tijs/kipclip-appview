@@ -1,9 +1,14 @@
 /**
  * System API routes for release observability.
  *
- *   GET  /api/version     -- returns the running release tag, sha, and
- *                            build timestamp baked into static/manifest.json
- *                            by scripts/build-frontend.ts at release time.
+ *   GET  /api/version     -- returns the running release tag (and only
+ *                            the tag — sha + builtAt were dropped in
+ *                            the security hardening pass, since they
+ *                            give an attacker exploit-kit precision
+ *                            without aiding any non-operator caller.
+ *                            The full manifest is still on disk at
+ *                            static/manifest.json for operators with
+ *                            shell access.
  *   GET  /api/health      -- liveness probe. Returns 200 with the same
  *                            version string so monitors can verify both
  *                            up-ness and which release is up.
@@ -13,8 +18,8 @@
  *                            application/reports+json depending on the
  *                            directive; both are body-text-logged as-is.
  *
- * GET endpoints are unauthenticated and expose no PII -- only release
- * metadata. Manifest is read once at module load and cached for the
+ * GET endpoints are unauthenticated and expose no PII -- only the
+ * release tag. Manifest is read once at module load and cached for the
  * lifetime of the process; restart picks up new release metadata
  * (intended -- the deno serve process is restarted on every release
  * swap by the kipclip-release timer).
@@ -71,7 +76,10 @@ const versionInfoPromise = loadVersionInfo();
 export function registerSystemRoutes(app: App<unknown>): App<unknown> {
   app = app.get("/api/version", async () => {
     const info = await versionInfoPromise;
-    return Response.json(info);
+    // Public response is version-only. sha and builtAt remain in the
+    // internal VersionInfo (and on disk in static/manifest.json) for
+    // operators with shell access.
+    return Response.json({ version: info.version });
   });
 
   app = app.get("/api/health", async () => {

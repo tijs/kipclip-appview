@@ -4,6 +4,30 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-05-06
+
+### Security
+
+- **Sudoers tightened to exact-arg match.** `deploy/release/kipclip.sudoers` now
+  uses trailing `""` on each command spec so the kipclip user cannot pass extra
+  args to the sudo'd systemctl invocations. Without this, sudoers default
+  semantics permit any trailing args, including a different unit name.
+- **`/api/version` no longer exposes sha or builtAt.** Public response is
+  `{version}` only. The full manifest stays on disk at `static/manifest.json`
+  for operators with shell access. Removes a precision-data leak that an
+  attacker could use for exploit-kit selection.
+- **Env file permissions audit.** New `deploy/release/check-env-perms.sh`
+  verifies that `/etc/kipclip/env`, `/etc/kipclip/restic.env`, and
+  `/etc/tap/env` have the correct ownership and mode. Each file has its own
+  expected tuple; `0640 root:root` would silently break `kipclip.service` and is
+  explicitly rejected. Run automatically by `bootstrap.sh`; an operator can
+  re-run it on demand after editing env files.
+
+### Removed
+
+- `sha` and `builtAt` from the `/api/version` response. Frontend code that
+  depended on them (About page) now shows the version tag only.
+
 ## [0.11.0] - 2026-05-06
 
 ### Added
@@ -310,7 +334,8 @@ All notable changes to kipclip are documented in this file.
 - Responsive mobile and desktop layouts
 - Kip logo and "Find it, Kip it" tagline
 
-[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/tijs/kipclip-appview/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/tijs/kipclip-appview/compare/v0.10.3...v0.11.0
 [0.10.3]: https://github.com/tijs/kipclip-appview/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/tijs/kipclip-appview/compare/v0.10.1...v0.10.2

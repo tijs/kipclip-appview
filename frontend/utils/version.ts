@@ -12,8 +12,6 @@ import { useEffect, useState } from "react";
 
 export interface VersionInfo {
   version: string;
-  sha: string;
-  builtAt: string;
 }
 
 let cachedPromise: Promise<VersionInfo | null> | null = null;

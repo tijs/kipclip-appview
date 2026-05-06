@@ -149,10 +149,7 @@ export function About() {
                   {info.version}
                 </a>
               )
-              : <span className="font-medium">{info.version}</span>} (sha{" "}
-            {info.sha}, built {info.builtAt !== "unknown"
-              ? new Date(info.builtAt).toLocaleString()
-              : "unknown"})
+              : <span className="font-medium">{info.version}</span>}
           </p>
         )}
       </section>

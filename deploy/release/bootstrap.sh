@@ -143,6 +143,16 @@ systemctl start --wait kipclip-release.service || {
   exit 1
 }
 
+# Step 7: audit env file perms. Defense-in-depth — the install-with-mode
+# steps above set perms correctly on first install, but operators editing
+# env files later can accidentally clobber them. The audit script is also
+# safe to re-run on demand any time after bootstrap.
+log "Auditing env file perms"
+"${SOURCE_DIR}/deploy/release/check-env-perms.sh" || {
+  err "env perm audit failed; run check-env-perms.sh after fixing"
+  exit 1
+}
+
 log "✅ Bootstrap complete."
 sublog "current release: $(readlink -f "$CURRENT_LINK")"
 sublog "next pull check: ~60s"
