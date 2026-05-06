@@ -1,4 +1,8 @@
+import { releaseUrl, useVersion } from "../utils/version.ts";
+
 export function Footer() {
+  const info = useVersion();
+  const tagLink = info ? releaseUrl(info.version) : null;
   return (
     <footer className="border-t border-gray-200 mt-12">
       <div className="max-w-4xl mx-auto px-4 py-6 flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -27,6 +31,23 @@ export function Footer() {
         </nav>
         <span className="text-xs text-gray-400">
           &copy; {new Date().getFullYear()} kipclip
+          {info && (
+            <>
+              {" · "}
+              {tagLink
+                ? (
+                  <a
+                    href={tagLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-gray-600 transition"
+                  >
+                    {info.version}
+                  </a>
+                )
+                : <span>{info.version}</span>}
+            </>
+          )}
         </span>
       </div>
     </footer>

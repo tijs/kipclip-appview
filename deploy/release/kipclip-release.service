@@ -1,0 +1,25 @@
+[Unit]
+Description=kipclip pull-based release update (one-shot)
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=kipclip
+Group=kipclip
+ExecStart=/var/lib/kipclip/source/deploy/release/update.sh
+# update.sh writes /etc/systemd/system/kipclip.service.d/release.conf and
+# runs systemctl daemon-reload + systemctl restart kipclip. Those calls
+# go through polkit (see /etc/polkit-1/rules.d/50-kipclip-restart.rules
+# installed by bootstrap.sh).
+StandardOutput=journal
+StandardError=journal
+# Hardening — release script needs writable /var/lib/kipclip and
+# /etc/systemd/system/kipclip.service.d for the SENTRY_RELEASE drop-in.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ReadWritePaths=/var/lib/kipclip /etc/systemd/system/kipclip.service.d
+
+[Install]
+WantedBy=multi-user.target

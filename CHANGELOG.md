@@ -4,6 +4,28 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Pull-based release flow on the production box: a 60s systemd timer
+  (`kipclip-release.timer`) polls GitHub for the latest `v*` tag, builds in a
+  per-tag release directory, and atomic-swaps a `current` symlink. Replaces the
+  operator-laptop rsync deploy. Releases are now triggered by `git tag` +
+  `git push --tags` from any machine with push perms.
+- `/api/version` and `/api/health` endpoints surface the running release tag,
+  sha, and build timestamp so prod-vs-local is unambiguous.
+- Footer + About now show the running version, linking to the GitHub release
+  page.
+- Sentry events tag the running release via `SENTRY_RELEASE`, so production
+  errors attribute to a specific tag in the Sentry UI.
+- Pin override (`/etc/kipclip/release-pin`) for incident pinning and
+  no-force-push rollback.
+- Release runbook at `deploy/release/README.md`.
+
+### Changed
+
+- `deploy/deploy.sh` is now staging-only; refuses to run against production
+  hostnames. Production uses the pull-based release flow exclusively.
+
 ### Removed
 
 - Browser-side IndexedDB cache + sync/diff layer
@@ -216,6 +238,10 @@ All notable changes to kipclip are documented in this file.
 - Responsive mobile and desktop layouts
 - Kip logo and "Find it, Kip it" tagline
 
+[0.9.0]: https://github.com/tijs/kipclip-appview/compare/v0.8.0...v0.9.0
+[0.8.0]: https://github.com/tijs/kipclip-appview/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/tijs/kipclip-appview/compare/v0.6.1...v0.7.0
+[0.6.1]: https://github.com/tijs/kipclip-appview/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/tijs/kipclip-appview/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/tijs/kipclip-appview/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/tijs/kipclip-appview/compare/v0.3.0...v0.4.0

@@ -19,6 +19,48 @@ async function generateContentHash(content: Uint8Array): Promise<string> {
 }
 
 /**
+ * Resolve the running release version. The release script (deploy/release/
+ * update.sh) sets KIPCLIP_VERSION when it builds in a release dir; local dev
+ * usually runs without it set, so fall back to the latest semver tag, then to
+ * "dev" when no tags or no git are reachable. Failures are non-fatal — the
+ * frontend Footer renders without a tag if the manifest carries "dev" or
+ * "unknown".
+ */
+async function resolveVersion(): Promise<string> {
+  const fromEnv = Deno.env.get("KIPCLIP_VERSION");
+  if (fromEnv && fromEnv.trim().length > 0) return fromEnv.trim();
+  try {
+    const cmd = new Deno.Command("git", {
+      args: ["describe", "--tags", "--abbrev=0", "--match", "v*"],
+      stdout: "piped",
+      stderr: "null",
+    });
+    const { code, stdout } = await cmd.output();
+    if (code === 0) {
+      const tag = new TextDecoder().decode(stdout).trim();
+      if (tag.length > 0) return tag;
+    }
+  } catch { /* git not available */ }
+  return "dev";
+}
+
+async function resolveSha(): Promise<string> {
+  try {
+    const cmd = new Deno.Command("git", {
+      args: ["rev-parse", "--short", "HEAD"],
+      stdout: "piped",
+      stderr: "null",
+    });
+    const { code, stdout } = await cmd.output();
+    if (code === 0) {
+      const sha = new TextDecoder().decode(stdout).trim();
+      if (sha.length > 0) return sha;
+    }
+  } catch { /* git not available */ }
+  return "unknown";
+}
+
+/**
  * Clean up old bundle files, keeping only the current one.
  */
 async function cleanOldBundles(currentBundleName: string): Promise<void> {
@@ -115,10 +157,17 @@ try {
     await Deno.writeTextFile(`${bundlePath}.map`, updatedSourcemap);
   }
 
-  // Write manifest.json for runtime bundle lookup
+  // Write manifest.json for runtime bundle lookup. Version + sha + builtAt
+  // are exposed via /api/version (routes/api/system.ts) so the running
+  // release is observable from the browser, monitoring, and Sentry.
+  const builtAt = new Date().toISOString();
+  const [version, sha] = await Promise.all([resolveVersion(), resolveSha()]);
   const manifest = {
     "bundle.js": bundleFileName,
-    buildTime: new Date().toISOString(),
+    buildTime: builtAt,
+    version,
+    sha,
+    builtAt,
   };
   await Deno.writeTextFile("static/manifest.json", JSON.stringify(manifest));
 
@@ -131,6 +180,7 @@ try {
   console.log(`✅ Frontend bundle built in ${elapsed}ms`);
   console.log(`   Output: ${bundlePath} (${outputSizeKB} KB)`);
   console.log(`   Hash: ${contentHash}`);
+  console.log(`   Version: ${version} (sha ${sha})`);
 } catch (error) {
   console.error("❌ Build failed:", error);
   Deno.exit(1);
