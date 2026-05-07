@@ -28,16 +28,50 @@ deno test --allow-all tests/ --filter "test name pattern"
 
 ## Architecture
 
+kipclip is a real AppView. Production traffic serves from a Hetzner box that
+runs the Fresh server, a local libSQL mirror of every tracked user's bookmark
+data, and TAP (an indigo atproto sync utility) which firehoses events into a
+webhook on the box.
+
+### High-level shape
+
 - **Frontend**: React 19 SPA with Tailwind CSS, bundled via esbuild
-- **Backend**: Fresh 2.x HTTP server on Deno Deploy
-- **Database**: Turso/libSQL (only for OAuth sessions, not bookmarks)
-- **Bookmark Storage**: User's PDS via AT Protocol
-- **Static Assets**: Bunny CDN (`cdn.kipclip.com`)
+- **Backend**: Fresh 2.x HTTP server. Runs on the Hetzner box (production,
+  `kipclip.com`) and on Deno Deploy (warm standby — auto-deploys on push to
+  `main`, picks up if the box dies)
+- **Edge proxy**: Caddy on the box (TLS, security headers, CSP+SRI, webhook
+  endpoint allow-list)
+- **TAP** (`bluesky-social/indigo` `cmd/tap`): subscribes to the relay, filters
+  to tracked DIDs + bookmark/tag/annotation/preferences collections, posts every
+  event to `/api/sync/hook` on the box
+- **Storage layer**: writes always go to the user's PDS via AT Protocol; reads
+  serve from the local mirror when available, fall through to PDS otherwise (see
+  Storage layout below)
+- **Static assets**: Bunny CDN (`cdn.kipclip.com`)
+
+### Storage layout
+
+| Tier             | Where                                                            | What                                                                                                       | Who reads/writes                                                        |
+| ---------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| **PDS**          | user's personal data server                                      | source of truth for all bookmark/tag/annotation/preference records                                         | server writes (PUT bookmark, etc); fallback reads when mirror miss      |
+| **Local libSQL** | `/var/lib/kipclip/mirror.db` on box (kipclip-owned, file-backed) | mirror copy of every tracked DID's records, populated by TAP webhook                                       | server reads (primary); writes are the TAP webhook upserts              |
+| **Turso/libSQL** | remote `libsql://kipclip-prod-tijs.aws-eu-west-1.turso.io`       | OAuth sessions; warm-standby copy of mirror tables (dual-write best-effort, behind `MIRROR_DUAL_WRITE=on`) | server reads sessions only; mirror writes when local libSQL initialized |
+
+When `MIRROR_MODE=read` (production default on the box) and a DID is tracked AND
+backfill has started, mirror-aware reads serve from local libSQL with sub-ms
+latency and zero PDS load. Untracked DIDs fall back to PDS unchanged.
 
 ### AT Protocol Collections
 
-- `community.lexicon.bookmarks.bookmark` - User bookmarks (stored on user's PDS)
-- `com.kipclip.tag` - User-defined tags (stored on user's PDS)
+- `community.lexicon.bookmarks.bookmark` — user bookmarks (PDS, mirrored)
+- `com.kipclip.tag` — user-defined tags (PDS, mirrored)
+- `com.kipclip.annotation` — bookmark sidecar metadata: title, description,
+  favicon, image, note. Joined to bookmarks by `subject = bookmark.uri` (PDS,
+  mirrored)
+- `com.kipclip.preferences` — user preferences (date format, reading-list tag)
+  (PDS, mirrored)
+- `app.bookmark.annotation` — legacy annotation collection still ingested by TAP
+  for backward compatibility, but new writes use `com.kipclip.annotation`
 
 ### Fresh Framework
 
@@ -74,14 +108,35 @@ Uses framework-agnostic OAuth libraries from jsr:
 OAuth is lazily initialized from the first request to derive BASE_URL
 automatically on Deno Deploy.
 
-## Deno Deploy
+## Production deployment
 
-- Entry point: `main.ts`
-- Auto-deploys on push to `main` via Deno Deploy's GitHub integration
-- The GitHub test workflow (format, lint, tests) does NOT gate deployment —
-  always run `deno task quality && deno task test` before pushing to main
-- Environment variables: `COOKIE_SECRET` (required), `BASE_URL` (optional),
-  `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `SENTRY_DSN`
+Two surfaces run the same `main.ts`:
+
+- **Hetzner box** (`kipclip.com`, primary). Pull-based release flow:
+  `kipclip-release.timer` polls GitHub on a 60s tick, picks the latest `v*` git
+  tag merged into `origin/main`, builds in `/var/lib/kipclip/releases/<tag>/`,
+  atomic-swaps the `current` symlink, restarts `kipclip.service`, and
+  health-checks. See `deploy/release/README.md` for the operator runbook (pin
+  override, rollback, bootstrap re-run).
+- **Deno Deploy** (warm standby). Auto-deploys on push to `main` via the GitHub
+  integration. Picks up traffic if the box is unreachable. The GitHub test
+  workflow (format, lint, tests) does NOT gate deployment — always run
+  `deno task quality && deno task test` before pushing to main.
+
+### Environment variables
+
+Both surfaces require: `COOKIE_SECRET`, `TURSO_DATABASE_URL`,
+`TURSO_AUTH_TOKEN`, `SENTRY_DSN` (optional but recommended), `BASE_URL`
+(optional, derived from request when unset).
+
+Box-only mirror variables: `LOCAL_DB_URL=file:/var/lib/kipclip/mirror.db`
+(enables local libSQL primary), `MIRROR_DUAL_WRITE=on` (turns on Turso
+warm-standby dual-write), `MIRROR_MODE=read` (serves reads from mirror for
+tracked DIDs).
+
+Box-only TAP variables: `TAP_WEBHOOK_SECRET` (matches TAP's `TAP_ADMIN_PASSWORD`
+— TAP reuses admin auth as outbound webhook auth, sent as
+`Authorization: Basic admin:<password>` per `cmd/tap/README.md`).
 
 ## Testing
 

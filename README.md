@@ -23,10 +23,18 @@ bookmark lexicon.
 ## Architecture
 
 - **Frontend**: React 19 + TypeScript + Tailwind CSS
-- **Backend**: Fresh 2.x + AT Protocol OAuth on Deno Deploy
-- **Database**: Turso/libSQL for OAuth session storage
-- **Bookmark Storage**: User's PDS (not in appview database)
-- **Static Assets**: Bunny CDN (`cdn.kipclip.com`)
+- **Backend**: Fresh 2.x on a Hetzner box (production), with Deno Deploy as warm
+  standby. Pull-based releases via signed `v*` git tags
+- **AppView mirror**: every tracked user's bookmark / tag / annotation /
+  preference records are mirrored from the user's PDS into a local libSQL
+  database on the box, kept fresh by
+  [TAP](https://github.com/bluesky-social/indigo) webhooks. Reads serve from the
+  mirror; writes always go to the user's PDS via AT Protocol
+- **Database**: local libSQL (`/var/lib/kipclip/mirror.db`) for the mirror;
+  Turso/libSQL for OAuth sessions and warm-standby dual-writes
+- **Bookmark storage (source of truth)**: user's PDS (not the AppView)
+- **Static assets**: Bunny CDN (`cdn.kipclip.com`)
+- **Edge**: Caddy on the box (TLS, security headers, CSP+SRI)
 
 ## Project Structure
 
