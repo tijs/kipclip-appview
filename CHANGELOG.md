@@ -4,6 +4,20 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.15.3] - 2026-05-07
+
+### Fixed
+
+- A Turso outage no longer 500s every edit path. The mirror's sync-status lookup
+  now degrades to a direct PDS read instead of bubbling the Turso error up
+  through the helpers.
+
+### Changed
+
+- Bulk tag operations now do one mirror sync-status lookup per request instead
+  of one per item, via a 1s cache. A 100-bookmark bulk used to fan out ~200
+  redundant Turso queries; now it does ~1.
+
 ## [0.15.2] - 2026-05-06
 
 ### Changed

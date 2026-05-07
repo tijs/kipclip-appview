@@ -26,7 +26,10 @@ export interface AnnotationRecord {
   description?: string;
   favicon?: string;
   image?: string;
-  createdAt: string;
+  // Optional: mirror's annotations table stores only updated_at, so a
+  // mirror-served read returns no createdAt. Writers still set it; no
+  // reader consumes it.
+  createdAt?: string;
 }
 
 // API request/response types

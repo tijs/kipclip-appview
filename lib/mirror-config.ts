@@ -16,6 +16,7 @@
  */
 
 import { getSyncStatus, type SyncStatus } from "../mirror/queries.ts";
+import { captureMessage } from "./sentry.ts";
 
 export type MirrorMode = "off" | "read";
 
@@ -80,11 +81,72 @@ export interface MirrorReadDecision {
  * `syncing` is true when reading from the mirror but backfill_complete_at is
  * not yet stamped — the response advertises "data may be incomplete".
  */
+/**
+ * Short-TTL cache for getSyncStatus results.
+ *
+ * shouldReadFromMirror is called once per single-record helper invocation. A
+ * bulk add-tags on N bookmarks calls fetchOwnerBookmarkRecord +
+ * fetchOwnerAnnotationRecord per item = 2N getSyncStatus Turso roundtrips
+ * for the same DID returning an identical row. Tracked-DID state (backfill
+ * complete? last seq?) changes on TAP webhook ticks (~seconds), so a
+ * 1000ms TTL collapses the bulk hot path to one lookup without making
+ * mirror-eligibility decisions noticeably stale.
+ */
+const SYNC_STATUS_TTL_MS = 1000;
+const syncStatusCache = new Map<
+  string,
+  { promise: Promise<SyncStatus>; cachedAt: number }
+>();
+
+function cachedSyncStatus(did: string): Promise<SyncStatus> {
+  const now = Date.now();
+  const hit = syncStatusCache.get(did);
+  if (hit && now - hit.cachedAt < SYNC_STATUS_TTL_MS) return hit.promise;
+  const promise = getSyncStatus(did);
+  syncStatusCache.set(did, { promise, cachedAt: now });
+  // Drop the cache entry on rejection so callers don't keep getting a
+  // poisoned promise; next call retries getSyncStatus fresh.
+  promise.catch(() => syncStatusCache.delete(did));
+  return promise;
+}
+
+/** Test-only — clear the sync-status cache between test cases. */
+export function _resetSyncStatusCache(): void {
+  syncStatusCache.clear();
+}
+
 export async function shouldReadFromMirror(
   did: string,
 ): Promise<MirrorReadDecision> {
   const mode = getMirrorMode();
-  const status = await getSyncStatus(did);
+
+  let status: SyncStatus;
+  try {
+    status = await cachedSyncStatus(did);
+  } catch (err) {
+    // getSyncStatus hits Turso. If Turso is unreachable, fall through to
+    // PDS rather than 500ing every edit path. The mirror's whole purpose
+    // is to shield the PDS from load — a Turso outage should degrade to
+    // direct PDS reads, not to "everything broken." Helpers that consume
+    // the returned decision will see fromMirror=false and use PDS.
+    captureMessage(
+      "shouldReadFromMirror getSyncStatus failed; falling back to PDS",
+      "warning",
+      { did, error: String(err) },
+    );
+    return {
+      fromMirror: false,
+      syncing: false,
+      status: {
+        tracking: false,
+        pdsUrl: null,
+        backfillStartedAt: null,
+        backfillCompleteAt: null,
+        lastSeq: null,
+        lastEventAt: null,
+      },
+    };
+  }
 
   if (mode === "off") {
     return { fromMirror: false, syncing: false, status };

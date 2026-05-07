@@ -6,6 +6,7 @@
  */
 
 import { initializeTables, rawDb } from "../lib/db.ts";
+import { _resetSyncStatusCache } from "../lib/mirror-config.ts";
 
 await initializeTables();
 
@@ -18,4 +19,7 @@ export async function clearMirrorTables(): Promise<void> {
   await rawDb.execute({ sql: "DELETE FROM tracked_dids", args: [] });
   await rawDb.execute({ sql: "DELETE FROM preferences", args: [] });
   await rawDb.execute({ sql: "DELETE FROM seen_webhook_events", args: [] });
+  // tracked_dids drives shouldReadFromMirror's getSyncStatus result; the
+  // 1s TTL cache would otherwise serve stale tracking state across tests.
+  _resetSyncStatusCache();
 }
