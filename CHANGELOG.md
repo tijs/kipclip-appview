@@ -4,6 +4,22 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.15.4] - 2026-05-07
+
+### Added
+
+- "Syncing your data" pill in the header during first-login backfill, so a new
+  user opening kipclip while their bookmarks are still being mirrored sees a
+  clear signal instead of a blank list.
+
+### Fixed
+
+- Concurrent edits on the same bookmark or tag from different tabs/devices no
+  longer silently overwrite each other. PUT bookmark, refresh metadata, PUT tag,
+  and bulk tag operations now use AT Protocol's `swapRecord` conditional write —
+  the second writer gets a `409 concurrent_edit` instead of clobbering the first
+  writer's changes.
+
 ## [0.15.3] - 2026-05-07
 
 ### Fixed

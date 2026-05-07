@@ -23,7 +23,8 @@ import { saveIdentity } from "../utils/saved-identities.ts";
 type ViewType = "bookmarks" | "reading-list";
 
 export function App() {
-  const { session, setSession, loadInitialData, isSupporter } = useApp();
+  const { session, setSession, loadInitialData, isSupporter, mirrorSyncing } =
+    useApp();
   const [loading, setLoading] = useState(true);
   const [dataLoading, setDataLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -239,6 +240,22 @@ export function App() {
                 Reading List
               </button>
             </nav>
+            {mirrorSyncing && (
+              <span
+                className="hidden sm:inline-flex items-center gap-1.5 ml-2 px-2.5 py-1 rounded-full text-xs font-medium"
+                style={{
+                  backgroundColor: "rgba(91, 138, 143, 0.12)",
+                  color: "var(--teal)",
+                }}
+                title="Your bookmarks are still syncing from your PDS. New items will appear automatically."
+              >
+                <span
+                  className="inline-block w-1.5 h-1.5 rounded-full animate-pulse"
+                  style={{ backgroundColor: "var(--teal)" }}
+                />
+                Syncing your data
+              </span>
+            )}
           </div>
           <UserMenu handle={session.handle} onLogout={handleLogout} />
         </div>

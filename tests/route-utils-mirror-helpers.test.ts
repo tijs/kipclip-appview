@@ -16,6 +16,7 @@ import {
   fetchOwnerBookmarkRecords,
   fetchOwnerTagRecord,
   fetchOwnerTagRecords,
+  isInvalidSwap,
 } from "../lib/route-utils.ts";
 import {
   upsertAnnotation,
@@ -456,4 +457,31 @@ Deno.test("fetchOwnerAnnotationRecord - tracked + mirror miss → PDS fallback (
   const rec = await fetchOwnerAnnotationRecord(session, "missing");
   assertEquals(rec, null);
   setMode("off");
+});
+
+// ---------------------------------------------------------------------------
+// isInvalidSwap — CAS detection helper
+// ---------------------------------------------------------------------------
+
+Deno.test("isInvalidSwap - 400 + InvalidSwap body → true", () => {
+  assertEquals(
+    isInvalidSwap(
+      400,
+      `{"error":"InvalidSwap","message":"Record cid does not match"}`,
+    ),
+    true,
+  );
+});
+
+Deno.test("isInvalidSwap - non-400 → false", () => {
+  assertEquals(isInvalidSwap(500, `{"error":"InvalidSwap"}`), false);
+  assertEquals(isInvalidSwap(404, `{"error":"InvalidSwap"}`), false);
+  assertEquals(isInvalidSwap(200, ""), false);
+});
+
+Deno.test("isInvalidSwap - 400 without InvalidSwap → false", () => {
+  assertEquals(
+    isInvalidSwap(400, `{"error":"InvalidRequest","message":"bad input"}`),
+    false,
+  );
 });

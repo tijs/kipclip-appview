@@ -11,6 +11,7 @@ import {
   fetchOwnerTagRecord,
   fetchOwnerTagRecords,
   getSessionFromRequest,
+  isInvalidSwap,
   listAllRecords,
   setSessionCookie,
   TAG_COLLECTION,
@@ -287,12 +288,23 @@ export function registerTagRoutes(app: App<any>): App<any> {
             collection: TAG_COLLECTION,
             rkey,
             record,
+            swapRecord: currentRecord.cid,
           }),
         },
       );
 
       if (!updateResponse.ok) {
         const errorText = await updateResponse.text();
+        if (isInvalidSwap(updateResponse.status, errorText)) {
+          return Response.json(
+            {
+              error: "concurrent_edit",
+              message:
+                "This tag was modified by another tab or device. Refresh and try again.",
+            },
+            { status: 409 },
+          );
+        }
         throw new Error(`Failed to update tag record: ${errorText}`);
       }
 

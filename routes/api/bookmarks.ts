@@ -22,6 +22,7 @@ import {
   fetchOwnerBookmarkRecords,
   fetchOwnerTagRecords,
   getSessionFromRequest,
+  isInvalidSwap,
   listAllRecords,
   setSessionCookie,
 } from "../../lib/route-utils.ts";
@@ -345,7 +346,11 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         createdAt: currentRecord.value.createdAt,
       };
 
-      // Run bookmark write, annotation write, settings + preferences fetch in parallel
+      // Run bookmark write, annotation write, settings + preferences fetch in parallel.
+      // swapRecord pins the put to the cid we just read so a concurrent edit
+      // (other tab/device that wrote between our read and our put) can't be
+      // silently overwritten — PDS rejects with InvalidSwap and the client
+      // gets a 409 to retry on fresh state.
       const [putResult, annotationWritten, settings, preferences] =
         await Promise.all([
           oauthSession.makeRequest(
@@ -358,6 +363,7 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
                 collection: BOOKMARK_COLLECTION,
                 rkey,
                 record,
+                swapRecord: currentRecord.cid,
               }),
             },
           ),
@@ -368,6 +374,16 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
 
       if (!putResult.ok) {
         const errorText = await putResult.text();
+        if (isInvalidSwap(putResult.status, errorText)) {
+          return Response.json(
+            {
+              error: "concurrent_edit",
+              message:
+                "This bookmark was modified by another tab or device. Refresh and try again.",
+            },
+            { status: 409 },
+          );
+        }
         throw new Error(`Failed to update record: ${errorText}`);
       }
 

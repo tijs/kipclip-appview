@@ -314,6 +314,22 @@ export async function fetchOwnerTagRecords(
  *
  * Returns `null` when the record genuinely does not exist (PDS 404).
  */
+/**
+ * Detect a PDS InvalidSwap response from a putRecord call with swapRecord set.
+ *
+ * AT Protocol returns `400` with `error: "InvalidSwap"` when the cid in
+ * `swapRecord` doesn't match the record's current cid (i.e., something else
+ * wrote between our read and our put). Routes use this to surface a 409 to
+ * the client rather than silently retrying — auto-retry would clobber the
+ * concurrent edit, so the client owns the resolve-and-retry decision.
+ */
+export function isInvalidSwap(status: number, body: string): boolean {
+  if (status !== 400) return false;
+  // The body shape is `{"error":"InvalidSwap","message":"..."}`. Cheap
+  // substring check avoids parsing for the hot non-error path.
+  return body.includes("InvalidSwap");
+}
+
 async function pdsGetRecord(
   oauthSession: any,
   collection: string,

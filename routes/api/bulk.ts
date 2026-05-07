@@ -13,6 +13,7 @@ import {
   fetchOwnerAnnotationRecord,
   fetchOwnerBookmarkRecord,
   getSessionFromRequest,
+  isInvalidSwap,
   setSessionCookie,
 } from "../../lib/route-utils.ts";
 import type {
@@ -286,12 +287,22 @@ async function updateBookmarkTags(
         collection: BOOKMARK_COLLECTION,
         rkey,
         record,
+        // CAS — see lib/route-utils.ts isInvalidSwap. Bulk shows the
+        // hazard most: 100 items × N % stale-mirror window = a real
+        // chance one item lost a concurrent edit pre-CAS.
+        swapRecord: currentRecord.cid,
       }),
     },
   );
 
   if (!putResult.ok) {
-    throw new Error(`Failed to update bookmark: ${await putResult.text()}`);
+    const errorText = await putResult.text();
+    if (isInvalidSwap(putResult.status, errorText)) {
+      throw new Error(
+        `Concurrent edit on ${rkey}: bookmark was modified by another tab/device`,
+      );
+    }
+    throw new Error(`Failed to update bookmark: ${errorText}`);
   }
 
   const putData = await putResult.json();
