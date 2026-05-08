@@ -1,0 +1,17 @@
+[Unit]
+Description=TAP weekly auto-update (Sun 04:00 UTC)
+
+[Timer]
+# Weekly cadence — TAP upstream tracks main with no release rhythm.
+# Sunday 04:00 UTC is low-traffic for kipclip and gives a quiet window
+# for the rebuild + restart + health-check cycle.
+OnCalendar=Sun *-*-* 04:00:00 UTC
+# Catch missed runs if the box was offline at the scheduled time.
+Persistent=true
+# Spread firing slightly so a fleet of boxes wouldn't stampede a Hetzner
+# upstream mirror simultaneously (purely defensive — current fleet = 1).
+RandomizedDelaySec=15min
+Unit=tap-update.service
+
+[Install]
+WantedBy=timers.target

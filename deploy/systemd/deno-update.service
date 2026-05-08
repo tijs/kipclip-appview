@@ -1,0 +1,20 @@
+[Unit]
+Description=Deno runtime auto-update for kipclip
+After=network.target kipclip.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Runs as root because:
+#   - /opt/deno is root-owned (system-wide install)
+#   - systemctl restart kipclip requires privilege
+User=root
+ExecStart=/var/lib/kipclip/source/deploy/release/deno-update.sh
+StandardOutput=journal
+StandardError=journal
+PrivateTmp=true
+ProtectHome=true
+ReadWritePaths=/opt/deno /var/lib/kipclip /etc/kipclip
+
+[Install]
+WantedBy=multi-user.target

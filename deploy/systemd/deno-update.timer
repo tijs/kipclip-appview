@@ -1,0 +1,14 @@
+[Unit]
+Description=Deno runtime weekly auto-update (Sun 04:30 UTC)
+
+[Timer]
+# Weekly cadence, offset 30min from tap-update.timer so the two updates
+# don't race for the kipclip restart slot. Sunday early morning UTC is
+# the lowest-traffic window.
+OnCalendar=Sun *-*-* 04:30:00 UTC
+Persistent=true
+RandomizedDelaySec=15min
+Unit=deno-update.service
+
+[Install]
+WantedBy=timers.target

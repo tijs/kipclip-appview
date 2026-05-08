@@ -112,6 +112,31 @@ install -m 0644 "${SOURCE_DIR}/deploy/release/kipclip-release.service" \
 install -m 0644 "${SOURCE_DIR}/deploy/release/kipclip-release.timer" \
   /etc/systemd/system/kipclip-release.timer
 
+# journald drop-in: bound on-disk log size. Restart journald so the new
+# limits apply immediately rather than at next boot.
+log "Installing systemd-journald drop-in"
+mkdir -p /etc/systemd/journald.conf.d
+install -m 0644 "${SOURCE_DIR}/deploy/systemd/journald-kipclip.conf" \
+  /etc/systemd/journald.conf.d/kipclip.conf
+systemctl restart systemd-journald
+
+# TAP weekly auto-update timer. Only installed if /opt/tap exists
+# (boxes without TAP — e.g. staging — skip this).
+if [[ -d /opt/tap ]]; then
+  log "Installing TAP auto-update timer"
+  install -m 0644 "${SOURCE_DIR}/deploy/systemd/tap-update.service" \
+    /etc/systemd/system/tap-update.service
+  install -m 0644 "${SOURCE_DIR}/deploy/systemd/tap-update.timer" \
+    /etc/systemd/system/tap-update.timer
+fi
+
+# Deno runtime weekly auto-update timer.
+log "Installing Deno auto-update timer"
+install -m 0644 "${SOURCE_DIR}/deploy/systemd/deno-update.service" \
+  /etc/systemd/system/deno-update.service
+install -m 0644 "${SOURCE_DIR}/deploy/systemd/deno-update.timer" \
+  /etc/systemd/system/deno-update.timer
+
 # Step 4: install sudoers drop-in granting the kipclip user NOPASSWD on
 # the two systemctl commands update.sh needs (`restart kipclip` and
 # `daemon-reload`). Validate with visudo before moving into place — a
@@ -127,6 +152,14 @@ trap - EXIT
 
 systemctl daemon-reload
 systemctl enable --now kipclip-release.timer
+
+# Enable TAP update timer (no-op if unit not installed — guard above).
+if [[ -f /etc/systemd/system/tap-update.timer ]]; then
+  systemctl enable --now tap-update.timer
+fi
+
+# Enable Deno update timer.
+systemctl enable --now deno-update.timer
 
 # Step 5: install / refresh Caddyfile.
 log "Installing Caddyfile"

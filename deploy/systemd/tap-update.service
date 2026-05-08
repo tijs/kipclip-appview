@@ -1,0 +1,24 @@
+[Unit]
+Description=TAP weekly auto-update (build from indigo origin/main)
+After=network.target tap.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Runs as root because:
+#   - /opt/tap is root-owned (install path)
+#   - systemctl restart tap requires privilege
+# Build itself runs `sudo -u tap go build` inside the script so the
+# go module + build cache stay tap-owned.
+User=root
+ExecStart=/var/lib/kipclip/source/deploy/release/tap-update.sh
+StandardOutput=journal
+StandardError=journal
+PrivateTmp=true
+ProtectHome=true
+# Allowed write paths: /opt/tap (binary install), /var/lib/tap (build dir
+# + version file), and /etc/tap (pin file inspection only — no write).
+ReadWritePaths=/opt/tap /var/lib/tap
+
+[Install]
+WantedBy=multi-user.target
