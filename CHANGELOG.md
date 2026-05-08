@@ -4,6 +4,36 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-05-08
+
+### Changed
+
+- Initial page load streams the first bookmark page to the UI as soon as it
+  lands, rather than waiting for every page to paginate before rendering.
+  Background pagination then fills the rest of the library in 500ms-batched
+  flushes. On a 3000-bookmark library this drops time-to- first-bookmark from
+  ~5s to ~700ms (cold cache).
+
+### Fixed
+
+- Reading-list re-enrichment no longer fires the same bookmark forever when the
+  URL has no og:image. Server-200-with-no-image now counts as a failed attempt
+  against the 3-retry cap, eliminating an ~60-call N+1 storm during initial
+  load.
+- BookmarkList no longer remounts the visible cards on every grow during
+  streaming. The incremental-render reset now only fires when the total list
+  shrinks (filter applied), not when bookmarks arrive.
+
+### Added
+
+- Server-Timing headers on `/api/initial-data` and `/api/tags` (session,
+  mirror-decision, supporter, mirror-bookmarks/extras, pds-\* spans). Visible in
+  browser DevTools → Network → Timing.
+- New `/api/metrics` beacon endpoint that accepts a single per-page-load perf
+  bundle from the frontend (web vitals + per-route Server-Timing totals +
+  bookmark count) via `navigator.sendBeacon`. Logged as a structured
+  `[perf] {...}` JSON line to journalctl on the box.
+
 ## [0.15.4] - 2026-05-07
 
 ### Added
