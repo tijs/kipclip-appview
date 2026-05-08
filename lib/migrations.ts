@@ -164,7 +164,10 @@ async function runMigrationSet(
         await db.execute({ sql: statement, args: [] });
       } catch (error) {
         const msg = (error as Error).message ?? "";
-        if (msg.includes("already exists") || msg.includes("duplicate column name")) {
+        if (
+          msg.includes("already exists") ||
+          msg.includes("duplicate column name")
+        ) {
           console.warn(
             `⚠️  Schema already up to date on ${label}, skipping: ${msg}`,
           );

@@ -73,12 +73,14 @@ const tursoClient = createWebClient({
 const { createClient: createLocalClient } = await import("@libsql/client");
 const localClient = createLocalClient({ url: localUrl! });
 
-// Ensure the destination table exists.
+// Ensure the destination table exists with the current SQLiteStorage@1.1.0+ schema.
 const CREATE_TABLE = `
   CREATE TABLE IF NOT EXISTS iron_session_storage (
     key TEXT PRIMARY KEY NOT NULL,
     value TEXT NOT NULL,
-    expires_at INTEGER
+    expires_at TEXT,
+    created_at TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT ''
   )
 `;
 await localClient.execute(CREATE_TABLE);

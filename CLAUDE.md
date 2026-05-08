@@ -49,10 +49,10 @@ webhook on the box.
 
 ### Storage layout
 
-| Tier                | Where                                                                             | What                                                                                                 | Who reads/writes                                                   |
-| ------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| **PDS**             | user's personal data server                                                       | source of truth for all bookmark/tag/annotation/preference records                                   | server writes (PUT bookmark, etc); fallback reads when mirror miss |
-| **Primary (local)** | `DATABASE_URL` — file-backed SQLite on the box                                    | all tables: OAuth sessions, user_settings, import_jobs, and all mirror tables. Always authoritative. | server reads/writes (primary); TAP webhook upserts mirror tables   |
+| Tier                | Where                                                                             | What                                                                                                                                       | Who reads/writes                                                           |
+| ------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| **PDS**             | user's personal data server                                                       | source of truth for all bookmark/tag/annotation/preference records                                                                         | server writes (PUT bookmark, etc); fallback reads when mirror miss         |
+| **Primary (local)** | `DATABASE_URL` — file-backed SQLite on the box                                    | all tables: OAuth sessions, user_settings, import_jobs, and all mirror tables. Always authoritative.                                       | server reads/writes (primary); TAP webhook upserts mirror tables           |
 | **Turso/libSQL**    | `TURSO_DATABASE_URL` — remote `libsql://kipclip-prod-tijs.aws-eu-west-1.turso.io` | warm-standby backup of mirror tables AND sessions (dual-write behind `MIRROR_DUAL_WRITE=on`); primary DB for Deno Deploy fallback instance | mirror+session writes when enabled; Deno Deploy reads/writes sessions here |
 
 When `MIRROR_MODE=read` (production default on the box) and a DID is tracked AND

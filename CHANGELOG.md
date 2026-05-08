@@ -4,6 +4,21 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.18.2] - 2026-05-08
+
+### Fixed
+
+- Migration 005 backfills `created_at` and `updated_at` columns on
+  `iron_session_storage` for installs that were migrated from Turso before
+  `atproto-storage@1.1.0` added those columns. Prevents login failures on
+  installs where the table was created with the old 3-column schema.
+- `migrate-sessions-to-local.ts` now uses the current 5-column schema
+  (`expires_at TEXT`, `created_at`, `updated_at`) matching `SQLiteStorage@1.1.0+`.
+- Updated `@tijs/atproto-oauth` to 2.10.2 and `@tijs/atproto-storage` to 1.2.0.
+  `SQLiteStorage.init()` now self-heals tables missing the new columns.
+- OAuth sessions are now dual-written to Turso when `MIRROR_DUAL_WRITE=on` is
+  set, keeping the Deno Deploy fallback warm.
+
 ## [0.18.1] - 2026-05-08
 
 ### Fixed
