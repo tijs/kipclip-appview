@@ -4,6 +4,8 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-05-08
+
 ### Added
 
 - Live event WebSocket channel at `/api/live`. After a user signs in, the SPA
