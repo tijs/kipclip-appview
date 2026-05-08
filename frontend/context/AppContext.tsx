@@ -715,8 +715,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const failedAttemptsRef = useRef<Map<string, number>>(new Map());
   const MAX_ENRICHMENT_RETRIES = 3;
 
-  // Background re-enrichment for reading list bookmarks missing images
+  // Background re-enrichment for reading list bookmarks missing images.
+  // Gated on !isSyncing so the enrich pass never competes with the
+  // initial-load streaming flush for network bandwidth (without this,
+  // requestIdleCallback fires during 500ms gaps between flushes since
+  // the main thread looks idle to the browser, and enrich requests
+  // start at ~900ms while streaming runs to ~2s).
   useEffect(() => {
+    if (isSyncing) return;
     const bookmarksNeedingEnrichment = readingListBookmarks.filter((b) => {
       if (b.image) return false;
       if (enrichingRef.current.has(b.uri)) return false;
@@ -802,7 +808,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       if (handle !== undefined) clearTimeout(handle);
     };
-  }, [readingListBookmarks]);
+  }, [readingListBookmarks, isSyncing]);
 
   const value: AppContextValue = {
     session,

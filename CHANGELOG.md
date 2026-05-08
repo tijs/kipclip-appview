@@ -4,6 +4,16 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.16.3] - 2026-05-08
+
+### Fixed
+
+- Reading-list re-enrichment no longer competes with the initial-load streaming
+  flush for network bandwidth. The 500ms gaps between batched flushes look idle
+  to the browser, so `requestIdleCallback` was firing enrich requests at ~900ms
+  while streaming was still running until ~2s. Effect now also gates on
+  `!isSyncing`, so enrichment only kicks in after pagination has fully settled.
+
 ## [0.16.2] - 2026-05-08
 
 ### Changed
