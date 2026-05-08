@@ -28,6 +28,7 @@ import {
 } from "../../mirror/queries.ts";
 import { decrypt } from "../../lib/encryption.ts";
 import { captureMessage } from "../../lib/sentry.ts";
+import { createTimer } from "../../lib/server-timing.ts";
 import type {
   AnnotationRecord,
   EnrichedBookmark,
@@ -79,9 +80,10 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
   // Paginated initial data: first call returns tags + settings + first page;
   // subsequent calls (with cursors) return additional bookmark pages.
   app = app.get("/api/initial-data", async (ctx) => {
+    const timer = createTimer();
     try {
-      const { session: oauthSession, setCookieHeader, error } =
-        await getSessionFromRequest(ctx.req);
+      const { session: oauthSession, setCookieHeader, error } = await timer
+        .span("session", () => getSessionFromRequest(ctx.req));
 
       if (!oauthSession) {
         return createAuthErrorResponse(error);
@@ -94,7 +96,10 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
         undefined;
       const isFirstPage = !bookmarkCursor;
 
-      const mirrorDecision = await shouldReadFromMirror(oauthSession.did);
+      const mirrorDecision = await timer.span(
+        "mirror-decision",
+        () => shouldReadFromMirror(oauthSession.did),
+      );
       if (mirrorDecision.fromMirror) {
         // Wrap the mirror branch so a Turso connection flake (eu-west-1
         // ↔ Deno Deploy US sometimes drops requests) falls through to
@@ -102,11 +107,22 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
         // surfaces the degradation event in production.
         try {
           if (isFirstPage) {
+            const parallelStart = performance.now();
             const [page, extras, isSupporter] = await Promise.all([
-              firstPageBookmarks(oauthSession.did),
-              getMirrorInitialExtras(oauthSession.did),
-              isUserSupporter(oauthSession),
+              timer.span(
+                "mirror-bookmarks",
+                () => firstPageBookmarks(oauthSession.did),
+              ),
+              timer.span(
+                "mirror-extras",
+                () => getMirrorInitialExtras(oauthSession.did),
+              ),
+              timer.span(
+                "supporter",
+                () => isUserSupporter(oauthSession),
+              ),
             ]);
+            timer.add("first-page-parallel", performance.now() - parallelStart);
             const settings: UserSettings = {
               instapaperEnabled: extras.instapaperEnabled,
               instapaperUsername: extras.instapaperEnabled &&
@@ -128,19 +144,23 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
               isSupporter,
               ...(mirrorDecision.syncing ? { syncing: true } : {}),
             };
-            return setSessionCookie(Response.json(result), setCookieHeader);
+            return timer.finalize(
+              setSessionCookie(Response.json(result), setCookieHeader),
+            );
           }
-          const page = await nextPageBookmarks(
-            oauthSession.did,
-            bookmarkCursor,
+          const page = await timer.span(
+            "mirror-next-page",
+            () => nextPageBookmarks(oauthSession.did, bookmarkCursor),
           );
-          return setSessionCookie(
-            Response.json({
-              bookmarks: page.bookmarks,
-              bookmarkCursor: page.cursor,
-              ...(mirrorDecision.syncing ? { syncing: true } : {}),
-            }),
-            setCookieHeader,
+          return timer.finalize(
+            setSessionCookie(
+              Response.json({
+                bookmarks: page.bookmarks,
+                bookmarkCursor: page.cursor,
+                ...(mirrorDecision.syncing ? { syncing: true } : {}),
+              }),
+              setCookieHeader,
+            ),
           );
         } catch (mirrorErr) {
           captureMessage(
@@ -174,11 +194,27 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
           preferences,
           isSupporter,
         ] = await Promise.all([
-          listOnePage(oauthSession, BOOKMARK_COLLECTION, firstPageOpts),
-          listOnePage(oauthSession, ANNOTATION_COLLECTION, firstPageOpts),
-          getUserSettings(oauthSession.did),
-          getUserPreferences(oauthSession),
-          isUserSupporter(oauthSession),
+          timer.span(
+            "pds-bookmarks",
+            () => listOnePage(oauthSession, BOOKMARK_COLLECTION, firstPageOpts),
+          ),
+          timer.span(
+            "pds-annotations",
+            () =>
+              listOnePage(oauthSession, ANNOTATION_COLLECTION, firstPageOpts),
+          ),
+          timer.span(
+            "pds-settings",
+            () => getUserSettings(oauthSession.did),
+          ),
+          timer.span(
+            "pds-preferences",
+            () => getUserPreferences(oauthSession),
+          ),
+          timer.span(
+            "supporter",
+            () => isUserSupporter(oauthSession),
+          ),
         ]);
 
         const annotationMap = new Map<string, AnnotationRecord>();
@@ -207,9 +243,8 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
           isSupporter,
         };
 
-        const response = setSessionCookie(
-          Response.json(result),
-          setCookieHeader,
+        const response = timer.finalize(
+          setSessionCookie(Response.json(result), setCookieHeader),
         );
 
         // Background migrations: run once per user per server session.
@@ -254,15 +289,23 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
 
       // Subsequent page: fetch next page of bookmarks + annotations
       const [bookmarkPage, annotationPage] = await Promise.all([
-        listOnePage(oauthSession, BOOKMARK_COLLECTION, {
-          cursor: bookmarkCursor,
-          reverse: true,
-        }),
+        timer.span(
+          "pds-bookmarks",
+          () =>
+            listOnePage(oauthSession, BOOKMARK_COLLECTION, {
+              cursor: bookmarkCursor,
+              reverse: true,
+            }),
+        ),
         annotationCursor
-          ? listOnePage(oauthSession, ANNOTATION_COLLECTION, {
-            cursor: annotationCursor,
-            reverse: true,
-          })
+          ? timer.span(
+            "pds-annotations",
+            () =>
+              listOnePage(oauthSession, ANNOTATION_COLLECTION, {
+                cursor: annotationCursor,
+                reverse: true,
+              }),
+          )
           : Promise.resolve(
             { records: [] as any[], cursor: undefined, rateLimit: undefined },
           ),
@@ -284,14 +327,16 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
         annotationPage.rateLimit,
       );
 
-      const response = setSessionCookie(
-        Response.json({
-          bookmarks,
-          bookmarkCursor: bookmarkPage.cursor,
-          annotationCursor: annotationPage.cursor,
-          rateLimit,
-        }),
-        setCookieHeader,
+      const response = timer.finalize(
+        setSessionCookie(
+          Response.json({
+            bookmarks,
+            bookmarkCursor: bookmarkPage.cursor,
+            annotationCursor: annotationPage.cursor,
+            rateLimit,
+          }),
+          setCookieHeader,
+        ),
       );
       return response;
     } catch (error: any) {

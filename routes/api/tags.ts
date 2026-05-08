@@ -30,24 +30,34 @@ import { mergeTagDuplicates } from "../../lib/migration-merge-tags.ts";
 import { shouldReadFromMirror } from "../../lib/mirror-config.ts";
 import { listTags as listMirrorTags } from "../../mirror/queries.ts";
 import { captureMessage } from "../../lib/sentry.ts";
+import { createTimer } from "../../lib/server-timing.ts";
 
 export function registerTagRoutes(app: App<any>): App<any> {
   // List tags. Reads from mirror when MIRROR_MODE=read and the DID is tracked
   // with a populated mirror; otherwise falls through to the PDS.
   app = app.get("/api/tags", async (ctx) => {
+    const timer = createTimer();
     try {
-      const { session: oauthSession, setCookieHeader, error } =
-        await getSessionFromRequest(ctx.req);
+      const { session: oauthSession, setCookieHeader, error } = await timer
+        .span("session", () => getSessionFromRequest(ctx.req));
       if (!oauthSession) {
         return createAuthErrorResponse(error);
       }
 
-      const decision = await shouldReadFromMirror(oauthSession.did);
+      const decision = await timer.span(
+        "mirror-decision",
+        () => shouldReadFromMirror(oauthSession.did),
+      );
       if (decision.fromMirror) {
         try {
-          const tags = await listMirrorTags(oauthSession.did);
+          const tags = await timer.span(
+            "mirror-tags",
+            () => listMirrorTags(oauthSession.did),
+          );
           const result: ListTagsResponse = { tags };
-          return setSessionCookie(Response.json(result), setCookieHeader);
+          return timer.finalize(
+            setSessionCookie(Response.json(result), setCookieHeader),
+          );
         } catch (mirrorErr) {
           captureMessage(
             "mirror read fallback to PDS",
@@ -63,7 +73,10 @@ export function registerTagRoutes(app: App<any>): App<any> {
         }
       }
 
-      const records = await listAllRecords(oauthSession, TAG_COLLECTION);
+      const records = await timer.span(
+        "pds-tags",
+        () => listAllRecords(oauthSession, TAG_COLLECTION),
+      );
       const tags: EnrichedTag[] = records.map((record: any) => ({
         uri: record.uri,
         cid: record.cid,
@@ -72,7 +85,9 @@ export function registerTagRoutes(app: App<any>): App<any> {
       }));
 
       const result: ListTagsResponse = { tags };
-      return setSessionCookie(Response.json(result), setCookieHeader);
+      return timer.finalize(
+        setSessionCookie(Response.json(result), setCookieHeader),
+      );
     } catch (error: any) {
       console.error("Error listing tags:", error);
       if (error.message?.includes("not found") || error.status === 400) {

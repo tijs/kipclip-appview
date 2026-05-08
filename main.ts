@@ -25,6 +25,7 @@ import { registerInitialDataRoutes } from "./routes/api/initial-data.ts";
 import { registerSettingsRoutes } from "./routes/api/settings.ts";
 import { registerBulkRoutes } from "./routes/api/bulk.ts";
 import { registerImportRoutes } from "./routes/api/import.ts";
+import { registerMetricsRoutes } from "./routes/api/metrics.ts";
 import { registerMigrateHexRkeysRoute } from "./routes/api/migrate-hex-rkeys.ts";
 import { registerPreferencesRoutes } from "./routes/api/preferences.ts";
 import { registerShareApiRoutes } from "./routes/api/share.ts";
@@ -139,6 +140,9 @@ app = registerSyncRoutes(app);
 
 // System API routes (/api/version, /api/health) -- release observability
 app = registerSystemRoutes(app);
+
+// Frontend perf beacon endpoint (logs structured perf JSON line)
+app = registerMetricsRoutes(app);
 
 // RSS feed routes
 app = registerRssRoutes(app);

@@ -65,45 +65,45 @@ interface PaginationPage {
   rateLimit?: { remaining: number; reset: number; limit: number };
 }
 
-interface PaginatedInitial {
-  bookmarks: EnrichedBookmark[];
-  settings: UserSettings;
-  preferences: UserPreferences;
-  isSupporter: boolean;
-  /**
-   * Mirror branch only: true while backfill is still in progress. Absent
-   * on PDS-fallback responses and on completed mirrors.
-   */
-  syncing?: boolean;
-}
-
 /**
- * Fetch /api/initial-data and walk every bookmarkCursor page until the
- * server omits it. Both the mirror branch and the PDS-fallback branch
- * paginate the same way; the PDS branch additionally returns
- * annotationCursor + rateLimit on each page, which we forward and honor.
+ * Streaming variant of /api/initial-data fetcher.
  *
- * Settings / preferences / isSupporter / syncing are taken only from the
- * first response — subsequent pages do not re-emit them.
+ * Phase A — `firstPage`: fetch + return the first response synchronously.
+ *   The caller applies it to state immediately so first paint happens before
+ *   the rest of the user's library is on the wire.
+ *
+ * Phase B — `streamRemaining`: walk every bookmarkCursor page in the
+ *   background, invoking `onAdditionalPage` with each chunk so the caller
+ *   can append into state. Resolves once pagination ends or hits a guard.
+ *
+ * Settings / preferences / isSupporter / syncing are emitted on the first
+ * response only.
  */
-async function fetchInitialPaginated(
-  onProgress?: (page: number) => void,
-): Promise<PaginatedInitial> {
-  perf.start("initialDataPaginated");
-  const firstResponse = await apiGet("/api/initial-data");
-  if (!firstResponse.ok) {
-    const body = await firstResponse.text().catch(() => "");
+async function fetchFirstPage(): Promise<InitialDataResponse> {
+  perf.start("initialDataFirstPage");
+  const response = await apiGet("/api/initial-data");
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
     throw new Error(
-      `Failed to load initial data: ${firstResponse.status} ${body}`,
+      `Failed to load initial data: ${response.status} ${body}`,
     );
   }
-  const first: InitialDataResponse = await firstResponse.json();
+  const first: InitialDataResponse = await response.json();
+  perf.end("initialDataFirstPage");
+  return first;
+}
 
-  const bookmarks: EnrichedBookmark[] = [...first.bookmarks];
+async function streamRemainingPages(
+  first: InitialDataResponse,
+  onAdditionalPage: (bookmarks: EnrichedBookmark[]) => void,
+  onProgress?: (page: number) => void,
+): Promise<{ pagesLoaded: number; totalAdded: number }> {
+  perf.start("initialDataRemaining");
   let bookmarkCursor = first.bookmarkCursor;
   let annotationCursor = first.annotationCursor;
   let currentRateLimit = first.rateLimit;
   let pageNumber = 1;
+  let totalAdded = 0;
   let prevCursor: string | undefined;
 
   while (bookmarkCursor) {
@@ -147,22 +147,21 @@ async function fetchInitialPaginated(
     }
     const page: PaginationPage = await response.json();
     if (page.rateLimit) currentRateLimit = page.rateLimit;
-    if (page.bookmarks?.length > 0) bookmarks.push(...page.bookmarks);
+    if (page.bookmarks?.length > 0) {
+      onAdditionalPage(page.bookmarks);
+      totalAdded += page.bookmarks.length;
+    }
     bookmarkCursor = page.bookmarkCursor;
     annotationCursor = page.annotationCursor;
   }
 
-  // Newest-first ordering across all merged pages.
-  bookmarks.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  perf.end("initialDataRemaining");
+  return { pagesLoaded: pageNumber, totalAdded };
+}
 
-  perf.end("initialDataPaginated");
-  return {
-    bookmarks,
-    settings: first.settings,
-    preferences: first.preferences,
-    isSupporter: first.isSupporter,
-    syncing: first.syncing,
-  };
+/** Newest-first comparator. Single source of truth for bookmark order. */
+function sortNewestFirst(a: EnrichedBookmark, b: EnrichedBookmark): number {
+  return b.createdAt.localeCompare(a.createdAt);
 }
 
 /**
@@ -260,6 +259,10 @@ interface AppContextValue extends AppState {
 
   // Sync state (in-flight indicator for the loading spinner)
   isSyncing: boolean;
+  // True once the first page of /api/initial-data has been applied.
+  // Used by App.tsx to drop the full-screen spinner and start rendering
+  // bookmarks while background pagination keeps streaming pages in.
+  firstPageReady: boolean;
 
   // Computed values
   totalBookmarks: number;
@@ -302,6 +305,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSupporter, setIsSupporter] = useState(false);
   const [mirrorSyncing, setMirrorSyncing] = useState(false);
+  // First-page-ready signal: flips true the moment the first page of
+  // /api/initial-data is applied. App.tsx uses this to drop the full-screen
+  // spinner and reveal bookmarks while background pagination keeps running.
+  const [firstPageReady, setFirstPageReady] = useState(false);
 
   // Bookmark actions
   async function loadBookmarks() {
@@ -351,9 +358,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   /** Apply settings/preferences/isSupporter from the first /api/initial-data response. */
-  function applyServerMeta(data: PaginatedInitial) {
-    setSettings(data.settings);
-    setIsSupporter(data.isSupporter);
+  function applyServerMeta(data: InitialDataResponse) {
+    if (data.settings) setSettings(data.settings);
+    if (typeof data.isSupporter === "boolean") setIsSupporter(data.isSupporter);
     setMirrorSyncing(data.syncing ?? false);
     if (data.preferences) {
       const localFormat = getDateFormat();
@@ -373,15 +380,75 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // and post-import refresh all funnel through the same flag.
   const refreshInFlightRef = useRef(false);
 
-  /** Shared fetch-and-apply body for initial load + refresh. */
-  async function fetchAndApply(onProgress?: (page: number) => void) {
-    const [data, tagsList] = await Promise.all([
-      fetchInitialPaginated(onProgress),
-      fetchTagsList(),
-    ]);
-    applyServerMeta(data);
-    setBookmarks(data.bookmarks);
-    setTags(tagsList);
+  /**
+   * Streaming fetch-and-apply.
+   *
+   * 1. Kick off /api/tags fetch in parallel (it doesn't depend on first
+   *    page).
+   * 2. Await first page of /api/initial-data, apply server meta, render
+   *    sorted bookmarks. Flip firstPageReady so App.tsx un-blocks paint.
+   * 3. Stream remaining pages, appending into state and re-sorting per
+   *    chunk.
+   * 4. Tags resolve whenever they resolve and are merged in.
+   */
+  async function fetchAndApply(
+    onProgress?: (page: number) => void,
+  ): Promise<{ bookmarkCount: number; pagesLoaded: number }> {
+    const tagsPromise = fetchTagsList().then((tagsList) => {
+      setTags(tagsList);
+    });
+
+    const first = await fetchFirstPage();
+    applyServerMeta(first);
+    const firstSorted = [...first.bookmarks].sort(sortNewestFirst);
+    setBookmarks(firstSorted);
+    setFirstPageReady(true);
+
+    // Batched flush: stream remaining pages into a buffer, commit to state
+    // either every BATCH_PAGES pages or every BATCH_INTERVAL_MS — whichever
+    // hits first. Avoids the per-chunk re-render storm that drove CLS to
+    // 0.97 and triggered the reading-list enrich effect on every page.
+    const BATCH_PAGES = 5;
+    const BATCH_INTERVAL_MS = 500;
+    const pending: EnrichedBookmark[] = [];
+    let pagesSinceFlush = 0;
+    let flushTimer: number | undefined;
+
+    const flush = () => {
+      if (flushTimer !== undefined) {
+        clearTimeout(flushTimer);
+        flushTimer = undefined;
+      }
+      if (pending.length === 0) return;
+      const chunk = pending.splice(0, pending.length);
+      pagesSinceFlush = 0;
+      // Append-only, no re-sort. The server returns pages in newest-first
+      // cursor order on both mirror + PDS-fallback paths, so concat already
+      // preserves global newest-first ordering. Re-sorting on every flush
+      // re-keys mounted BookmarkCards (CLS storm) for no visual gain.
+      setBookmarks((prev) => prev.concat(chunk));
+    };
+
+    const { pagesLoaded, totalAdded } = await streamRemainingPages(
+      first,
+      (chunk) => {
+        pending.push(...chunk);
+        pagesSinceFlush++;
+        if (pagesSinceFlush >= BATCH_PAGES) {
+          flush();
+        } else if (flushTimer === undefined) {
+          flushTimer = setTimeout(flush, BATCH_INTERVAL_MS);
+        }
+      },
+      onProgress,
+    );
+    flush();
+
+    await tagsPromise;
+    return {
+      bookmarkCount: firstSorted.length + totalAdded,
+      pagesLoaded,
+    };
   }
 
   /**
@@ -395,8 +462,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     refreshInFlightRef.current = true;
     perf.start("loadInitialData");
     setIsSyncing(true);
+    let pagesLoaded = 0;
+    let bookmarkCount = 0;
     try {
-      await fetchAndApply();
+      const result = await fetchAndApply((page) => {
+        pagesLoaded = page;
+      });
+      bookmarkCount = result.bookmarkCount;
+      pagesLoaded = result.pagesLoaded;
     } catch (err) {
       console.error("Failed to load initial data:", err);
       throw err;
@@ -404,6 +477,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       refreshInFlightRef.current = false;
       setIsSyncing(false);
       perf.end("loadInitialData");
+      // Ship perf bundle once initial load lands. Subsequent activity
+      // (INP, late CLS) is captured by the pagehide flush in perf.ts.
+      perf.flush({
+        bookmarks: bookmarkCount,
+        pagesLoaded: pagesLoaded || 1,
+        visibility: "load",
+      });
     }
   }
 
@@ -647,7 +727,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
             const data = await response.json();
             if (data.bookmark) {
               updateBookmark(data.bookmark);
-              failedAttemptsRef.current.delete(bookmark.uri);
+              if (data.bookmark.image) {
+                failedAttemptsRef.current.delete(bookmark.uri);
+              } else {
+                // Server returned 200 but found no image (no og:image,
+                // unreachable URL, etc). Without bumping the retry counter
+                // here, the filter would keep picking this bookmark forever
+                // since `b.image` stays undefined — N+1 storm.
+                const attempts = failedAttemptsRef.current.get(bookmark.uri) ||
+                  0;
+                failedAttemptsRef.current.set(bookmark.uri, attempts + 1);
+              }
+            } else {
+              const attempts = failedAttemptsRef.current.get(bookmark.uri) || 0;
+              failedAttemptsRef.current.set(bookmark.uri, attempts + 1);
             }
           } else {
             const attempts = failedAttemptsRef.current.get(bookmark.uri) || 0;
@@ -702,6 +795,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setBookmarkSearchQuery,
     setReadingListSearchQuery,
     isSyncing,
+    firstPageReady,
     totalBookmarks: bookmarks.length,
     totalReadingList: readingListBookmarks.length,
     filteredBookmarks,

@@ -38,9 +38,13 @@ function useIncrementalRender(total: number, pageSize = 100) {
     return () => observer.disconnect();
   }, [visible, total, pageSize]);
 
-  // Reset when total changes significantly (e.g., filter applied)
+  // Snap `visible` back to pageSize only when `total` shrinks (e.g., a
+  // filter is applied or bookmarks were deleted). Resetting on every
+  // change of `total` would cause the list to remount cards every time
+  // /api/initial-data streams in another batched flush — each remount
+  // grows the rendered list by `pageSize - 50` rows and torches CLS.
   useEffect(() => {
-    setVisible(pageSize);
+    setVisible((v) => v > total ? Math.min(pageSize, total) : v);
   }, [total, pageSize]);
 
   return { visible, sentinelRef };

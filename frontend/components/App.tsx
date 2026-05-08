@@ -23,11 +23,20 @@ import { saveIdentity } from "../utils/saved-identities.ts";
 type ViewType = "bookmarks" | "reading-list";
 
 export function App() {
-  const { session, setSession, loadInitialData, isSupporter, mirrorSyncing } =
-    useApp();
+  const {
+    session,
+    setSession,
+    loadInitialData,
+    isSupporter,
+    mirrorSyncing,
+    firstPageReady,
+  } = useApp();
   const [loading, setLoading] = useState(true);
-  const [dataLoading, setDataLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // True while initial /api/initial-data is in-flight (kept alongside
+  // firstPageReady so retries can re-spin the loader between an error and
+  // the first page of the next attempt).
+  const [initialLoadInFlight, setInitialLoadInFlight] = useState(false);
   const [currentPath, setCurrentPath] = useState(globalThis.location.pathname);
   const [currentView, setCurrentView] = useState<ViewType>("bookmarks");
 
@@ -55,7 +64,7 @@ export function App() {
 
   function runInitialLoad() {
     setLoadError(null);
-    setDataLoading(true);
+    setInitialLoadInFlight(true);
     loadInitialData()
       .catch((error) => {
         console.error("Failed to load initial data:", error);
@@ -64,13 +73,13 @@ export function App() {
         );
       })
       .finally(() => {
-        setDataLoading(false);
+        setInitialLoadInFlight(false);
       });
   }
 
   // Load initial data after session is confirmed
   useEffect(() => {
-    if (session && !dataLoading) {
+    if (session && !initialLoadInFlight && !firstPageReady) {
       runInitialLoad();
     }
   }, [session]);
@@ -154,7 +163,14 @@ export function App() {
     }
   }
 
-  if (loading || dataLoading) {
+  // Show spinner while session probe runs, or while the very first page of
+  // /api/initial-data is in flight (no bookmarks visible yet). Once the
+  // first page lands (firstPageReady), drop the spinner — background
+  // pagination keeps streaming pages in via the streamRemainingPages loop.
+  if (
+    loading ||
+    (session && !firstPageReady && initialLoadInFlight && !loadError)
+  ) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="spinner"></div>
