@@ -11,8 +11,21 @@ import { initOAuth } from "../lib/oauth-config.ts";
 import { setTestSessionProvider } from "../lib/session.ts";
 import { createMockSessionResult } from "./test-helpers.ts";
 
-initOAuth(new Request("https://kipclip.com"));
-const handler = app.handler();
+initOAuth(new URL("https://kipclip.com"));
+const baseHandler = app.handler();
+// Inject loopback conn info so the /api/sync/hook ipFilter middleware
+// (allowList: 127.0.0.1, ::1) accepts every request through this handler.
+// Without this the default conn info reports hostname "localhost" which
+// is not a valid IP literal and the filter rejects it.
+const loopbackConn = {
+  remoteAddr: {
+    transport: "tcp" as const,
+    hostname: "127.0.0.1",
+    port: 1234,
+  },
+  completed: Promise.resolve(),
+} as unknown as Deno.ServeHandlerInfo;
+const handler = (req: Request) => baseHandler(req, loopbackConn);
 
 const SESSION_DID = "did:plc:test123";
 const OTHER_DID = "did:plc:other999";
@@ -238,6 +251,46 @@ Deno.test("POST /api/sync/hook - 403 when URL hostname is not localhost", async 
     }),
   );
   assertEquals(res.status, 403);
+});
+
+Deno.test("POST /api/sync/hook - ipFilter rejects non-loopback remoteAddr", async () => {
+  const externalConn = {
+    remoteAddr: {
+      transport: "tcp" as const,
+      hostname: "203.0.113.42",
+      port: 1234,
+    },
+    completed: Promise.resolve(),
+  } as unknown as Deno.ServeHandlerInfo;
+  const res = await baseHandler(
+    new Request("http://127.0.0.1:8000/api/sync/hook", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: 0, type: "unknown" }),
+    }),
+    externalConn,
+  );
+  assertEquals(res.status, 403);
+  // Filter responds before the route handler runs, so the body shape
+  // differs from the handler's JSON 403 ("Webhook endpoint is localhost-only").
+  assertEquals(await res.text(), "Forbidden");
+});
+
+Deno.test("POST /api/sync/hook - ipFilter allows ::1 (IPv6 loopback)", async () => {
+  const v6Conn = {
+    remoteAddr: { transport: "tcp" as const, hostname: "::1", port: 1234 },
+    completed: Promise.resolve(),
+  } as unknown as Deno.ServeHandlerInfo;
+  const res = await baseHandler(
+    new Request("http://127.0.0.1:8000/api/sync/hook", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: 0, type: "unknown" }),
+    }),
+    v6Conn,
+  );
+  // Filter passes through; handler runs and returns 200 for unknown type.
+  assertEquals(res.status, 200);
 });
 
 // Auto-incrementing event id. The mirror's replay-protection layer

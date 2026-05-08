@@ -23,12 +23,15 @@ export function getBaseUrl(): string {
 }
 
 /**
- * Initialize OAuth with the given request.
- * If BASE_URL env var is set, uses that. Otherwise derives from request.
+ * Initialize OAuth with the given request URL.
+ * If BASE_URL env var is set, uses that. Otherwise derives from URL.
+ * Pass `ctx.url` from a Fresh handler — when `trustProxy` is enabled on the
+ * App, Fresh has already applied X-Forwarded-Proto/X-Forwarded-Host so the
+ * URL reflects the public scheme and host.
  * Safe to call multiple times - only initializes once.
  */
 export function initOAuth(
-  request: Request,
+  url: URL,
 ): ReturnType<typeof createATProtoOAuth> {
   if (oauth) return oauth;
 
@@ -38,18 +41,14 @@ export function initOAuth(
     throw new Error("COOKIE_SECRET environment variable is required");
   }
 
-  // Use BASE_URL from environment, or derive from request if not set
+  // Use BASE_URL from environment, or derive from request URL if not set
   if (!baseUrl) {
     const envBaseUrl = Deno.env.get("BASE_URL");
     if (envBaseUrl) {
       baseUrl = envBaseUrl;
       console.log(`Using BASE_URL from environment: ${baseUrl}`);
     } else {
-      const url = new URL(request.url);
-      // Check for X-Forwarded-Proto header (set by ngrok and other proxies)
-      const forwardedProto = request.headers.get("X-Forwarded-Proto");
-      const protocol = forwardedProto || url.protocol.replace(":", "");
-      baseUrl = `${protocol}://${url.host}`;
+      baseUrl = `${url.protocol.replace(":", "")}://${url.host}`;
       console.log(`Derived BASE_URL from request: ${baseUrl}`);
     }
   }

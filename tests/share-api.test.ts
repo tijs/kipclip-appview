@@ -14,7 +14,7 @@ import { app } from "../main.ts";
 import { initOAuth } from "../lib/oauth-config.ts";
 import { encodeTagsForUrl } from "../shared/utils.ts";
 
-initOAuth(new Request("https://kipclip.com"));
+initOAuth(new URL("https://kipclip.com"));
 const handler = app.handler();
 
 const TEST_DID = "did:plc:sharetest";

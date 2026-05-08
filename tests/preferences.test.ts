@@ -9,7 +9,7 @@ import { assertEquals } from "@std/assert";
 import { app } from "../main.ts";
 import { initOAuth } from "../lib/oauth-config.ts";
 
-initOAuth(new Request("https://kipclip.com"));
+initOAuth(new URL("https://kipclip.com"));
 
 const handler = app.handler();
 

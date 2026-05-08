@@ -14,7 +14,7 @@ import {
   listRecordsResponse,
 } from "./test-helpers.ts";
 
-initOAuth(new Request("https://kipclip.com"));
+initOAuth(new URL("https://kipclip.com"));
 const handler = app.handler();
 
 // Helper to create a multipart form request with a file

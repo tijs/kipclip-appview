@@ -12,7 +12,7 @@ import { setTestSessionProvider } from "../lib/session.ts";
 import { createMockSessionResult } from "./test-helpers.ts";
 
 // Initialize OAuth with test URL
-initOAuth(new Request("https://kipclip.com"));
+initOAuth(new URL("https://kipclip.com"));
 const handler = app.handler();
 
 Deno.test("GET /api/settings - returns 401 when not authenticated", async () => {

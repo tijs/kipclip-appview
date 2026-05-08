@@ -12,7 +12,7 @@ try {
   console.warn("⚠️ Failed to load .env file:", error.message);
 }
 
-import { App, staticFiles } from "@fresh/core";
+import { App, ipFilter, staticFiles } from "@fresh/core";
 import { initializeTables } from "./lib/db.ts";
 import { logMirrorMode } from "./lib/mirror-config.ts";
 import { initOAuth } from "./lib/oauth-config.ts";
@@ -45,7 +45,7 @@ await initializeTables();
 logMirrorMode();
 
 // Create the Fresh app
-let app = new App();
+let app = new App({ trustProxy: true });
 
 // ============================================================================
 // Middleware
@@ -63,7 +63,7 @@ app = app.use(async (ctx) => {
 
 // Initialize OAuth on first request (derives BASE_URL from request if not set)
 app = app.use(async (ctx) => {
-  initOAuth(ctx.req);
+  initOAuth(ctx.url);
   return await ctx.next();
 });
 
@@ -134,6 +134,14 @@ app = registerPreferencesRoutes(app);
 
 // Share API routes (public bookmark sharing)
 app = registerShareApiRoutes(app);
+
+// TAP webhook is loopback-only. Caddy already 403s external requests on
+// public hosts; this is defense-in-depth at the app layer (and the only
+// gate when running on Deno Deploy without Caddy in front).
+app = app.use(
+  "/api/sync/hook",
+  ipFilter({ allowList: ["127.0.0.1", "::1"] }),
+);
 
 // Sync API routes (mirror tracking + TAP webhook)
 app = registerSyncRoutes(app);

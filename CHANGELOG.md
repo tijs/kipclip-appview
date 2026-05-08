@@ -4,6 +4,22 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Upgraded `@fresh/core` from 2.2.0 to 2.3.3.
+- `App` now constructed with `trustProxy: true`. Fresh applies
+  `X-Forwarded-Proto` and `X-Forwarded-Host` to `ctx.url` itself, so the
+  hand-rolled proxy header parsing in `lib/oauth-config.ts` was removed.
+  `initOAuth` now takes a `URL` (`ctx.url`) instead of a `Request`.
+
+### Security
+
+- `/api/sync/hook` is now wrapped with Fresh's `ipFilter` middleware
+  (`allowList: ["127.0.0.1", "::1"]`). This is a third defence layer on top of
+  the Caddy 403 on public hosts and the handler's Basic-auth check. On Deno
+  Deploy (no Caddy in front) the filter becomes the primary gate; TAP only fires
+  to the box, so legitimate traffic is unaffected.
+
 ## [0.16.3] - 2026-05-08
 
 ### Fixed

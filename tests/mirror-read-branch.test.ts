@@ -21,7 +21,7 @@ import {
   upsertTrackedDid,
 } from "../mirror/upserts.ts";
 
-initOAuth(new Request("https://kipclip.com"));
+initOAuth(new URL("https://kipclip.com"));
 const handler = app.handler();
 
 const DID = "did:plc:test123";
