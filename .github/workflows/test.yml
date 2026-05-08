@@ -26,6 +26,7 @@ jobs:
         env:
           KIPCLIP_TESTING: "1"
           KIPCLIP_MANIFEST_PATH: tests/fixtures/manifest.test.json
+          DATABASE_URL: "file::memory:"
           TURSO_DATABASE_URL: "file::memory:"
           COOKIE_SECRET: test-cookie-secret-32-characters-minimum
           ENCRYPTION_KEY: test-encryption-key-for-unit-tests-only-minimum-32-chars
