@@ -11,7 +11,7 @@
  * before writing — defends against caller bugs that would mix DIDs across rows.
  */
 
-import { db, mirrorWrite, mirrorWriteEnabled } from "../lib/db.ts";
+import { db, mirrorWrite } from "../lib/db.ts";
 
 export interface BookmarkUpsert {
   uri: string;

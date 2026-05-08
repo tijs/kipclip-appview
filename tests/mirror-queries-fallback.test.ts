@@ -12,7 +12,7 @@
  */
 
 import "./test-setup.ts";
-import { clearMirrorTables, db } from "./mirror-test-setup.ts";
+import { clearMirrorTables } from "./mirror-test-setup.ts";
 
 import { assertEquals, assertExists } from "@std/assert";
 import { mirrorRead } from "../lib/db.ts";
