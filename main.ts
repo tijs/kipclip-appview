@@ -3,21 +3,10 @@
  * Orchestrates route registration and middleware setup.
  */
 
-// Load environment variables from .env file (local development).
-// Skipped under KIPCLIP_TESTING — tests set every env var they need on the
-// `deno task test` command line, and re-importing .env here would bring back
-// the developer's real SENTRY_DSN even after tests/test-setup.ts opted out.
-if (!Deno.env.get("KIPCLIP_TESTING")) {
-  const { load } = await import("@std/dotenv");
-  try {
-    await load({ export: true });
-    console.log("✅ Loaded .env file");
-  } catch (error) {
-    console.warn("⚠️ Failed to load .env file:", (error as Error).message);
-  }
-}
-
 import { App, staticFiles } from "@fresh/core";
+// Static import required — dynamic import inside a conditional is not bundled
+// by Deno Deploy. The load() call is gated instead (not the import).
+import { load } from "@std/dotenv";
 import { initializeTables } from "./lib/db.ts";
 import { logMirrorMode } from "./lib/mirror-config.ts";
 import { initOAuth, tryInitOAuthFromEnv } from "./lib/oauth-config.ts";
@@ -43,6 +32,19 @@ import { registerOAuthRoutes } from "./routes/oauth.ts";
 import { registerRssRoutes } from "./routes/share/rss.ts";
 import { registerShareTargetRoutes } from "./routes/share-target.ts";
 import { registerStaticRoutes } from "./routes/static.ts";
+
+// Load environment variables from .env file (local development).
+// Skipped under KIPCLIP_TESTING — tests set every env var they need on the
+// `deno task test` command line, and loading .env here would bring back
+// the developer's real SENTRY_DSN even after tests/test-setup.ts opted out.
+if (!Deno.env.get("KIPCLIP_TESTING")) {
+  try {
+    await load({ export: true });
+    console.log("✅ Loaded .env file");
+  } catch (error) {
+    console.warn("⚠️ Failed to load .env file:", (error as Error).message);
+  }
+}
 
 // Run database migrations on startup
 await initializeTables();
