@@ -122,6 +122,31 @@ if (isTestDb) {
 export { db, remoteDb };
 
 /**
+ * Session-aware dual-write client. Wraps the primary db but fans out non-SELECT
+ * queries to remoteDb synchronously when MIRROR_DUAL_WRITE=on. Both writes must
+ * succeed — unlike mirror tables (which can re-sync via TAP), sessions cannot be
+ * recovered from PDS, so a silent remote failure on logout would leave a phantom
+ * valid session on the Deno Deploy fallback instance.
+ *
+ * Pass to sqliteAdapter() in oauth-config.ts instead of the bare db.
+ */
+export const sessionDb: DbClient = {
+  execute: async (
+    query: { sql: string; args: unknown[] },
+  ): Promise<{ rows: unknown[][]; rowsAffected: number }> => {
+    const isWrite = !/^\s*SELECT\b/i.test(query.sql);
+    if (isWrite && mirrorWriteEnabled() && remoteDb) {
+      const [primaryResult] = await Promise.all([
+        db.execute(query),
+        remoteDb.execute(query),
+      ]);
+      return primaryResult;
+    }
+    return db.execute(query);
+  },
+};
+
+/**
  * Test-only: install a fake remoteDb so suites can exercise the dual-write
  * code path without provisioning a real remote Turso connection. Pass null to
  * restore the default (no remote DB).

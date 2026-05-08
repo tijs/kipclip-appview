@@ -6,7 +6,7 @@
 
 import { createATProtoOAuth } from "@tijs/atproto-oauth";
 import { sqliteAdapter, SQLiteStorage } from "@tijs/atproto-storage";
-import { db } from "./db.ts";
+import { sessionDb } from "./db.ts";
 import { OAUTH_SCOPES } from "./route-utils.ts";
 
 let oauth: ReturnType<typeof createATProtoOAuth> | null = null;
@@ -37,7 +37,7 @@ function buildOAuth(resolvedBaseUrl: string) {
     cookieSecret: COOKIE_SECRET,
     sessionTtl: 60 * 60 * 24 * 14,
     scope: OAUTH_SCOPES,
-    storage: new SQLiteStorage(sqliteAdapter(db), {
+    storage: new SQLiteStorage(sqliteAdapter(sessionDb), {
       tableName: "iron_session_storage",
     }),
   });
