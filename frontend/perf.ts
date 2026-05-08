@@ -59,7 +59,16 @@ export const perf = {
 
   /**
    * Ship the current perf bundle to /api/metrics via sendBeacon.
-   * Idempotent: only fires once per page load unless force=true.
+   *
+   * Idempotent: only fires once per page load unless `force=true`. The
+   * load-time flush from `loadInitialData` is the no-force call; the
+   * `pagehide` listener at the bottom of this module passes `force=true`
+   * to capture late LCP/INP that arrived after the initial flush.
+   *
+   * Note: this means subsequent `refreshData` cycles do NOT emit a fresh
+   * beacon, since they share the same page lifecycle. If we ever want
+   * per-refresh perf tracking, route refresh metrics through a separate
+   * endpoint or pass `force=true` from the refresh path.
    */
   flush(
     meta: {

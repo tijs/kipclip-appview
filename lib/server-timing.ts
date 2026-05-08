@@ -36,9 +36,14 @@ export interface Timer {
 const NAME_RE = /^[a-z0-9-]+$/;
 
 function safeName(name: string): string {
-  return NAME_RE.test(name)
-    ? name
-    : name.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+  if (NAME_RE.test(name)) return name;
+  // Strip non-token chars and trim leading/trailing hyphens so we can never
+  // emit `Server-Timing: ;dur=…` (RFC 8941 violation; some browsers drop
+  // the entire header).
+  const cleaned = name.toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return cleaned || "span";
 }
 
 export function createTimer(): Timer {

@@ -159,11 +159,6 @@ async function streamRemainingPages(
   return { pagesLoaded: pageNumber, totalAdded };
 }
 
-/** Newest-first comparator. Single source of truth for bookmark order. */
-function sortNewestFirst(a: EnrichedBookmark, b: EnrichedBookmark): number {
-  return b.createdAt.localeCompare(a.createdAt);
-}
-
 /**
  * Fetch /api/tags. Fail-soft so a transient tag-fetch error does not block
  * the bookmark render path (we fire bookmarks + tags in parallel).
@@ -400,14 +395,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const first = await fetchFirstPage();
     applyServerMeta(first);
-    const firstSorted = [...first.bookmarks].sort(sortNewestFirst);
-    setBookmarks(firstSorted);
+    // Trust the server's cursor order rather than re-sorting by createdAt.
+    // Mirror returns (created_at, uri) DESC; PDS-fallback returns rkey-desc
+    // (reverse:true). For all-TID rkeys these are equivalent; legacy hex
+    // rkeys would otherwise produce a discontinuity at every page boundary
+    // (first 50 ordered by createdAt, rest by rkey).
+    setBookmarks(first.bookmarks);
     setFirstPageReady(true);
 
     // Batched flush: stream remaining pages into a buffer, commit to state
     // either every BATCH_PAGES pages or every BATCH_INTERVAL_MS — whichever
     // hits first. Avoids the per-chunk re-render storm that drove CLS to
     // 0.97 and triggered the reading-list enrich effect on every page.
+    // Constants picked from local profiling on a 3000-bookmark library:
+    //   BATCH_PAGES=5 keeps the flush count under ~7 for a typical user
+    //     (32 pages → 7 flushes); BATCH_PAGES=10 was visibly bursty.
+    //   BATCH_INTERVAL_MS=500 catches stragglers when a network hiccup
+    //     stretches a single page past the per-page cadence.
     const BATCH_PAGES = 5;
     const BATCH_INTERVAL_MS = 500;
     const pending: EnrichedBookmark[] = [];
@@ -422,31 +426,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (pending.length === 0) return;
       const chunk = pending.splice(0, pending.length);
       pagesSinceFlush = 0;
-      // Append-only, no re-sort. The server returns pages in newest-first
-      // cursor order on both mirror + PDS-fallback paths, so concat already
-      // preserves global newest-first ordering. Re-sorting on every flush
-      // re-keys mounted BookmarkCards (CLS storm) for no visual gain.
+      // Append-only, no re-sort. See comment above: server cursor order is
+      // already globally consistent so concat preserves it.
       setBookmarks((prev) => prev.concat(chunk));
     };
 
-    const { pagesLoaded, totalAdded } = await streamRemainingPages(
-      first,
-      (chunk) => {
-        pending.push(...chunk);
-        pagesSinceFlush++;
-        if (pagesSinceFlush >= BATCH_PAGES) {
-          flush();
-        } else if (flushTimer === undefined) {
-          flushTimer = setTimeout(flush, BATCH_INTERVAL_MS);
-        }
-      },
-      onProgress,
-    );
-    flush();
+    let pagesLoaded = 1;
+    let totalAdded = 0;
+    try {
+      const result = await streamRemainingPages(
+        first,
+        (chunk) => {
+          pending.push(...chunk);
+          pagesSinceFlush++;
+          if (pagesSinceFlush >= BATCH_PAGES) {
+            flush();
+          } else if (flushTimer === undefined) {
+            flushTimer = setTimeout(flush, BATCH_INTERVAL_MS);
+          }
+        },
+        onProgress,
+      );
+      pagesLoaded = result.pagesLoaded;
+      totalAdded = result.totalAdded;
+    } finally {
+      // Always commit the buffered tail. Without this, a network blip on
+      // page N would silently drop the last <BATCH_PAGES pages of buffered
+      // bookmarks — user sees a partial library + an error toast and
+      // assumes data was lost.
+      flush();
+    }
 
     await tagsPromise;
     return {
-      bookmarkCount: firstSorted.length + totalAdded,
+      bookmarkCount: first.bookmarks.length + totalAdded,
       pagesLoaded,
     };
   }
@@ -460,6 +473,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   async function loadInitialData() {
     if (refreshInFlightRef.current) return;
     refreshInFlightRef.current = true;
+    // Reset firstPageReady so a retry after a load error re-shows the
+    // full-screen spinner instead of leaving the prior partial library
+    // visible while the new fetch is in flight.
+    setFirstPageReady(false);
     perf.start("loadInitialData");
     setIsSyncing(true);
     let pagesLoaded = 0;
