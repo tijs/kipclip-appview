@@ -4,6 +4,16 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.16.2] - 2026-05-08
+
+### Changed
+
+- Reading-list re-enrichment now schedules its background batches via
+  `requestIdleCallback` (with a 5s timeout fallback) instead of a fixed 1s
+  `setTimeout`. The browser only runs the enrich pass during idle windows, so it
+  can no longer compete with active scrolling or typing for main-thread time.
+  Falls back to setTimeout on browsers without rIC support.
+
 ## [0.16.1] - 2026-05-08
 
 ### Changed

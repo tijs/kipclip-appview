@@ -773,8 +773,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    const timeoutId = setTimeout(enrichBatch, 1000);
-    return () => clearTimeout(timeoutId);
+    // Schedule the enrich batch only when the browser reports an idle
+    // window. Each batch only fetches 3 bookmarks, but the cascade
+    // (updateBookmark -> readingListBookmarks change -> effect re-runs)
+    // means streaming the full reading list through enrichment generates
+    // up to ~MAX_ENRICHMENT_RETRIES * <count> background HTTP requests
+    // over a few seconds. Pushing it behind requestIdleCallback keeps
+    // those requests off the main thread while the user is actively
+    // scrolling, typing, or interacting.
+    //
+    // Fallback to setTimeout(1000) on browsers without requestIdleCallback
+    // (Safari shipped it in 17.4 — older iOS versions still need it).
+    const ric = (globalThis as any).requestIdleCallback;
+    const cic = (globalThis as any).cancelIdleCallback;
+    let handle: number | undefined;
+    if (typeof ric === "function") {
+      // timeout=5000 ensures the batch eventually fires even if the page
+      // stays busy (e.g., long-running streaming flush). Without a cap
+      // a busy tab could starve enrichment forever.
+      handle = ric(enrichBatch, { timeout: 5000 });
+      return () => {
+        if (handle !== undefined && typeof cic === "function") {
+          cic(handle);
+        }
+      };
+    }
+    handle = setTimeout(enrichBatch, 1000) as unknown as number;
+    return () => {
+      if (handle !== undefined) clearTimeout(handle);
+    };
   }, [readingListBookmarks]);
 
   const value: AppContextValue = {
