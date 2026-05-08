@@ -4,6 +4,16 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-05-08
+
+### Changed
+
+- Mirror page size for the initial-load streaming fetcher bumped from 50 to 200.
+  Cuts the background pagination round-trip count from ~61 pages to ~16 on a
+  3000-bookmark library, shaving ~3s off background streaming time. Local sqlite
+  handles 200-row scans in under 30ms. PDS-fallback callers still cap at 100
+  (rate-limit + listRecords ceiling).
+
 ## [0.16.0] - 2026-05-08
 
 ### Changed

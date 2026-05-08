@@ -36,7 +36,13 @@ export interface PageResult {
   cursor?: string;
 }
 
-const DEFAULT_PAGE_SIZE = 50;
+// Mirror reads come from local sqlite; row scan + JSON encode for 200 rows
+// is sub-30ms even on a 3000-bookmark library. Larger pages cut the
+// round-trip count for the streaming initial-load fetcher (61 -> ~16
+// pages on a 3k library) and shave ~3s off background streaming time.
+// PDS-fallback callers cap at 100 (PDS rate-limit + listRecords ceiling)
+// via a separate constant in route-utils.ts.
+const DEFAULT_PAGE_SIZE = 200;
 
 const BOOKMARK_SELECT = `
   SELECT
