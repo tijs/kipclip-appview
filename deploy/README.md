@@ -41,10 +41,11 @@ sudo systemctl start kipclip
 ## Provisioning (U1)
 
 1. **Create CAX21** (4 vCPU ARM, 8GB RAM, 80GB SSD) — Falkenstein or Helsinki,
-   Debian 12 base image.
-2. **Hostname:** `kipclip-box-01`. Apply unattended-upgrades:
+   Debian 13 base image. Hostname: `kipclip-box-01`.
+2. **Prereqs** (Caddy, restic, git, jq, sqlite3, fail2ban, unattended-upgrades,
+   golang, build tools, curl, unzip):
    ```bash
-   sudo apt update && sudo apt install -y unattended-upgrades
+   sudo deploy/release/install-prereqs.sh
    ```
 3. **System users** (no login):
    ```bash
@@ -56,15 +57,11 @@ sudo systemctl start kipclip
    ```
 4. **Deno:**
    ```bash
-   curl -fsSL https://deno.land/install.sh | sudo DENO_INSTALL=/opt/deno sh
+   sudo deploy/release/install-deno.sh
    ```
-5. **Caddy:** Debian repo
-   (https://caddyserver.com/docs/install#debian-ubuntu-raspbian).
-6. **Tools:**
-   ```bash
-   sudo apt install -y restic git jq sqlite3 fail2ban
-   ```
-7. **SSH hardening:** keys-only, fail2ban, no root login.
+   After bootstrap, `deno-update.timer` keeps it current weekly.
+5. **SSH hardening:** keys-only, fail2ban (auto-enabled by install-prereqs.sh),
+   no root login.
 
 ## DNS + Caddy (U2)
 
@@ -75,17 +72,15 @@ sudo systemctl start kipclip
 
 ## App deploy (U3)
 
-1. **Env file** at `/etc/kipclip/env` (no quotes, one per line):
+1. **Env file** at `/etc/kipclip/env`. Copy `deploy/kipclip.env.example` to the
+   box and fill in secrets:
+   ```bash
+   sudo cp deploy/kipclip.env.example /etc/kipclip/env
+   sudo $EDITOR /etc/kipclip/env
+   sudo chown root:kipclip /etc/kipclip/env && sudo chmod 640 /etc/kipclip/env
    ```
-   COOKIE_SECRET=<same as Deno Deploy>
-   BASE_URL=https://staging.kipclip.com
-   TURSO_DATABASE_URL=<shared with prod during phases 0-2>
-   TURSO_AUTH_TOKEN=<shared with prod>
-   SENTRY_DSN=<same DSN>
-   MIRROR_MODE=off
-   ```
-   Locked down:
-   `sudo chown root:kipclip /etc/kipclip/env && sudo chmod 640 /etc/kipclip/env`.
+   Same for restic (`deploy/restic.env.example` → `/etc/kipclip/restic.env`) and
+   TAP (`/etc/tap/env` — schema documented in `deploy/tap.config.example`).
 2. **Initial clone** (operator machine):
    ```bash
    ssh box 'sudo install -d -o kipclip -g kipclip /var/lib/kipclip/app'
