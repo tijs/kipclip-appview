@@ -1,53 +1,61 @@
 # kipclip box ops runbook
 
-This directory holds the deploy artefacts for the staging Hetzner CAX21 box that
-hosts `staging.kipclip.com` during phases 0–2 of the AppView mirror migration
-(see `docs/plans/2026-05-02-001-feat-appview-mirror-phases-0-2-plan.md`).
+Deploy artefacts for the production Hetzner box that serves `kipclip.com`. The
+box runs the Fresh server, a local libSQL mirror of every tracked user's
+bookmark data, restic backups to B2, Caddy as the TLS edge, and TAP (an indigo
+atproto sync utility) which firehoses events into a webhook on the box.
+
+For the release flow itself (pull-based tags, pin override, rollback), see
+`deploy/release/README.md`.
 
 ## Quick reference
 
 ```bash
-# Deploy from operator's machine
-./deploy/deploy.sh                             # syncs + builds + restarts
-
 # On the box
 sudo systemctl status kipclip                  # app health
 sudo systemctl status tap                      # TAP firehose subscriber
 sudo systemctl restart kipclip                 # restart app
 sudo journalctl -u kipclip -f                  # follow app logs
 sudo journalctl -u tap -f                      # follow TAP logs
+sudo journalctl --disk-usage                   # journal size (capped at 1G)
 
-# Track owner DID for sync (after auth on staging)
+# Release flow (see deploy/release/README.md for full runbook)
+sudo systemctl list-timers kipclip-release.timer tap-update.timer deno-update.timer
+
+# Track a DID for sync (after auth)
 curl -X POST http://127.0.0.1:8000/api/sync/track \
   -H "Content-Type: application/json" \
-  -H "Cookie: sid=<owner-session-cookie>" \
+  -H "Cookie: sid=<session-cookie>" \
   -d '{"did":"did:plc:..."}'
 
 # Inspect mirror state
-sqlite3 /var/lib/kipclip/db.sqlite '.tables'
-sqlite3 /var/lib/kipclip/db.sqlite 'SELECT COUNT(*) FROM bookmarks WHERE did = ?'
+sqlite3 /var/lib/kipclip/mirror.db '.tables'
+sqlite3 /var/lib/kipclip/mirror.db 'SELECT COUNT(*) FROM bookmarks WHERE did = ?'
 
 # Validate mirror against PDS
-deno run -A /var/lib/kipclip/app/scripts/mirror-diff.ts did:plc:...
+deno run -A /var/lib/kipclip/current/scripts/mirror-diff.ts did:plc:...
 
 # Restore from restic snapshot
-restic snapshots
-restic restore <id> --target /tmp/restore
+sudo -E env $(cat /etc/kipclip/restic.env) restic snapshots
+sudo -E env $(cat /etc/kipclip/restic.env) restic restore <id> --target /tmp/restore
 sudo systemctl stop kipclip
-sudo cp /tmp/restore/.../db.sqlite /var/lib/kipclip/db.sqlite
+sudo cp /tmp/restore/var/lib/kipclip/mirror.db /var/lib/kipclip/mirror.db
 sudo systemctl start kipclip
 ```
 
-## Provisioning (U1)
+## Bootstrapping a fresh box
 
-1. **Create CAX21** (4 vCPU ARM, 8GB RAM, 80GB SSD) — Falkenstein or Helsinki,
-   Debian 13 base image. Hostname: `kipclip-box-01`.
-2. **Prereqs** (Caddy, restic, git, jq, sqlite3, fail2ban, unattended-upgrades,
-   golang, build tools, curl, unzip):
+Run on a clean Debian 13 host. Total time ~5 minutes excluding manual env-file
+edits.
+
+1. **Create CAX21** (4 vCPU ARM, 8GB RAM, 80GB SSD) — Falkenstein or Helsinki.
+   Hostname: `kipclip-box-01`.
+2. **OS prereqs** (Caddy, restic, git, jq, sqlite3, fail2ban,
+   unattended-upgrades, golang for TAP, build tools, curl, unzip):
    ```bash
    sudo deploy/release/install-prereqs.sh
    ```
-3. **System users** (no login):
+3. **System users** (no login shells):
    ```bash
    sudo useradd --system --shell /usr/sbin/nologin --home-dir /var/lib/kipclip kipclip
    sudo useradd --system --shell /usr/sbin/nologin --home-dir /var/lib/tap tap
@@ -55,111 +63,104 @@ sudo systemctl start kipclip
    sudo install -d -o tap -g tap /var/lib/tap
    sudo install -d /var/log/kipclip /var/log/tap /etc/kipclip /etc/tap
    ```
-4. **Deno:**
+4. **Deno runtime**:
    ```bash
    sudo deploy/release/install-deno.sh
    ```
-   After bootstrap, `deno-update.timer` keeps it current weekly.
-5. **SSH hardening:** keys-only, fail2ban (auto-enabled by install-prereqs.sh),
-   no root login.
-
-## DNS + Caddy (U2)
-
-1. Add A record `staging.kipclip.com → <box-ip>`, TTL 300.
-2. Drop `deploy/Caddyfile` to `/etc/caddy/Caddyfile`.
-3. `sudo systemctl reload caddy`. Caddy auto-issues Let's Encrypt cert on first
-   request. Verify: `curl -I https://staging.kipclip.com`.
-
-## App deploy (U3)
-
-1. **Env file** at `/etc/kipclip/env`. Copy `deploy/kipclip.env.example` to the
-   box and fill in secrets:
+   `deno-update.timer` keeps it current weekly after this.
+5. **Env files** (out-of-band — never committed). Schema is documented in the
+   example files:
    ```bash
-   sudo cp deploy/kipclip.env.example /etc/kipclip/env
-   sudo $EDITOR /etc/kipclip/env
-   sudo chown root:kipclip /etc/kipclip/env && sudo chmod 640 /etc/kipclip/env
+   sudo cp deploy/kipclip.env.example /etc/kipclip/env       # fill in
+   sudo cp deploy/restic.env.example /etc/kipclip/restic.env # fill in
+   # /etc/tap/env: see deploy/tap.config.example for keys
+   sudo chown root:kipclip /etc/kipclip/env /etc/kipclip/restic.env
+   sudo chmod 0640 /etc/kipclip/env
+   sudo chmod 0600 /etc/kipclip/restic.env
+   sudo chown root:tap /etc/tap/env && sudo chmod 0640 /etc/tap/env
    ```
-   Same for restic (`deploy/restic.env.example` → `/etc/kipclip/restic.env`) and
-   TAP (`/etc/tap/env` — schema documented in `deploy/tap.config.example`).
-2. **Initial clone** (operator machine):
+6. **DNS**: A record `kipclip.com → <box-ip>`, TTL 300. Caddy auto-issues Let's
+   Encrypt cert on first request.
+7. **Bootstrap**:
    ```bash
-   ssh box 'sudo install -d -o kipclip -g kipclip /var/lib/kipclip/app'
-   ./deploy/deploy.sh
+   sudo deploy/release/bootstrap.sh
    ```
-3. **Enable services:**
+   Installs systemd units, sudoers, Caddyfile, journald cap, and enables every
+   timer. Triggers the first release synchronously so failure is loud.
+8. **TAP install** (one-off):
    ```bash
-   sudo systemctl enable --now kipclip
-   ```
-4. **Verify:** owner logs in at `https://staging.kipclip.com`, browses, logs
-   out. Sentry events tagged `deployment=box`.
-
-## Backups (U4 — deferred to phase 3)
-
-> **Status:** Skipped during phases 0–2. Hetzner Cloud's daily VPS snapshot is
-> enabled on the box and covers infra recovery. Mirror tables, TAP cursor,
-> sessions on Turso, and app code are all regeneratable. Restic becomes required
-> at phase 3 when sessions move to local libSQL — land it BEFORE the DNS
-> cutover.
-
-When phase 3 lands, complete the following:
-
-1. Provision Hetzner Storage Box. Note SFTP endpoint + user.
-2. Initialise repo:
-   ```bash
-   sudo install -d -o root -g root -m 700 /etc/kipclip
-   sudo tee /etc/kipclip/restic.env <<EOF
+   sudo install -d -o tap -g tap /var/lib/tap/build
+   sudo -u tap git clone https://github.com/bluesky-social/indigo.git \
+     /var/lib/tap/build/indigo
+   sudo systemctl start tap-update.service   # builds + installs /opt/tap/tap
+   sudo systemctl enable --now tap
    ```
 
-RESTIC_REPOSITORY=sftp:userNNN@boxNNN.your-storagebox.de:/kipclip
-RESTIC_PASSWORD=<generated-key> EOF sudo chmod 600 /etc/kipclip/restic.env sudo
--E env $(cat /etc/kipclip/restic.env) restic init
+## Backups
 
-````
-3. Cron: `sudo ln -s /var/lib/kipclip/app/deploy/restic-backup.sh /etc/cron.daily/kipclip-backup`.
-4. **Restore drill:** verify the Quick Reference restore steps end-to-end at
-least once before phase 1 dogfood.
+`restic-backup.timer` runs nightly at 04:00 UTC, snapshotting
+`/var/lib/kipclip/mirror.db` to Backblaze B2 via the S3 API.
 
-## TAP install (U10)
+- Repo URL, password, B2 credentials live in `/etc/kipclip/restic.env` (mode
+  0600, root-owned). See `deploy/restic.env.example` for the schema.
+- Retention is enforced by the `restic forget --prune` policy in
+  `deploy/restic-backup.sh`.
+- Restore drill: see Quick reference above. Run end-to-end at least once a
+  quarter to verify the password + repo are still good.
 
-Pinned version + binary source TBD during install spike. Final paths:
+## Auto-update timers
 
-- Binary at `/opt/tap/tap`.
-- Config at `/etc/tap/config.yaml` (see `tap.config.example` for skeleton).
-- State dir `/var/lib/tap/`.
-- Service `deploy/systemd/tap.service` enabled via `systemctl enable --now tap`.
-- Control bind `127.0.0.1:7000`. Verify: `journalctl -u tap` shows relay
-connection; no DIDs tracked at install time.
+| Timer                   | When            | Action                                                                    |
+| ----------------------- | --------------- | ------------------------------------------------------------------------- |
+| `kipclip-release.timer` | Every 60s       | Pulls latest `v*` tag merged into `main`, builds, atomic-swaps, restarts. |
+| `tap-update.timer`      | Sun 04:00 UTC   | Rebuilds TAP from indigo `main` on the box, restarts.                     |
+| `deno-update.timer`     | Sun 04:30 UTC   | Pulls latest stable Deno from `dl.deno.land`, sha-verifies, restarts.     |
+| `restic-backup.timer`   | Daily 04:00 UTC | Snapshots `mirror.db` to B2.                                              |
+| `unattended-upgrades`   | Daily (Debian)  | Debian security packages only.                                            |
 
-## Dogfood validation (U13–U15)
+All update timers have rollback paths on health-check failure. Pin overrides
+documented in `deploy/release/README.md`.
 
-1. Track owner DID:
+## Logging
+
+Everything goes to systemd journal — there are no separate log files to rotate.
+Journal is capped at 1G via `/etc/systemd/journald.conf.d/kipclip.conf`
+(`SystemMaxUse=1G`, `SystemKeepFree=2G`, `MaxFileSec=1week`).
+
 ```bash
-curl -X POST http://127.0.0.1:8000/api/sync/track \
-  -H "Content-Type: application/json" \
-  -H "Cookie: sid=<owner-session>" \
-  -d '{"did":"did:plc:..."}'
-````
-
-2. Watch backfill: `journalctl -u tap -u kipclip -f`.
-3. When `tracked_dids.backfill_complete_at` is set, run:
-   ```bash
-   deno run -A scripts/mirror-diff.ts did:plc:...
-   ```
-4. Flip read mode: edit `/etc/kipclip/env` → `MIRROR_MODE=read`,
-   `sudo systemctl restart kipclip`.
-5. ~1 week dogfood. Daily diff + Sentry watch. Log observations below.
-
-### Dogfood log
-
-| Date   | Notes                  |
-| ------ | ---------------------- |
-| _stub_ | _filled in during U15_ |
+sudo journalctl -u kipclip -f          # app logs
+sudo journalctl -u tap -f              # firehose subscriber
+sudo journalctl -u kipclip-release -f  # release flow
+sudo journalctl --disk-usage           # current journal size
+```
 
 ## Rollback paths
 
-- **Phase 1 (mirror infra dormant):** `MIRROR_MODE=off` in `/etc/kipclip/env`,
-  `sudo systemctl restart kipclip`. No data movement needed.
-- **Phase 2 (mirror reads enabled):** same as phase 1 — flipping `MIRROR_MODE`
-  back to `off` reverts to PDS reads. Owner returns to prod (Deno Deploy) for
-  daily use.
-- Phase 3+ rollbacks: deferred to follow-up plans.
+- **App**: pin a previous tag via `/etc/kipclip/release-pin`. Next 60s tick
+  swaps. See `deploy/release/README.md`.
+- **TAP**: `/opt/tap/tap.prev` is restored automatically on health failure.
+  Manual rollback:
+  `sudo mv /opt/tap/tap.prev /opt/tap/tap && sudo systemctl restart tap`.
+- **Deno**: `/opt/deno/bin/deno.prev` same shape. Auto-rollback on `/api/health`
+  failure.
+- **Mirror DB**: restore from restic snapshot (Quick reference). Mirror is
+  regeneratable from PDS via `mirror-diff.ts` re-backfill if backups are
+  unavailable, but the restic path is faster.
+- **OS pkg upgrade gone bad**: `apt-get install <pkg>=<previous-version>`, then
+  add the version to `/etc/apt/apt.conf.d/50unattended-upgrades`
+  Package-Blacklist while you investigate.
+
+## File ownership reference
+
+| Path                         | Owner        | Notes                                                        |
+| ---------------------------- | ------------ | ------------------------------------------------------------ |
+| `/var/lib/kipclip/`          | kipclip      | App working tree, releases, mirror.db                        |
+| `/var/lib/kipclip/mirror.db` | kipclip      | Local libSQL primary (survives release swaps)                |
+| `/var/lib/tap/`              | tap          | TAP state, indigo build dir, go cache                        |
+| `/opt/tap/tap`               | root         | TAP binary (root-owned; `tap-update.sh` installs as root)    |
+| `/opt/deno/bin/deno`         | root         | Deno runtime (same)                                          |
+| `/etc/kipclip/env`           | root:kipclip | App env (0640)                                               |
+| `/etc/kipclip/restic.env`    | root:root    | Restic env (0600)                                            |
+| `/etc/tap/env`               | root:tap     | TAP env (0640)                                               |
+| `/etc/caddy/Caddyfile`       | root         | Bootstrap-managed                                            |
+| `/etc/sudoers.d/kipclip`     | root         | NOPASSWD scope: `systemctl restart kipclip`, `daemon-reload` |

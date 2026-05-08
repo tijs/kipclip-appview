@@ -157,6 +157,41 @@ dropping `kipclip` group access. Fix:
 | Pin tag doesn't exist            | `update.sh` exits 1 loudly; `current` unchanged.                            | Fix or remove the pin file.                                                                  |
 | GitHub unreachable               | `git fetch` fails; release skipped.                                         | Wait — next tick retries. No degraded state.                                                 |
 
+## Auto-update timers
+
+The box also runs three weekly auto-update timers, independent of the kipclip
+release flow above:
+
+| Timer                       | When           | Updates                                 | Rollback path                                      |
+| --------------------------- | -------------- | --------------------------------------- | -------------------------------------------------- |
+| `tap-update.timer`          | Sun 04:00 UTC  | TAP binary (rebuild from indigo `main`) | `/opt/tap/tap.prev` if health fails                |
+| `deno-update.timer`         | Sun 04:30 UTC  | Deno runtime at `/opt/deno/bin/deno`    | `/opt/deno/bin/deno.prev` on `/api/health` failure |
+| `unattended-upgrades.timer` | Daily (Debian) | Debian security packages                | `apt-get install <pkg>=<oldver>`                   |
+
+Both kipclip-managed timers (`tap-update`, `deno-update`) honour pin files for
+operator override:
+
+- TAP pin: `echo <commit-sha> | sudo tee /etc/tap/tap-version`
+- Deno pin: `echo v2.7.14 | sudo tee /etc/kipclip/deno-version`
+
+Trigger manually (e.g. to upgrade ahead of schedule):
+
+```bash
+sudo systemctl start tap-update.service
+sudo systemctl start deno-update.service
+journalctl -u tap-update.service -u deno-update.service -n 30 --no-pager
+```
+
+Disable temporarily (e.g. during a freeze):
+
+```bash
+sudo systemctl disable --now tap-update.timer deno-update.timer
+```
+
+Logs go to the journal (`journalctl -u tap-update.service -f`,
+`-u deno-update.service -f`). On failure, both scripts auto-rollback before
+exiting non-zero — re-running after the rollback succeeds is safe.
+
 ## CHANGELOG hygiene
 
 Format: [Keep a Changelog](https://keepachangelog.com).

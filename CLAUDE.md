@@ -123,6 +123,23 @@ Two surfaces run the same `main.ts`:
   workflow (format, lint, tests) does NOT gate deployment — always run
   `deno task quality && deno task test` before pushing to main.
 
+### Auto-update timers (box only)
+
+Three weekly systemd timers keep the box current without manual intervention:
+
+- `tap-update.timer` (Sun 04:00 UTC) — rebuilds TAP from `bluesky-social/indigo`
+  `origin/main` using the on-box Go toolchain. Pin override:
+  `/etc/tap/tap-version`. Rolls back to `tap.prev` on health failure.
+- `deno-update.timer` (Sun 04:30 UTC) — pulls the latest stable Deno from
+  `dl.deno.land`, sha256-verifies, atomic-swaps `/opt/deno/bin/deno`, restarts
+  kipclip. Refuses cross-major jumps unless `/etc/kipclip/deno-version` is set.
+  Rolls back to `deno.prev` on `/api/health` failure.
+- `unattended-upgrades` — Debian security packages only (default scope). Runs
+  daily.
+
+Plus journald is capped at 1G (`SystemMaxUse=1G`, `MaxFileSec=1week`) so a
+runaway log loop cannot fill `/var/log`.
+
 ### Environment variables
 
 Both surfaces require: `COOKIE_SECRET`, `TURSO_DATABASE_URL`,
