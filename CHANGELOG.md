@@ -4,6 +4,24 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-05-08
+
+### Changed
+
+- Primary database is now a local SQLite file on the Hetzner box (`DATABASE_URL`
+  env var, defaulting to `file:.local/kipclip.db`). All reads, OAuth sessions,
+  user settings, and mirror tables are served from local SQLite. Turso remote
+  (`TURSO_DATABASE_URL`) is now an optional warm-standby mirror backup only —
+  enabled by `MIRROR_DUAL_WRITE=on`. Sessions previously stored in Turso are
+  copied to local SQLite via `scripts/migrate-sessions-to-local.ts`.
+
+### Fixed
+
+- Static import of `@std/dotenv` at top of `main.ts` (previously dynamic inside
+  an `if` branch). The dynamic form was excluded from Deno Deploy's module graph
+  at bundle time, causing login to hang and bookmark saves/deletes to fail on
+  the Deno Deploy warm standby.
+
 ## [0.17.0] - 2026-05-08
 
 ### Added
