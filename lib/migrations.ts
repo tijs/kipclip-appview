@@ -1,6 +1,6 @@
 // Database migrations for kipclip
-// SQLiteStorage creates the iron_session_storage table automatically
-// This file is kept for future application-specific migrations
+// SQLiteStorage creates iron_session_storage automatically on first use.
+// Migration 005 backfills columns added in atproto-storage@1.1.0 for existing installs.
 
 import { db, remoteDb } from "./db.ts";
 import { MIRROR_MIGRATIONS } from "../mirror/schema.ts";
@@ -84,6 +84,22 @@ const NON_MIRROR_MIGRATIONS: Array<{
       ALTER TABLE import_jobs ADD COLUMN supporter_verified_at TEXT
     `,
   },
+  {
+    // SQLiteStorage@1.1.0 added created_at/updated_at columns. Existing tables
+    // created by the old 3-column schema need them backfilled. NOT NULL DEFAULT
+    // '' satisfies the NOT NULL constraint for pre-existing rows.
+    // CREATE TABLE runs first so fresh DBs get the full schema immediately;
+    // ALTER TABLE then adds the columns to existing 3-column installs.
+    // Both steps may be no-ops depending on the current schema — errors for
+    // "already exists" and "duplicate column name" are swallowed by the runner.
+    version: "005",
+    description: "Add created_at and updated_at to iron_session_storage",
+    sql: `
+      CREATE TABLE IF NOT EXISTS iron_session_storage (key TEXT PRIMARY KEY, value TEXT NOT NULL, expires_at TEXT, created_at TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT '');
+      ALTER TABLE iron_session_storage ADD COLUMN created_at TEXT NOT NULL DEFAULT '';
+      ALTER TABLE iron_session_storage ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''
+    `,
+  },
 ];
 
 // Combined list applied to the primary db.
@@ -147,11 +163,10 @@ async function runMigrationSet(
       try {
         await db.execute({ sql: statement, args: [] });
       } catch (error) {
-        if ((error as Error).message?.includes("already exists")) {
+        const msg = (error as Error).message ?? "";
+        if (msg.includes("already exists") || msg.includes("duplicate column name")) {
           console.warn(
-            `⚠️  Table already exists on ${label}, skipping: ${
-              (error as Error).message
-            }`,
+            `⚠️  Schema already up to date on ${label}, skipping: ${msg}`,
           );
         } else {
           console.error(
