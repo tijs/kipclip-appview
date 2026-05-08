@@ -23,8 +23,7 @@ bookmark lexicon.
 ## Architecture
 
 - **Frontend**: React 19 + TypeScript + Tailwind CSS
-- **Backend**: Fresh 2.x on a Hetzner box (production), with Deno Deploy as warm
-  standby. Pull-based releases via signed `v*` git tags
+- **Backend**: Fresh 2.x on a Hetzner box (`kipclip.com`). Pull-based releases via signed `v*` git tags
 - **AppView mirror**: every tracked user's bookmark / tag / annotation /
   preference records are mirrored from the user's PDS into a local libSQL
   database on the box, kept fresh by
@@ -63,12 +62,9 @@ kipclip-appview/
 ### Prerequisites
 
 - Deno installed
-- Deno Deploy account
-- Turso database
+- Turso database (for OAuth sessions)
 
 ### Environment Variables
-
-Configure these in the Deno Deploy dashboard:
 
 ```bash
 COOKIE_SECRET=your-random-secret-string-at-least-32-chars  # Required

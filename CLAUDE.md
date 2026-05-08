@@ -36,9 +36,7 @@ webhook on the box.
 ### High-level shape
 
 - **Frontend**: React 19 SPA with Tailwind CSS, bundled via esbuild
-- **Backend**: Fresh 2.x HTTP server. Runs on the Hetzner box (production,
-  `kipclip.com`) and on Deno Deploy (warm standby — auto-deploys on push to
-  `main`, picks up if the box dies)
+- **Backend**: Fresh 2.x HTTP server running on the Hetzner box (`kipclip.com`)
 - **Edge proxy**: Caddy on the box (TLS, security headers, CSP+SRI, webhook
   endpoint allow-list)
 - **TAP** (`bluesky-social/indigo` `cmd/tap`): subscribes to the relay, filters
@@ -79,16 +77,16 @@ The app uses Fresh 2.x with programmatic routing. All routes are defined in
 `main.ts`:
 
 ```typescript
-import { App } from "jsr:@fresh/core@^2.2.0";
+import { App } from "@fresh/core";
 
-let app = new App();
+let app = new App({ trustProxy: true });
 
 app = app.get("/api/bookmarks", async (ctx) => {
   // ctx.req is the Request, ctx.params has route params
   return Response.json({ data });
 });
 
-export default app.handler();
+export { app };
 ```
 
 Key patterns:
@@ -96,7 +94,6 @@ Key patterns:
 - `ctx.req` for the Request object
 - `ctx.params.rkey` for route parameters
 - `Response.json()` for JSON responses
-- Export `app.handler()` as default for Deno Deploy
 
 ### OAuth Stack
 
@@ -105,23 +102,20 @@ Uses framework-agnostic OAuth libraries from jsr:
 - `@tijs/atproto-oauth` - OAuth orchestration and route handlers
 - `@tijs/atproto-storage` - SQLite session storage with Turso adapter
 
-OAuth is lazily initialized from the first request to derive BASE_URL
-automatically on Deno Deploy.
+OAuth is eagerly initialized at startup when `BASE_URL` is set; falls back to
+per-request derivation from `ctx.url` when unset (local dev).
 
 ## Production deployment
 
-Two surfaces run the same `main.ts`:
+Production runs exclusively on the **Hetzner box** (`kipclip.com`).
+Pull-based release flow: `kipclip-release.timer` polls GitHub on a 60s tick,
+picks the latest `v*` git tag merged into `origin/main`, builds in
+`/var/lib/kipclip/releases/<tag>/`, atomic-swaps the `current` symlink,
+restarts `kipclip.service`, and health-checks. See `deploy/release/README.md`
+for the operator runbook (pin override, rollback, bootstrap re-run).
 
-- **Hetzner box** (`kipclip.com`, primary). Pull-based release flow:
-  `kipclip-release.timer` polls GitHub on a 60s tick, picks the latest `v*` git
-  tag merged into `origin/main`, builds in `/var/lib/kipclip/releases/<tag>/`,
-  atomic-swaps the `current` symlink, restarts `kipclip.service`, and
-  health-checks. See `deploy/release/README.md` for the operator runbook (pin
-  override, rollback, bootstrap re-run).
-- **Deno Deploy** (warm standby). Auto-deploys on push to `main` via the GitHub
-  integration. Picks up traffic if the box is unreachable. The GitHub test
-  workflow (format, lint, tests) does NOT gate deployment — always run
-  `deno task quality && deno task test` before pushing to main.
+> There is no CI gate on pushes to `main` — always run
+> `deno task quality && deno task test` before pushing.
 
 ### Auto-update timers (box only)
 
@@ -142,9 +136,9 @@ runaway log loop cannot fill `/var/log`.
 
 ### Environment variables
 
-Both surfaces require: `COOKIE_SECRET`, `TURSO_DATABASE_URL`,
-`TURSO_AUTH_TOKEN`, `SENTRY_DSN` (optional but recommended), `BASE_URL`
-(optional, derived from request when unset).
+Required: `COOKIE_SECRET`, `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`,
+`SENTRY_DSN` (optional but recommended), `BASE_URL` (optional, derived from
+request when unset).
 
 Box-only mirror variables: `LOCAL_DB_URL=file:/var/lib/kipclip/mirror.db`
 (enables local libSQL primary), `MIRROR_DUAL_WRITE=on` (turns on Turso
@@ -164,7 +158,7 @@ Tests use the app handler directly. Mock environment variables are set in
 import { app } from "../main.ts";
 import { initOAuth } from "../lib/oauth-config.ts";
 
-initOAuth("https://kipclip.com");
+initOAuth(new URL("https://kipclip.com"));
 const handler = app.handler();
 ```
 
