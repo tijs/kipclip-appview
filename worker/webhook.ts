@@ -161,12 +161,15 @@ function extractWebhookSecret(authz: string): string | null {
   return null;
 }
 
-// Opportunistic GC at module load. Process restart on every release swap
-// gives this a free trigger; under steady webhook traffic the table
-// would otherwise grow unbounded.
-gcSeenWebhookEvents().catch((err) => {
-  console.warn("[webhook] startup gc failed (non-fatal):", err);
-});
+/**
+ * Call once after migrations complete. Prunes seen_webhook_events rows older
+ * than 7 days; process restart on every release swap gives a free trigger.
+ */
+export function initWebhook(): void {
+  gcSeenWebhookEvents().catch((err) => {
+    console.warn("[webhook] startup gc failed (non-fatal):", err);
+  });
+}
 
 export async function handleWebhookRequest(req: Request): Promise<Response> {
   // Auth gate. When TAP_WEBHOOK_SECRET is set, require a matching

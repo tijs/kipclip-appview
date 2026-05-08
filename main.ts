@@ -25,6 +25,7 @@ import { registerMigrateHexRkeysRoute } from "./routes/api/migrate-hex-rkeys.ts"
 import { registerPreferencesRoutes } from "./routes/api/preferences.ts";
 import { registerShareApiRoutes } from "./routes/api/share.ts";
 import { registerSyncRoutes } from "./routes/api/sync.ts";
+import { initWebhook } from "./worker/webhook.ts";
 import { registerSystemRoutes } from "./routes/api/system.ts";
 import { registerTagRoutes } from "./routes/api/tags.ts";
 import { registerUserRoutes } from "./routes/api/user.ts";
@@ -48,6 +49,9 @@ if (!Deno.env.get("KIPCLIP_TESTING")) {
 
 // Run database migrations on startup
 await initializeTables();
+
+// Trigger post-migration startup work (GC of seen_webhook_events).
+initWebhook();
 
 // Log the active mirror mode so deploys make config visible in journalctl
 logMirrorMode();
