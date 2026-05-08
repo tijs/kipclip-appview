@@ -7,12 +7,13 @@
  *
  * Production rules:
  *   - /track and /status: session-authed; caller may only act on their own DID.
- *   - /hook: bound to localhost-only Host header. No public exposure (R23).
+ *   - /hook: gated by a loopback ipFilter (allowList 127.0.0.1, ::1) plus
+ *     Basic-auth inside handleWebhookRequest. No public exposure (R23).
  *   - /track refuses if the TAP control call fails so we never store a row
  *     TAP doesn't know about (no orphans).
  */
 
-import type { App } from "@fresh/core";
+import { type App, ipFilter } from "@fresh/core";
 import {
   createAuthErrorResponse,
   setSessionCookie,
@@ -54,12 +55,18 @@ async function tapTrackDid(
   }
 }
 
-function isLocalhostHostname(hostname: string): boolean {
-  return hostname === "127.0.0.1" || hostname === "localhost" ||
-    hostname === "::1";
-}
-
 export function registerSyncRoutes(app: App<unknown>): App<unknown> {
+  // Loopback-only allowlist on the TAP webhook. On the Hetzner box this is
+  // belt-and-suspenders behind Caddy's 403 on public hosts; on Deno Deploy
+  // (no Caddy in front) it is the primary gate. Note: when Caddy proxies
+  // external traffic to localhost, those requests also arrive as 127.0.0.1,
+  // so this filter does not distinguish TAP from Caddy-forwarded requests —
+  // the Basic-auth check inside handleWebhookRequest is the actual TAP gate.
+  app = app.use(
+    "/api/sync/hook",
+    ipFilter({ allowList: ["127.0.0.1", "::1"] }),
+  );
+
   app = app.post("/api/sync/track", async (ctx) => {
     try {
       const { session, setCookieHeader, error } = await getSessionFromRequest(
@@ -137,16 +144,7 @@ export function registerSyncRoutes(app: App<unknown>): App<unknown> {
     }
   });
 
-  app = app.post("/api/sync/hook", (ctx) => {
-    const url = new URL(ctx.req.url);
-    if (!isLocalhostHostname(url.hostname)) {
-      return Response.json(
-        { error: "Webhook endpoint is localhost-only" },
-        { status: 403 },
-      );
-    }
-    return handleWebhookRequest(ctx.req);
-  });
+  app = app.post("/api/sync/hook", (ctx) => handleWebhookRequest(ctx.req));
 
   return app;
 }

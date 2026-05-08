@@ -13,10 +13,15 @@ import { createMockSessionResult } from "./test-helpers.ts";
 
 initOAuth(new URL("https://kipclip.com"));
 const baseHandler = app.handler();
+
 // Inject loopback conn info so the /api/sync/hook ipFilter middleware
 // (allowList: 127.0.0.1, ::1) accepts every request through this handler.
 // Without this the default conn info reports hostname "localhost" which
-// is not a valid IP literal and the filter rejects it.
+// is not a valid IP literal — matchSubnets rejects it.
+//
+// `as unknown as Deno.ServeHandlerInfo` skips threading the
+// ServeHandlerInfo<Addr> generic; Fresh's middleware reads only
+// `info.remoteAddr.hostname` so the partial shape is sufficient.
 const loopbackConn = {
   remoteAddr: {
     transport: "tcp" as const,
@@ -240,17 +245,6 @@ Deno.test("GET /api/sync/status - 403 when querying another DID", async () => {
   } finally {
     clearSession();
   }
-});
-
-Deno.test("POST /api/sync/hook - 403 when URL hostname is not localhost", async () => {
-  const res = await handler(
-    new Request("https://kipclip.com/api/sync/hook", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ events: [] }),
-    }),
-  );
-  assertEquals(res.status, 403);
 });
 
 Deno.test("POST /api/sync/hook - ipFilter rejects non-loopback remoteAddr", async () => {

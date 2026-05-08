@@ -11,14 +11,28 @@ All notable changes to kipclip are documented in this file.
   `X-Forwarded-Proto` and `X-Forwarded-Host` to `ctx.url` itself, so the
   hand-rolled proxy header parsing in `lib/oauth-config.ts` was removed.
   `initOAuth` now takes a `URL` (`ctx.url`) instead of a `Request`.
+- OAuth client is now eagerly initialised at startup when `BASE_URL` is set in
+  the env. The per-request init middleware only registers as a fallback when
+  `BASE_URL` is unset (e.g. local dev without ngrok pinning). Both production
+  surfaces (Hetzner box, Deno Deploy) set `BASE_URL`, so the init middleware no
+  longer runs on the hot path.
 
 ### Security
 
 - `/api/sync/hook` is now wrapped with Fresh's `ipFilter` middleware
-  (`allowList: ["127.0.0.1", "::1"]`). This is a third defence layer on top of
-  the Caddy 403 on public hosts and the handler's Basic-auth check. On Deno
-  Deploy (no Caddy in front) the filter becomes the primary gate; TAP only fires
-  to the box, so legitimate traffic is unaffected.
+  (`allowList: ["127.0.0.1", "::1"]`) and the redundant in-handler
+  `isLocalhostHostname` check is gone. On the Hetzner box this is
+  belt-and-suspenders behind Caddy's existing 403 on public hosts. On Deno
+  Deploy, where there is no Caddy in front, this **closes a real attack
+  surface**: previously the only gate was the handler's Basic-auth check; an
+  attacker who learned `TAP_WEBHOOK_SECRET` could feed events into the warm
+  standby. Now any request from a non-loopback peer is rejected before the
+  handler runs. (TAP itself only fires to the box, so legitimate traffic is
+  unaffected.) Note: on the box, Caddy proxies external traffic to localhost, so
+  all requests reaching the app appear as `127.0.0.1` — the ipFilter cannot
+  distinguish TAP from a Caddy-forwarded user request there. The Basic-auth
+  check inside `handleWebhookRequest` remains the actual TAP-vs-user gate on the
+  box.
 
 ## [0.16.3] - 2026-05-08
 

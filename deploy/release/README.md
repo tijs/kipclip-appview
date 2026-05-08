@@ -94,8 +94,26 @@ fix that prevents the phase 4 Caddyfile-clobber bug recurring.
 - `Bearer <secret>` — forward-compat for a future TAP that decouples outbound
   webhook auth from admin auth.
 
-Defense-in-depth behind Caddy `respond @hook 403` — Caddy is the primary
-barrier, the bearer/basic check catches config drift.
+Defense-in-depth behind Caddy `respond @hook 403` and the app-layer
+`ipFilter({ allowList: ["127.0.0.1", "::1"] })` middleware (registered inside
+`registerSyncRoutes` in `routes/api/sync.ts`).
+
+Defence layers in effect on the box:
+
+1. **Caddy** — `respond @hook 403` on every public host. External traffic never
+   reaches the app.
+2. **App ipFilter** — rejects any connecting peer that is not `127.0.0.1` or
+   `::1`. On the box, Caddy proxies external traffic to localhost, so all
+   requests reaching the app appear as `127.0.0.1`. **The ipFilter cannot
+   distinguish TAP from a Caddy-forwarded user request on the box** — that is
+   what the Basic-auth secret check is for.
+3. **Basic-auth secret** — the actual TAP-vs-user gate on the box. Always keep
+   `TAP_WEBHOOK_SECRET` and `TAP_ADMIN_PASSWORD` in sync.
+
+On Deno Deploy (warm standby) only layers 2 and 3 apply. Layer 2 is the primary
+gate there: edge-routed requests do not arrive from loopback, so the filter
+rejects everything. TAP only fires to the box, so the warm standby never sees
+legitimate webhook traffic.
 
 Rollout (must be coordinated; both sides need the same secret in the same
 maintenance window — TAP currently uses one secret for both inbound API auth and

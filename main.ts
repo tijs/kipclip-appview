@@ -12,10 +12,10 @@ try {
   console.warn("⚠️ Failed to load .env file:", error.message);
 }
 
-import { App, ipFilter, staticFiles } from "@fresh/core";
+import { App, staticFiles } from "@fresh/core";
 import { initializeTables } from "./lib/db.ts";
 import { logMirrorMode } from "./lib/mirror-config.ts";
-import { initOAuth } from "./lib/oauth-config.ts";
+import { initOAuth, tryInitOAuthFromEnv } from "./lib/oauth-config.ts";
 import { captureError } from "./lib/sentry.ts";
 
 // Route modules
@@ -44,7 +44,12 @@ await initializeTables();
 // Log the active mirror mode so deploys make config visible in journalctl
 logMirrorMode();
 
-// Create the Fresh app
+// Create the Fresh app.
+// trustProxy applies X-Forwarded-Proto and X-Forwarded-Host to ctx.url
+// before handlers see it. Assumes a trusted reverse proxy is in front
+// (Caddy on the Hetzner box, Deno Deploy's edge on the warm standby) —
+// running this app bare on a public interface would let attackers spoof
+// the scheme/host via forged headers.
 let app = new App({ trustProxy: true });
 
 // ============================================================================
@@ -61,11 +66,16 @@ app = app.use(async (ctx) => {
   }
 });
 
-// Initialize OAuth on first request (derives BASE_URL from request if not set)
-app = app.use(async (ctx) => {
-  initOAuth(ctx.url);
-  return await ctx.next();
-});
+// Eagerly initialize OAuth at startup when BASE_URL env is set. When unset
+// (e.g. local dev without BASE_URL), fall back to a one-shot per-request
+// init that derives BASE_URL from ctx.url.
+const oauthEagerInit = tryInitOAuthFromEnv();
+if (!oauthEagerInit) {
+  app = app.use(async (ctx) => {
+    initOAuth(ctx.url);
+    return await ctx.next();
+  });
+}
 
 // Security headers middleware
 app = app.use(async (ctx) => {
@@ -135,15 +145,9 @@ app = registerPreferencesRoutes(app);
 // Share API routes (public bookmark sharing)
 app = registerShareApiRoutes(app);
 
-// TAP webhook is loopback-only. Caddy already 403s external requests on
-// public hosts; this is defense-in-depth at the app layer (and the only
-// gate when running on Deno Deploy without Caddy in front).
-app = app.use(
-  "/api/sync/hook",
-  ipFilter({ allowList: ["127.0.0.1", "::1"] }),
-);
-
-// Sync API routes (mirror tracking + TAP webhook)
+// Sync API routes (mirror tracking + TAP webhook).
+// The /api/sync/hook ipFilter middleware is registered inside
+// registerSyncRoutes so the route and its gate stay together.
 app = registerSyncRoutes(app);
 
 // System API routes (/api/version, /api/health) -- release observability
