@@ -3,13 +3,18 @@
  * Orchestrates route registration and middleware setup.
  */
 
-// Load environment variables from .env file (local development)
-import { load } from "@std/dotenv";
-try {
-  await load({ export: true });
-  console.log("✅ Loaded .env file");
-} catch (error) {
-  console.warn("⚠️ Failed to load .env file:", error.message);
+// Load environment variables from .env file (local development).
+// Skipped under KIPCLIP_TESTING — tests set every env var they need on the
+// `deno task test` command line, and re-importing .env here would bring back
+// the developer's real SENTRY_DSN even after tests/test-setup.ts opted out.
+if (!Deno.env.get("KIPCLIP_TESTING")) {
+  const { load } = await import("@std/dotenv");
+  try {
+    await load({ export: true });
+    console.log("✅ Loaded .env file");
+  } catch (error) {
+    console.warn("⚠️ Failed to load .env file:", (error as Error).message);
+  }
 }
 
 import { App, staticFiles } from "@fresh/core";

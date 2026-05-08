@@ -1,18 +1,16 @@
 /**
  * Test environment setup.
- * Loads .env file if available, otherwise sets test defaults.
- * Import this at the top of test files before importing application code.
+ * Sets test-mode defaults. Import this at the top of test files before
+ * importing application code.
+ *
+ * Deliberately does NOT load `.env`. The `deno task test` command sets every
+ * env var the test path needs (TURSO_DATABASE_URL, COOKIE_SECRET, etc.), and
+ * loading `.env` would only drag in the developer's real SENTRY_DSN — which
+ * causes the warning-path `captureError` calls in tests like
+ * `mirror-config.test.ts` (that deliberately throw `Error("turso boom")` to
+ * exercise the PDS fallback) to ship test-injected errors to the developer's
+ * Sentry project. Tests must never phone home.
  */
-
-import { load } from "@std/dotenv";
-
-// Try to load .env file (for local development)
-// Fall back to test defaults (for CI/unit tests)
-try {
-  await load({ export: true });
-} catch {
-  // .env doesn't exist or failed to load, use test defaults
-}
 
 // Ensure required environment variables are set
 if (!Deno.env.get("COOKIE_SECRET")) {
