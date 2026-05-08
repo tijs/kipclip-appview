@@ -228,3 +228,18 @@ export function getMockSessionProvider():
   | null {
   return mockSessionProvider;
 }
+
+export interface MockWebSocket {
+  readyState: number;
+  sent: string[];
+  send(payload: string): void;
+}
+
+export function createMockSocket(open = true): MockWebSocket {
+  const s: MockWebSocket = {
+    readyState: open ? 1 /* OPEN */ : 3, /* CLOSED */
+    sent: [],
+    send(payload) { s.sent.push(payload); },
+  };
+  return s;
+}

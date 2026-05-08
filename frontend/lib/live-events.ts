@@ -15,14 +15,8 @@
  * AppContext flows continue to work without live updates.
  */
 
-export interface LiveEvent {
-  type: string;
-  did?: string;
-  collection?: string;
-  rkey?: string;
-  op?: string;
-  indexedAt?: number;
-}
+export type { LiveEvent } from "../../shared/types.ts";
+import type { LiveEvent } from "../../shared/types.ts";
 
 export type LiveConnectionState = "connecting" | "open" | "closed";
 

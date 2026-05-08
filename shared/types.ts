@@ -1,5 +1,14 @@
 // Shared TypeScript types for kipclip
 
+export interface LiveEvent {
+  type: string;
+  did?: string;
+  collection?: string;
+  rkey?: string;
+  op?: string;
+  indexedAt?: number;
+}
+
 // AT Protocol bookmark record type
 export interface BookmarkRecord {
   subject: string; // URI of the bookmarked content

@@ -9,7 +9,7 @@ import { assertEquals } from "@std/assert";
 import { app } from "../main.ts";
 import { initOAuth } from "../lib/oauth-config.ts";
 import { setTestSessionProvider } from "../lib/session.ts";
-import { createMockSessionResult } from "./test-helpers.ts";
+import { createMockSessionResult, createMockSocket } from "./test-helpers.ts";
 import { _addSocketForTest, _clearSocketsForTest } from "../routes/api/live.ts";
 
 initOAuth(new URL("https://kipclip.com"));
@@ -868,27 +868,10 @@ Deno.test("POST /api/sync/hook - replayed event is rejected (replayed:true)", as
   assertEquals(body2.id, evt.id);
 });
 
-interface BroadcastMockSocket {
-  readyState: number;
-  send: (payload: string) => void;
-  sent: string[];
-}
-
-function broadcastMockSocket(): BroadcastMockSocket {
-  const s: BroadcastMockSocket = {
-    readyState: 1,
-    sent: [],
-    send(payload) {
-      s.sent.push(payload);
-    },
-  };
-  return s;
-}
-
 Deno.test("POST /api/sync/hook - bookmark create broadcasts to live socket for the DID", async () => {
   await clearMirrorTables();
   _clearSocketsForTest();
-  const sock = broadcastMockSocket();
+  const sock = createMockSocket();
   _addSocketForTest(SESSION_DID, sock as unknown as WebSocket);
 
   const evt = recordEvent(
@@ -925,7 +908,7 @@ Deno.test("POST /api/sync/hook - bookmark create broadcasts to live socket for t
 Deno.test("POST /api/sync/hook - DID isolation: socket on DID-A receives no events for DID-B", async () => {
   await clearMirrorTables();
   _clearSocketsForTest();
-  const sockA = broadcastMockSocket();
+  const sockA = createMockSocket();
   _addSocketForTest("did:plc:other-listener", sockA as unknown as WebSocket);
 
   const evt = recordEvent(
@@ -955,7 +938,7 @@ Deno.test("POST /api/sync/hook - DID isolation: socket on DID-A receives no even
 Deno.test("POST /api/sync/hook - non-record event does not broadcast", async () => {
   await clearMirrorTables();
   _clearSocketsForTest();
-  const sock = broadcastMockSocket();
+  const sock = createMockSocket();
   _addSocketForTest(SESSION_DID, sock as unknown as WebSocket);
 
   const res = await handler(

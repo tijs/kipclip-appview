@@ -19,15 +19,9 @@
 
 import type { App } from "@fresh/core";
 import { getSessionFromRequest } from "../../lib/session.ts";
+import type { LiveEvent } from "../../shared/types.ts";
 
-export interface LiveEvent {
-  type: string;
-  did?: string;
-  collection?: string;
-  rkey?: string;
-  op?: string;
-  indexedAt?: number;
-}
+export type { LiveEvent };
 
 interface SocketEntry {
   did: string;
@@ -35,9 +29,6 @@ interface SocketEntry {
   missedPongs: number;
 }
 
-// Sockets are held strongly by the per-DID Set in `sockets` until cleanup
-// runs, so the per-socket bookkeeping uses a regular Map (not WeakMap) so
-// `cleanup` can also delete the entry explicitly.
 const sockets = new Map<string, Set<WebSocket>>();
 const entries = new Map<WebSocket, SocketEntry>();
 
@@ -133,21 +124,18 @@ export function registerLiveRoutes(app: App<unknown>): App<unknown> {
     return ctx.upgrade({
       open(socket) {
         registerSocket(did, socket);
-        const intervalId = setInterval(() => {
-          const entry = entries.get(socket);
-          if (!entry) {
-            // Cleanup ran between ticks; nothing to do (interval already
-            // cleared inside cleanupSocket).
-            return;
-          }
+        // Register entry before starting the interval so the first tick
+        // always finds it, and so cleanupSocket can clear the interval
+        // even if setInterval() somehow threw after set().
+        const entry: SocketEntry = { did, intervalId: 0, missedPongs: 0 };
+        entries.set(socket, entry);
+        entry.intervalId = setInterval(() => {
+          if (!entries.has(socket)) return;
           if (socket.readyState !== WebSocket.OPEN) {
             cleanupSocket(socket);
             return;
           }
           if (entry.missedPongs >= MAX_MISSED_PONGS) {
-            // Clear the interval BEFORE closing so we never tick again on a
-            // CLOSING socket. cleanupSocket then handles the registry pop
-            // when the close event lands (or right here if it doesn't).
             cleanupSocket(socket);
             try {
               socket.close(1011, "missed pong");
@@ -159,7 +147,6 @@ export function registerLiveRoutes(app: App<unknown>): App<unknown> {
           entry.missedPongs += 1;
           sendSafely(socket, JSON.stringify({ type: "ping" }));
         }, HEARTBEAT_MS);
-        entries.set(socket, { did, intervalId, missedPongs: 0 });
       },
       message(socket, ev) {
         if (typeof ev.data !== "string") return;

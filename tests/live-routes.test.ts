@@ -12,7 +12,7 @@ import { assertEquals } from "@std/assert";
 import { app } from "../main.ts";
 import { initOAuth } from "../lib/oauth-config.ts";
 import { setTestSessionProvider } from "../lib/session.ts";
-import { createMockSessionResult } from "./test-helpers.ts";
+import { createMockSessionResult, createMockSocket } from "./test-helpers.ts";
 import {
   _addSocketForTest,
   _cleanupSocketForTest,
@@ -37,22 +37,6 @@ function clearSession() {
   setTestSessionProvider(null);
 }
 
-interface MockSocket {
-  readyState: number;
-  send: (payload: string) => void;
-  sent: string[];
-}
-
-function mockSocket(open = true): MockSocket {
-  const s: MockSocket = {
-    readyState: open ? 1 /* WebSocket.OPEN */ : 3, /* CLOSED */
-    sent: [],
-    send(payload) {
-      s.sent.push(payload);
-    },
-  };
-  return s;
-}
 
 Deno.test("GET /api/live - 400 when upgrade header missing", async () => {
   withSession();
@@ -87,8 +71,8 @@ Deno.test("broadcastToDid - no-op when no sockets registered", () => {
 
 Deno.test("broadcastToDid - delivers payload to all open sockets for a DID", () => {
   _clearSocketsForTest();
-  const a = mockSocket();
-  const b = mockSocket();
+  const a = createMockSocket();
+  const b = createMockSocket();
   _addSocketForTest(SESSION_DID, a as unknown as WebSocket);
   _addSocketForTest(SESSION_DID, b as unknown as WebSocket);
 
@@ -113,8 +97,8 @@ Deno.test("broadcastToDid - delivers payload to all open sockets for a DID", () 
 
 Deno.test("broadcastToDid - skips closed sockets without throwing", () => {
   _clearSocketsForTest();
-  const open = mockSocket(true);
-  const closed = mockSocket(false);
+  const open = createMockSocket(true);
+  const closed = createMockSocket(false);
   _addSocketForTest(SESSION_DID, open as unknown as WebSocket);
   _addSocketForTest(SESSION_DID, closed as unknown as WebSocket);
 
@@ -128,8 +112,8 @@ Deno.test("broadcastToDid - skips closed sockets without throwing", () => {
 
 Deno.test("broadcastToDid - DID isolation: socket on DID-A does not receive DID-B events", () => {
   _clearSocketsForTest();
-  const a = mockSocket();
-  const b = mockSocket();
+  const a = createMockSocket();
+  const b = createMockSocket();
   _addSocketForTest("did:plc:aaa", a as unknown as WebSocket);
   _addSocketForTest("did:plc:bbb", b as unknown as WebSocket);
 
@@ -143,7 +127,7 @@ Deno.test("broadcastToDid - DID isolation: socket on DID-A does not receive DID-
 
 Deno.test("cleanup - removes socket from per-DID registry", () => {
   _clearSocketsForTest();
-  const sock = mockSocket();
+  const sock = createMockSocket();
   _addSocketForTest(SESSION_DID, sock as unknown as WebSocket);
   assertEquals(_liveSocketCountForTest(SESSION_DID), 1);
 
@@ -155,7 +139,7 @@ Deno.test("cleanup - removes socket from per-DID registry", () => {
 
 Deno.test("cleanup - is idempotent (close-after-error path)", () => {
   _clearSocketsForTest();
-  const sock = mockSocket();
+  const sock = createMockSocket();
   _addSocketForTest(SESSION_DID, sock as unknown as WebSocket);
 
   // Simulate the runtime firing both `error` and then `close` for the same
@@ -170,8 +154,8 @@ Deno.test("cleanup - is idempotent (close-after-error path)", () => {
 
 Deno.test("cleanup - one socket of a multi-socket DID does not clobber the others", () => {
   _clearSocketsForTest();
-  const a = mockSocket();
-  const b = mockSocket();
+  const a = createMockSocket();
+  const b = createMockSocket();
   _addSocketForTest(SESSION_DID, a as unknown as WebSocket);
   _addSocketForTest(SESSION_DID, b as unknown as WebSocket);
   assertEquals(_liveSocketCountForTest(SESSION_DID), 2);
