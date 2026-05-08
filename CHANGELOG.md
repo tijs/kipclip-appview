@@ -4,6 +4,14 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-05-08
+
+### Fixed
+
+- `gcSeenWebhookEvents` now runs after migrations complete instead of at module
+  import time. Eliminates the `no such table: seen_webhook_events` warning on
+  cold boot before the schema is initialized.
+
 ## [0.18.0] - 2026-05-08
 
 ### Changed
