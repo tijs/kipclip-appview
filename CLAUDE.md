@@ -49,15 +49,16 @@ webhook on the box.
 
 ### Storage layout
 
-| Tier             | Where                                                            | What                                                                                                       | Who reads/writes                                                        |
-| ---------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| **PDS**          | user's personal data server                                      | source of truth for all bookmark/tag/annotation/preference records                                         | server writes (PUT bookmark, etc); fallback reads when mirror miss      |
-| **Local libSQL** | `/var/lib/kipclip/mirror.db` on box (kipclip-owned, file-backed) | mirror copy of every tracked DID's records, populated by TAP webhook                                       | server reads (primary); writes are the TAP webhook upserts              |
-| **Turso/libSQL** | remote `libsql://kipclip-prod-tijs.aws-eu-west-1.turso.io`       | OAuth sessions; warm-standby copy of mirror tables (dual-write best-effort, behind `MIRROR_DUAL_WRITE=on`) | server reads sessions only; mirror writes when local libSQL initialized |
+| Tier                | Where                                                                             | What                                                                                                 | Who reads/writes                                                   |
+| ------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| **PDS**             | user's personal data server                                                       | source of truth for all bookmark/tag/annotation/preference records                                   | server writes (PUT bookmark, etc); fallback reads when mirror miss |
+| **Primary (local)** | `DATABASE_URL` — file-backed SQLite on the box                                    | all tables: OAuth sessions, user_settings, import_jobs, and all mirror tables. Always authoritative. | server reads/writes (primary); TAP webhook upserts mirror tables   |
+| **Turso/libSQL**    | `TURSO_DATABASE_URL` — remote `libsql://kipclip-prod-tijs.aws-eu-west-1.turso.io` | warm-standby backup of mirror tables only (dual-write best-effort, behind `MIRROR_DUAL_WRITE=on`)    | mirror writes when enabled; NOT used for sessions or settings      |
 
 When `MIRROR_MODE=read` (production default on the box) and a DID is tracked AND
-backfill has started, mirror-aware reads serve from local libSQL with sub-ms
-latency and zero PDS load. Untracked DIDs fall back to PDS unchanged.
+backfill has started, mirror-aware reads serve from the primary local SQLite
+with sub-ms latency and zero PDS load. Untracked DIDs fall back to PDS
+unchanged.
 
 ### AT Protocol Collections
 
@@ -107,12 +108,12 @@ per-request derivation from `ctx.url` when unset (local dev).
 
 ## Production deployment
 
-Production runs exclusively on the **Hetzner box** (`kipclip.com`).
-Pull-based release flow: `kipclip-release.timer` polls GitHub on a 60s tick,
-picks the latest `v*` git tag merged into `origin/main`, builds in
-`/var/lib/kipclip/releases/<tag>/`, atomic-swaps the `current` symlink,
-restarts `kipclip.service`, and health-checks. See `deploy/release/README.md`
-for the operator runbook (pin override, rollback, bootstrap re-run).
+Production runs exclusively on the **Hetzner box** (`kipclip.com`). Pull-based
+release flow: `kipclip-release.timer` polls GitHub on a 60s tick, picks the
+latest `v*` git tag merged into `origin/main`, builds in
+`/var/lib/kipclip/releases/<tag>/`, atomic-swaps the `current` symlink, restarts
+`kipclip.service`, and health-checks. See `deploy/release/README.md` for the
+operator runbook (pin override, rollback, bootstrap re-run).
 
 > There is no CI gate on pushes to `main` — always run
 > `deno task quality && deno task test` before pushing.
@@ -136,14 +137,18 @@ runaway log loop cannot fill `/var/log`.
 
 ### Environment variables
 
-Required: `COOKIE_SECRET`, `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`,
-`SENTRY_DSN` (optional but recommended), `BASE_URL` (optional, derived from
-request when unset).
+Required: `COOKIE_SECRET`, `SENTRY_DSN` (optional but recommended), `BASE_URL`
+(optional, derived from request when unset).
 
-Box-only mirror variables: `LOCAL_DB_URL=file:/var/lib/kipclip/mirror.db`
-(enables local libSQL primary), `MIRROR_DUAL_WRITE=on` (turns on Turso
-warm-standby dual-write), `MIRROR_MODE=read` (serves reads from mirror for
-tracked DIDs).
+Box-only primary DB variable: `DATABASE_URL=file:/var/lib/kipclip/kipclip.db`
+(path to the primary local SQLite — defaults to `file:.local/kipclip.db` when
+unset, which works for local dev but should be set explicitly on the box).
+
+Box-only mirror/remote variables: `TURSO_DATABASE_URL=libsql://...` +
+`TURSO_AUTH_TOKEN=...` (optional Turso remote for dual-write backup),
+`MIRROR_DUAL_WRITE=on` (turns on best-effort remote dual-write),
+`MIRROR_MODE=read` (serves mirror reads from primary local SQLite for tracked
+DIDs).
 
 Box-only TAP variables: `TAP_WEBHOOK_SECRET` (matches TAP's `TAP_ADMIN_PASSWORD`
 — TAP reuses admin auth as outbound webhook auth, sent as

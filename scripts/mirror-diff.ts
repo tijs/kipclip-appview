@@ -14,7 +14,7 @@
 
 import { resolveDid } from "../lib/plc-resolver.ts";
 import { paginateListRecordsPublic } from "../lib/pds-public.ts";
-import { rawDb } from "../lib/db.ts";
+import { db } from "../lib/db.ts";
 
 const BOOKMARK_COLLECTION = "community.lexicon.bookmarks.bookmark";
 const ANNOTATION_COLLECTIONS = [
@@ -54,7 +54,7 @@ async function comparePdsToMirror(
   const pdsByUri = new Map<string, string>();
   for (const r of pdsRecords) pdsByUri.set(r.uri as string, r.cid as string);
 
-  const mirrorRows = await rawDb.execute({
+  const mirrorRows = await db.execute({
     sql: `SELECT uri, cid FROM ${mirrorTable} WHERE did = ?`,
     args: [did],
   });

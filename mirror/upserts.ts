@@ -11,7 +11,7 @@
  * before writing — defends against caller bugs that would mix DIDs across rows.
  */
 
-import { localDb, mirrorWrite, mirrorWriteEnabled, rawDb } from "../lib/db.ts";
+import { db, mirrorWrite, mirrorWriteEnabled } from "../lib/db.ts";
 
 export interface BookmarkUpsert {
   uri: string;
@@ -287,13 +287,9 @@ export async function upsertTrackedDid(
  * processing when this returns false — replaying a delete event after
  * the user re-created the record would silently re-delete it.
  *
- * Single-DB write: only the local mirror DB tracks seen events. Turso
- * doesn't need to know — the box is single-host, replay protection is a
- * box-local concern. Goes through mirrorWriteEnabled() so behavior in
- * dual-write-disabled mode (Turso-only) still gates on the rawDb copy.
+ * Single-DB write: always goes to the primary db, which is authoritative.
  */
 export async function markWebhookEventSeen(eventId: number): Promise<boolean> {
-  const db = mirrorWriteEnabled() && localDb ? localDb : rawDb;
   const result = await db.execute({
     sql: `
       INSERT OR IGNORE INTO seen_webhook_events (event_id, seen_at)
@@ -314,7 +310,6 @@ export async function gcSeenWebhookEvents(
   retentionMs = 7 * 24 * 60 * 60 * 1000,
 ): Promise<void> {
   const cutoff = Date.now() - retentionMs;
-  const db = mirrorWriteEnabled() && localDb ? localDb : rawDb;
   try {
     await db.execute({
       sql: "DELETE FROM seen_webhook_events WHERE seen_at < ?",

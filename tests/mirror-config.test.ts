@@ -74,7 +74,7 @@ Deno.test("getMirrorMode - memoised within a single resolution", () => {
 // shouldReadFromMirror: Turso-failure → PDS fallback
 // ---------------------------------------------------------------------------
 
-import { rawDb } from "../lib/db.ts";
+import { db } from "../lib/db.ts";
 import {
   _resetSyncStatusCache,
   shouldReadFromMirror,
@@ -85,11 +85,11 @@ Deno.test("shouldReadFromMirror - getSyncStatus throws → fromMirror=false (Tur
   _resetMirrorModeCache();
   _resetSyncStatusCache();
 
-  const orig = rawDb.execute.bind(rawDb);
+  const orig = db.execute.bind(db);
   // Throw on the tracked_dids select that backs getSyncStatus; let other
   // queries (migrations, etc.) succeed.
   // deno-lint-ignore no-explicit-any
-  (rawDb as any).execute = (q: any) => {
+  (db as any).execute = (q: any) => {
     if (typeof q?.sql === "string" && q.sql.includes("FROM tracked_dids")) {
       throw new Error("turso boom");
     }
@@ -103,7 +103,7 @@ Deno.test("shouldReadFromMirror - getSyncStatus throws → fromMirror=false (Tur
     assertEquals(decision.status.tracking, false);
   } finally {
     // deno-lint-ignore no-explicit-any
-    (rawDb as any).execute = orig;
+    (db as any).execute = orig;
     Deno.env.delete("MIRROR_MODE");
     _resetMirrorModeCache();
     _resetSyncStatusCache();
@@ -129,7 +129,7 @@ Deno.test("shouldReadFromMirror - second call within TTL reuses cached promise",
     // Insert a tracked_dids row directly. If the cache is honored (TTL
     // 1000ms), the next shouldReadFromMirror still returns
     // fromMirror=false because it serves the cached pre-insert status.
-    await rawDb.execute({
+    await db.execute({
       sql: `INSERT INTO tracked_dids (did, pds_url, added_at,
               backfill_started_at, backfill_complete_at)
             VALUES (?, ?, ?, ?, ?)`,
@@ -143,7 +143,7 @@ Deno.test("shouldReadFromMirror - second call within TTL reuses cached promise",
       "Cache TTL should mask the new tracked row within the 1s window",
     );
   } finally {
-    await rawDb.execute({
+    await db.execute({
       sql: "DELETE FROM tracked_dids WHERE did = ?",
       args: ["did:plc:cachehit"],
     });

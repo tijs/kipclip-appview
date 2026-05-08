@@ -1,15 +1,15 @@
 #!/usr/bin/env -S deno run -A
 /**
- * Compare row counts between local libSQL and Turso for the dual-write
- * mirror tables. Reports per-table deltas and per-DID deltas where they
- * exist.
+ * Compare row counts between the primary local SQLite and the remote Turso
+ * mirror for the dual-write mirror tables. Reports per-table deltas and
+ * per-DID deltas where they exist.
  *
  * Drift in steady-state should always be zero — TAP delivers each event
  * once and the dual-write helper is idempotent on both sides. Non-zero
  * drift is a Sentry-worthy event the U5 readiness window watches for.
  *
  * Usage:
- *   LOCAL_DB_URL=file:/var/lib/kipclip/mirror.db \
+ *   DATABASE_URL=file:/var/lib/kipclip/kipclip.db \
  *   TURSO_DATABASE_URL=libsql://... TURSO_AUTH_TOKEN=... \
  *   deno run -A scripts/mirror-drift-check.ts
  *
@@ -17,12 +17,10 @@
  */
 
 // Validate required env BEFORE importing lib/db.ts. The shared module
-// eagerly opens both connections at import time and crashes with an
-// opaque libSQL error 14 if TURSO_DATABASE_URL is unset (it falls back
-// to file:.local/kipclip.db which does not exist on the box). Fail fast
-// with an operator-friendly message instead.
+// eagerly opens the primary connection at import time. Fail fast with an
+// operator-friendly message instead of an opaque libSQL error.
 const missing: string[] = [];
-if (!Deno.env.get("LOCAL_DB_URL")) missing.push("LOCAL_DB_URL");
+if (!Deno.env.get("DATABASE_URL")) missing.push("DATABASE_URL");
 if (!Deno.env.get("TURSO_DATABASE_URL")) missing.push("TURSO_DATABASE_URL");
 if (!Deno.env.get("TURSO_AUTH_TOKEN")) missing.push("TURSO_AUTH_TOKEN");
 if (missing.length > 0) {
@@ -33,11 +31,11 @@ if (missing.length > 0) {
   Deno.exit(2);
 }
 
-const { localDb, rawDb } = await import("../lib/db.ts");
+const { db, remoteDb } = await import("../lib/db.ts");
 
-if (!localDb) {
+if (!remoteDb) {
   console.error(
-    "ERROR: LOCAL_DB_URL did not initialize a local client. Check the URL scheme (must be file:).",
+    "ERROR: TURSO_DATABASE_URL did not initialize a remote client. Check the URL scheme (must be a remote libsql:// URL).",
   );
   Deno.exit(2);
 }
@@ -62,8 +60,8 @@ let totalDelta = 0;
 
 for (const table of TABLES) {
   const [localR, tursoR] = await Promise.all([
-    localDb!.execute({ sql: `SELECT COUNT(*) FROM ${table}`, args: [] }),
-    rawDb.execute({ sql: `SELECT COUNT(*) FROM ${table}`, args: [] }),
+    db.execute({ sql: `SELECT COUNT(*) FROM ${table}`, args: [] }),
+    remoteDb!.execute({ sql: `SELECT COUNT(*) FROM ${table}`, args: [] }),
   ]);
   const local = Number((localR.rows[0] as unknown[])[0] ?? 0);
   const turso = Number((tursoR.rows[0] as unknown[])[0] ?? 0);
@@ -102,11 +100,11 @@ if (driftingTables.length > 0) {
       continue;
     }
     const [localR, tursoR] = await Promise.all([
-      localDb!.execute({
+      db.execute({
         sql: `SELECT did, COUNT(*) FROM ${table} GROUP BY did ORDER BY did`,
         args: [],
       }),
-      rawDb.execute({
+      remoteDb!.execute({
         sql: `SELECT did, COUNT(*) FROM ${table} GROUP BY did ORDER BY did`,
         args: [],
       }),

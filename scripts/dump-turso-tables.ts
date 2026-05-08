@@ -21,7 +21,7 @@
  *   '
  */
 
-import { rawDb } from "../lib/db.ts";
+import { db } from "../lib/db.ts";
 
 const SQLITE_MAX_INT = 9223372036854775807n; // 2^63 - 1
 const SQLITE_MIN_INT = -9223372036854775808n; // -2^63
@@ -60,7 +60,7 @@ function quoteSqlValue(v: unknown): string {
 
 // Discover tables at runtime. Excludes sqlite internal tables and any
 // virtual-table shadow tables (which have a NULL sql column anyway).
-const tablesR = await rawDb.execute({
+const tablesR = await db.execute({
   sql:
     "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND sql IS NOT NULL ORDER BY name",
   args: [],
@@ -76,7 +76,7 @@ console.log("BEGIN TRANSACTION;");
 for (const table of TABLES) {
   // Schema. Loud failure: any error here aborts the whole dump so the
   // backup script never stores a non-empty but partial snapshot.
-  const schemaR = await rawDb.execute({
+  const schemaR = await db.execute({
     sql:
       "SELECT sql FROM sqlite_master WHERE type='table' AND name = ? AND sql IS NOT NULL",
     args: [table],
@@ -90,7 +90,7 @@ for (const table of TABLES) {
   console.log(`${createSql};`);
 
   // Index DDL for the table.
-  const idxR = await rawDb.execute({
+  const idxR = await db.execute({
     sql:
       "SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name = ? AND sql IS NOT NULL",
     args: [table],
@@ -101,7 +101,7 @@ for (const table of TABLES) {
 
   // Column names for INSERT. Use pragma_table_info table-valued form so
   // we don't depend on Object.values insertion order in the wrapper.
-  const colsR = await rawDb.execute({
+  const colsR = await db.execute({
     sql: "SELECT name FROM pragma_table_info(?)",
     args: [table],
   });
@@ -112,7 +112,7 @@ for (const table of TABLES) {
   const colList = colNames.map((c) => `"${c}"`).join(", ");
 
   // Data.
-  const dataR = await rawDb.execute({
+  const dataR = await db.execute({
     sql: `SELECT ${colList} FROM ${table}`,
     args: [],
   });

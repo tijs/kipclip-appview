@@ -117,11 +117,11 @@ export async function sendToInstapaperAsync(
   title?: string,
 ): Promise<void> {
   // Dynamic imports to avoid circular dependencies
-  const { rawDb } = await import("./db.ts");
+  const { db } = await import("./db.ts");
   const { decrypt } = await import("./encryption.ts");
 
   try {
-    const result = await rawDb.execute({
+    const result = await db.execute({
       sql: `SELECT instapaper_username_encrypted, instapaper_password_encrypted
             FROM user_settings
             WHERE did = ? AND instapaper_enabled = 1`,

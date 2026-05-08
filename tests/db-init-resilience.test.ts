@@ -1,12 +1,12 @@
 /**
- * Init resilience: a missing or unreadable LOCAL_DB_URL must NOT crash
- * the boot path. The service should degrade to Turso-only and log a
+ * Init resilience: a missing or unreadable TURSO_DATABASE_URL must NOT crash
+ * the boot path. The service should degrade to primary-only and log a
  * warning.
  *
  * Verified by spawning a Deno subprocess that imports lib/db.ts with a
- * deliberately-bad LOCAL_DB_URL and asserting:
+ * deliberately-bad TURSO_DATABASE_URL and asserting:
  *   - exit code 0 (boot did not crash)
- *   - localDb resolved to null (fallback path active)
+ *   - remoteDb resolved to null (fallback path active)
  *   - the warning line was emitted on stderr
  *
  * Subprocess isolation is required because lib/db.ts initializes module
@@ -17,11 +17,11 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 
 const PROBE_SCRIPT = `
-import { localDb } from "../lib/db.ts";
-console.log("LOCALDB=" + (localDb === null ? "null" : "set"));
+import { remoteDb } from "../lib/db.ts";
+console.log("REMOTEDB=" + (remoteDb === null ? "null" : "set"));
 `;
 
-async function runProbe(localDbUrl: string): Promise<{
+async function runProbe(remoteDbUrl: string): Promise<{
   code: number;
   stdout: string;
   stderr: string;
@@ -40,8 +40,8 @@ async function runProbe(localDbUrl: string): Promise<{
       args: ["run", "-A", probePath],
       env: {
         // Force non-test mode so the real init path runs.
-        TURSO_DATABASE_URL: "file::memory:",
-        LOCAL_DB_URL: localDbUrl,
+        DATABASE_URL: "file::memory:",
+        TURSO_DATABASE_URL: remoteDbUrl,
         // Avoid Sentry network noise.
         SENTRY_DSN: "",
         ENVIRONMENT: "DEVELOPMENT",
@@ -60,20 +60,11 @@ async function runProbe(localDbUrl: string): Promise<{
   }
 }
 
-Deno.test("db init - LOCAL_DB_URL pointing to unreadable path does not crash", async () => {
-  // A directory cannot be opened as a SQLite DB. Use the repo root —
-  // guaranteed to exist on every checkout.
-  const { code, stdout, stderr } = await runProbe("file:./tests");
+Deno.test("db init - TURSO_DATABASE_URL with file: scheme is ignored cleanly", async () => {
+  // file: scheme for TURSO_DATABASE_URL is rejected — it must be a remote URL.
+  const { code, stdout, stderr } = await runProbe("file:./some-local-path.db");
 
   assertEquals(code, 0, `boot crashed; stderr=${stderr}`);
-  assertStringIncludes(stdout, "LOCALDB=null");
-  assertStringIncludes(stderr, "Failed to open local libSQL");
-});
-
-Deno.test("db init - LOCAL_DB_URL with bad scheme is ignored cleanly", async () => {
-  const { code, stdout, stderr } = await runProbe("libsql://not-a-file");
-
-  assertEquals(code, 0, `boot crashed; stderr=${stderr}`);
-  assertStringIncludes(stdout, "LOCALDB=null");
-  assertStringIncludes(stderr, "must use file: scheme");
+  assertStringIncludes(stdout, "REMOTEDB=null");
+  assertStringIncludes(stderr, "must use a remote URL");
 });

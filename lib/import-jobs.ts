@@ -3,7 +3,7 @@
  * Stores chunked import work in Turso/libSQL for client-driven batch processing.
  */
 
-import { rawDb } from "./db.ts";
+import { db } from "./db.ts";
 import type { ImportedBookmark } from "../shared/types.ts";
 
 const CHUNK_SIZE = 200;
@@ -52,7 +52,7 @@ export async function createImportJob(
   }
 
   const supporterVerifiedAt = new Date().toISOString();
-  await rawDb.execute({
+  await db.execute({
     sql: `INSERT INTO import_jobs
           (id, did, format, total, skipped, total_chunks, tags, supporter_verified_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -69,7 +69,7 @@ export async function createImportJob(
   });
 
   for (let i = 0; i < chunks.length; i++) {
-    await rawDb.execute({
+    await db.execute({
       sql: `INSERT INTO import_chunks (job_id, chunk_index, bookmarks)
             VALUES (?, ?, ?)`,
       args: [id, i, JSON.stringify(chunks[i])],
@@ -96,7 +96,7 @@ export async function createImportJob(
 export async function getImportJob(
   jobId: string,
 ): Promise<ImportJob | null> {
-  const result = await rawDb.execute({
+  const result = await db.execute({
     sql: `SELECT id, did, format, total, skipped, imported, failed,
                  total_chunks, processed_chunks, tags, status,
                  supporter_verified_at
@@ -127,7 +127,7 @@ export async function getImportJob(
 export async function getNextPendingChunk(
   jobId: string,
 ): Promise<ImportChunk | null> {
-  const result = await rawDb.execute({
+  const result = await db.execute({
     sql: `SELECT id, job_id, chunk_index, bookmarks, status
           FROM import_chunks
           WHERE job_id = ? AND status = 'pending'
@@ -155,12 +155,12 @@ export async function completeChunk(
   imported: number,
   failed: number,
 ): Promise<void> {
-  await rawDb.execute({
+  await db.execute({
     sql: `UPDATE import_chunks SET status = 'done' WHERE id = ?`,
     args: [chunkId],
   });
 
-  await rawDb.execute({
+  await db.execute({
     sql: `UPDATE import_jobs
           SET imported = imported + ?,
               failed = failed + ?,
@@ -174,7 +174,7 @@ export async function completeChunk(
 
 /** Mark a job as completed. */
 export async function markJobCompleted(jobId: string): Promise<void> {
-  await rawDb.execute({
+  await db.execute({
     sql: `UPDATE import_jobs
           SET status = 'completed', updated_at = CURRENT_TIMESTAMP
           WHERE id = ?`,
@@ -187,7 +187,7 @@ export async function cleanupOldJobs(maxAgeHours = 24): Promise<void> {
   const cutoff = new Date(Date.now() - maxAgeHours * 60 * 60 * 1000)
     .toISOString();
 
-  await rawDb.execute({
+  await db.execute({
     sql: `DELETE FROM import_chunks
           WHERE job_id IN (
             SELECT id FROM import_jobs WHERE created_at < ?
@@ -195,7 +195,7 @@ export async function cleanupOldJobs(maxAgeHours = 24): Promise<void> {
     args: [cutoff],
   });
 
-  await rawDb.execute({
+  await db.execute({
     sql: `DELETE FROM import_jobs WHERE created_at < ?`,
     args: [cutoff],
   });
@@ -203,7 +203,7 @@ export async function cleanupOldJobs(maxAgeHours = 24): Promise<void> {
 
 /** Delete existing pending/processing jobs for a DID. */
 export async function deleteJobsForDid(did: string): Promise<void> {
-  await rawDb.execute({
+  await db.execute({
     sql: `DELETE FROM import_chunks
           WHERE job_id IN (
             SELECT id FROM import_jobs
@@ -212,7 +212,7 @@ export async function deleteJobsForDid(did: string): Promise<void> {
     args: [did],
   });
 
-  await rawDb.execute({
+  await db.execute({
     sql: `DELETE FROM import_jobs
           WHERE did = ? AND status IN ('pending', 'processing')`,
     args: [did],

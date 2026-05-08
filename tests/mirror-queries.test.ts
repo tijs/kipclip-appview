@@ -13,7 +13,7 @@ import {
   listTags,
   nextPageBookmarks,
 } from "../mirror/queries.ts";
-import { rawDb } from "../lib/db.ts";
+import { db } from "../lib/db.ts";
 import {
   upsertAnnotation,
   upsertBookmark,
@@ -253,7 +253,7 @@ Deno.test("getMirrorPreferences - returns nulls for missing columns", async () =
 });
 
 async function clearUserSettings() {
-  await rawDb.execute({ sql: "DELETE FROM user_settings", args: [] });
+  await db.execute({ sql: "DELETE FROM user_settings", args: [] });
 }
 
 Deno.test("getMirrorInitialExtras - both rows missing returns defaults+null", async () => {
@@ -268,7 +268,7 @@ Deno.test("getMirrorInitialExtras - both rows missing returns defaults+null", as
 Deno.test("getMirrorInitialExtras - settings row only returns settings + null prefs", async () => {
   await clearMirrorTables();
   await clearUserSettings();
-  await rawDb.execute({
+  await db.execute({
     sql:
       "INSERT INTO user_settings (did, instapaper_enabled, instapaper_username_encrypted) VALUES (?, ?, ?)",
     args: [DID, 1, "ENCRYPTED_USER"],
@@ -297,7 +297,7 @@ Deno.test("getMirrorInitialExtras - prefs row only returns defaults + parsed pre
 Deno.test("getMirrorInitialExtras - both rows present returns combined", async () => {
   await clearMirrorTables();
   await clearUserSettings();
-  await rawDb.execute({
+  await db.execute({
     sql:
       "INSERT INTO user_settings (did, instapaper_enabled, instapaper_username_encrypted) VALUES (?, ?, ?)",
     args: [DID, 1, "ENC"],
@@ -316,7 +316,7 @@ Deno.test("getMirrorInitialExtras - both rows present returns combined", async (
 Deno.test("getMirrorInitialExtras - other DID's rows do not bleed", async () => {
   await clearMirrorTables();
   await clearUserSettings();
-  await rawDb.execute({
+  await db.execute({
     sql: "INSERT INTO user_settings (did, instapaper_enabled) VALUES (?, ?)",
     args: [OTHER_DID, 1],
   });

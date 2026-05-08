@@ -1,11 +1,11 @@
 #!/usr/bin/env -S deno run -A
 /**
- * One-shot: copy mirror tables from Turso → local libSQL.
+ * One-shot: copy mirror tables from remote Turso → primary local SQLite.
  *
- * Used at phase 3 cutover to seed the box's local libSQL with whatever
- * Turso has accumulated during phases 0-2. After dual-write is enabled,
- * running this would overwrite newer local rows with stale Turso state
- * via PK collision — the script refuses to run when MIRROR_DUAL_WRITE=on.
+ * Used at cutover to seed the box's primary local SQLite with whatever
+ * Turso has accumulated. After dual-write is enabled, running this would
+ * overwrite newer local rows with stale Turso state via PK collision —
+ * the script refuses to run when MIRROR_DUAL_WRITE=on.
  *
  * Idempotent across re-runs that occur BEFORE dual-write is enabled. Each
  * table is wrapped in a transaction so a mid-run crash leaves the local
@@ -18,11 +18,11 @@
  *   '
  */
 
-import { localDb, rawDb } from "../lib/db.ts";
+import { db, remoteDb } from "../lib/db.ts";
 
-if (!localDb) {
+if (!remoteDb) {
   console.error(
-    "ERROR: localDb is null. Set LOCAL_DB_URL=file:/var/lib/kipclip/mirror.db",
+    "ERROR: remoteDb is null. Set TURSO_DATABASE_URL=libsql://... and TURSO_AUTH_TOKEN=...",
   );
   Deno.exit(2);
 }
@@ -53,19 +53,19 @@ let total = 0;
 for (const name of MIRROR_TABLES) {
   // Discover columns at runtime so a future ALTER on local doesn't
   // silently drop the new column at cutover.
-  const colsR = await localDb.execute({
+  const colsR = await db.execute({
     sql: "SELECT name FROM pragma_table_info(?)",
     args: [name],
   });
   const cols = (colsR.rows ?? []).map((row) => String(row[0]));
   if (cols.length === 0) {
-    throw new Error(`local mirror has no columns for ${name}; aborting`);
+    throw new Error(`primary db has no columns for ${name}; aborting`);
   }
   const colList = cols.join(", ");
   const placeholders = cols.map(() => "?").join(", ");
 
-  console.log(`==> Reading ${name} from Turso...`);
-  const r = await rawDb.execute({
+  console.log(`==> Reading ${name} from remote Turso...`);
+  const r = await remoteDb.execute({
     sql: `SELECT ${colList} FROM ${name}`,
     args: [],
   });
@@ -74,24 +74,26 @@ for (const name of MIRROR_TABLES) {
 
   if (rows.length === 0) continue;
 
-  console.log(`==> Writing ${name} to local libSQL (in transaction)...`);
-  await localDb.execute({ sql: "BEGIN", args: [] });
+  console.log(
+    `==> Writing ${name} to primary local SQLite (in transaction)...`,
+  );
+  await db.execute({ sql: "BEGIN", args: [] });
   try {
     for (const row of rows) {
-      await localDb.execute({
+      await db.execute({
         sql:
           `INSERT OR REPLACE INTO ${name} (${colList}) VALUES (${placeholders})`,
         args: row,
       });
     }
-    await localDb.execute({ sql: "COMMIT", args: [] });
+    await db.execute({ sql: "COMMIT", args: [] });
   } catch (err) {
-    await localDb.execute({ sql: "ROLLBACK", args: [] }).catch(() => {});
+    await db.execute({ sql: "ROLLBACK", args: [] }).catch(() => {});
     throw err;
   }
   total += rows.length;
   console.log(`    done`);
 }
 
-console.log(`\n✅ Seeded ${total} rows into local libSQL.`);
+console.log(`\n✅ Seeded ${total} rows into primary local SQLite.`);
 console.log("Run scripts/mirror-drift-check.ts to verify zero drift.");

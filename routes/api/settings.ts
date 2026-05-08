@@ -12,7 +12,7 @@ import {
 import { getUserSettings, updateUserSettings } from "../../lib/settings.ts";
 import { validateInstapaperCredentials } from "../../lib/instapaper.ts";
 import { decrypt } from "../../lib/encryption.ts";
-import { rawDb } from "../../lib/db.ts";
+import { db } from "../../lib/db.ts";
 import type {
   GetSettingsResponse,
   UpdateSettingsRequest,
@@ -108,7 +108,7 @@ export function registerSettingsRoutes(app: App<any>): App<any> {
 async function getInstapaperPassword(
   did: string,
 ): Promise<string | undefined> {
-  const result = await rawDb.execute({
+  const result = await db.execute({
     sql:
       "SELECT instapaper_password_encrypted FROM user_settings WHERE did = ?",
     args: [did],

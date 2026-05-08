@@ -239,7 +239,9 @@ export function createMockSocket(open = true): MockWebSocket {
   const s: MockWebSocket = {
     readyState: open ? 1 /* OPEN */ : 3, /* CLOSED */
     sent: [],
-    send(payload) { s.sent.push(payload); },
+    send(payload) {
+      s.sent.push(payload);
+    },
   };
   return s;
 }

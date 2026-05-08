@@ -6,7 +6,7 @@
  */
 
 import "./test-setup.ts";
-import { clearMirrorTables, rawDb } from "./mirror-test-setup.ts";
+import { clearMirrorTables, db } from "./mirror-test-setup.ts";
 
 import { assertEquals } from "@std/assert";
 import { _resetMirrorModeCache } from "../lib/mirror-config.ts";
@@ -143,12 +143,12 @@ Deno.test("fetchOwnerBookmarkRecords - mirror Turso throws → falls back to PDS
   await seedBookmark("a");
 
   // Force Turso failure by closing connection: easiest way is to dynamically
-  // monkey-patch rawDb.execute. The helper catches and falls back to PDS.
-  const orig = rawDb.execute.bind(rawDb);
+  // monkey-patch db.execute. The helper catches and falls back to PDS.
+  const orig = db.execute.bind(db);
   let calls = 0;
   // Throw only on the bookmark SELECT, not on getSyncStatus or migrations.
   // deno-lint-ignore no-explicit-any
-  (rawDb as any).execute = (q: any) => {
+  (db as any).execute = (q: any) => {
     if (typeof q?.sql === "string" && q.sql.includes("FROM bookmarks b")) {
       calls++;
       throw new Error("turso boom");
@@ -177,7 +177,7 @@ Deno.test("fetchOwnerBookmarkRecords - mirror Turso throws → falls back to PDS
     assertEquals(calls, 1);
   } finally {
     // deno-lint-ignore no-explicit-any
-    (rawDb as any).execute = orig;
+    (db as any).execute = orig;
     setMode("off");
   }
 });
@@ -317,10 +317,10 @@ Deno.test("fetchOwnerTagRecords - Turso throws → PDS fallback", async () => {
   await seedTracked();
   await seedTag("t1", "Rust");
 
-  const orig = rawDb.execute.bind(rawDb);
+  const orig = db.execute.bind(db);
   let calls = 0;
   // deno-lint-ignore no-explicit-any
-  (rawDb as any).execute = (q: any) => {
+  (db as any).execute = (q: any) => {
     if (typeof q?.sql === "string" && q.sql.includes("FROM tags WHERE did")) {
       calls++;
       throw new Error("turso boom");
@@ -344,7 +344,7 @@ Deno.test("fetchOwnerTagRecords - Turso throws → PDS fallback", async () => {
     assertEquals(calls, 1);
   } finally {
     // deno-lint-ignore no-explicit-any
-    (rawDb as any).execute = orig;
+    (db as any).execute = orig;
     setMode("off");
   }
 });

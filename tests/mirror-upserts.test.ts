@@ -2,7 +2,7 @@
  * Tests for mirror/upserts.ts — idempotent upsert + delete helpers.
  */
 
-import { clearMirrorTables, rawDb } from "./mirror-test-setup.ts";
+import { clearMirrorTables, db } from "./mirror-test-setup.ts";
 import {
   assertEquals,
   assertExists,
@@ -42,7 +42,7 @@ function bookmark(
 }
 
 async function rowCount(table: string): Promise<number> {
-  const r = await rawDb.execute({
+  const r = await db.execute({
     sql: `SELECT COUNT(*) FROM ${table}`,
     args: [],
   });
@@ -50,7 +50,7 @@ async function rowCount(table: string): Promise<number> {
 }
 
 async function getBookmarkRow(uri: string) {
-  const r = await rawDb.execute({
+  const r = await db.execute({
     sql:
       "SELECT uri, did, cid, tags, enriched_title, pending_echo, updated_at FROM bookmarks WHERE uri = ?",
     args: [uri],
@@ -191,7 +191,7 @@ Deno.test("upsertAnnotation - inserts then updates idempotently", async () => {
     note: "second",
   });
   assertEquals(await rowCount("annotations"), 1);
-  const r = await rawDb.execute({
+  const r = await db.execute({
     sql: "SELECT cid, note FROM annotations WHERE uri = ?",
     args: [aUri],
   });
@@ -231,7 +231,7 @@ Deno.test("upsertTag - inserts and updates value", async () => {
     value: "technology",
     createdAt: "2026-05-01T00:00:00.000Z",
   });
-  const r = await rawDb.execute({
+  const r = await db.execute({
     sql: "SELECT value, cid FROM tags WHERE uri = ?",
     args: [uri],
   });
@@ -256,7 +256,7 @@ Deno.test("deleteTag - removes the row", async () => {
 Deno.test("upsertTrackedDid - inserts a new row", async () => {
   await clearMirrorTables();
   await upsertTrackedDid({ did: DID, pdsUrl: "https://pds.example" });
-  const r = await rawDb.execute({
+  const r = await db.execute({
     sql: "SELECT did, pds_url, last_seq FROM tracked_dids WHERE did = ?",
     args: [DID],
   });
@@ -267,7 +267,7 @@ Deno.test("upsertTrackedDid - last_seq advances monotonically", async () => {
   await clearMirrorTables();
   await upsertTrackedDid({ did: DID, lastSeq: 100, lastEventAt: 1000 });
   await upsertTrackedDid({ did: DID, lastSeq: 50, lastEventAt: 500 });
-  const r = await rawDb.execute({
+  const r = await db.execute({
     sql: "SELECT last_seq, last_event_at FROM tracked_dids WHERE did = ?",
     args: [DID],
   });
@@ -282,7 +282,7 @@ Deno.test("upsertTrackedDid - backfill timestamps preserved when not provided", 
     backfillCompleteAt: 2000,
   });
   await upsertTrackedDid({ did: DID, lastSeq: 10 });
-  const r = await rawDb.execute({
+  const r = await db.execute({
     sql:
       "SELECT backfill_started_at, backfill_complete_at FROM tracked_dids WHERE did = ?",
     args: [DID],
@@ -301,7 +301,7 @@ Deno.test("integration - bookmark + annotation share rkey, both queryable by DID
     subject: `at://${DID}/community.lexicon.bookmarks.bookmark/z`,
     note: "important",
   });
-  const r = await rawDb.execute({
+  const r = await db.execute({
     sql: `
       SELECT b.uri, a.note FROM bookmarks b
       LEFT JOIN annotations a ON a.subject = b.uri
@@ -323,7 +323,7 @@ Deno.test("upsertPreferences - inserts a new row with both fields", async () => 
     dateFormat: "us",
     readingListTag: "toread",
   });
-  const r = await rawDb.execute({
+  const r = await db.execute({
     sql:
       "SELECT did, cid, date_format, reading_list_tag FROM preferences WHERE did = ?",
     args: [DID],
@@ -341,13 +341,13 @@ Deno.test("upsertPreferences - is idempotent on (did)", async () => {
     readingListTag: "toread",
   };
   await upsertPreferences(record);
-  const r1 = await rawDb.execute({
+  const r1 = await db.execute({
     sql: "SELECT updated_at FROM preferences WHERE did = ?",
     args: [DID],
   });
   await new Promise((resolve) => setTimeout(resolve, 5));
   await upsertPreferences(record);
-  const r2 = await rawDb.execute({
+  const r2 = await db.execute({
     sql: "SELECT COUNT(*), updated_at FROM preferences WHERE did = ?",
     args: [DID],
   });
@@ -369,7 +369,7 @@ Deno.test("upsertPreferences - update changes existing row", async () => {
     dateFormat: "iso",
     readingListTag: "later",
   });
-  const r = await rawDb.execute({
+  const r = await db.execute({
     sql:
       "SELECT cid, date_format, reading_list_tag FROM preferences WHERE did = ?",
     args: [DID],
@@ -383,7 +383,7 @@ Deno.test("upsertPreferences - allows null fields", async () => {
     did: DID,
     cid: "bafyP1",
   });
-  const r = await rawDb.execute({
+  const r = await db.execute({
     sql: "SELECT date_format, reading_list_tag FROM preferences WHERE did = ?",
     args: [DID],
   });
@@ -398,7 +398,7 @@ Deno.test("deletePreferences - removes the row", async () => {
     dateFormat: "us",
   });
   await deletePreferences(DID);
-  const r = await rawDb.execute({
+  const r = await db.execute({
     sql: "SELECT COUNT(*) FROM preferences WHERE did = ?",
     args: [DID],
   });

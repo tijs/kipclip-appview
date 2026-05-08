@@ -13,7 +13,7 @@
  * URI lexicographic ordering, so pagination is stable across page boundaries.
  */
 
-import { mirrorRead, rawDb } from "../lib/db.ts";
+import { db, mirrorRead } from "../lib/db.ts";
 import type { EnrichedBookmark, EnrichedTag } from "../shared/types.ts";
 
 export interface SyncStatus {
@@ -327,24 +327,19 @@ export interface MirrorInitialExtras {
 }
 
 /**
- * Combined read of user_settings + preferences in a single Turso roundtrip.
+ * Combined read of user_settings + preferences in a single roundtrip.
  *
- * /api/initial-data's mirror branch needs both, and they previously fired as
- * two parallel HTTP requests — the libSQL HTTP client serializes per-connection
- * so the second roundtrip pays full latency. One LEFT JOIN against a literal
- * DID row produces both in one call. Caller decrypts the username and applies
- * UserSettings defaults; preferences callers apply their own defaults.
+ * /api/initial-data's mirror branch needs both, and this LEFT JOIN against a
+ * literal DID row produces both in one call. Caller decrypts the username and
+ * applies UserSettings defaults; preferences callers apply their own defaults.
  *
- * Stays on Turso (rawDb) deliberately: user_settings is Turso-only durable
- * state (not mirrored via TAP), so this JOIN can't run against the local
- * libSQL where user_settings doesn't exist. Future optimization: split prefs
- * from settings, read prefs via mirrorRead for sub-ms latency, settings still
- * Turso. Out of scope for plan 004.
+ * Uses the primary db directly since user_settings and preferences both live
+ * on the primary. mirrorRead is not needed here — there is no fallback path.
  */
 export async function getMirrorInitialExtras(
   did: string,
 ): Promise<MirrorInitialExtras> {
-  const r = await rawDb.execute({
+  const r = await db.execute({
     sql: `SELECT
             s.instapaper_enabled,
             s.instapaper_username_encrypted,

@@ -2,7 +2,7 @@
 // SQLiteStorage creates the iron_session_storage table automatically
 // This file is kept for future application-specific migrations
 
-import { localDb, rawDb } from "./db.ts";
+import { db, remoteDb } from "./db.ts";
 import { MIRROR_MIGRATIONS } from "../mirror/schema.ts";
 
 // Migration tracking table
@@ -16,7 +16,7 @@ const MIGRATIONS_TABLE = `
 `;
 
 // Non-mirror migrations: sessions / user_settings / import_jobs.
-// These live exclusively on Turso. Local libSQL on the box does not need them.
+// These live on the primary db. The remote Turso backup only mirrors tables.
 const NON_MIRROR_MIGRATIONS: Array<{
   version: string;
   description: string;
@@ -86,7 +86,7 @@ const NON_MIRROR_MIGRATIONS: Array<{
   },
 ];
 
-// Combined list applied to Turso (rawDb).
+// Combined list applied to the primary db.
 const MIGRATIONS = [...NON_MIRROR_MIGRATIONS, ...MIRROR_MIGRATIONS];
 
 interface DbClient {
@@ -187,14 +187,14 @@ async function runMigrationSet(
 
 export async function runMigrations() {
   try {
-    // Turso (rawDb) gets every migration: sessions, settings, import_jobs,
+    // Primary db gets every migration: sessions, settings, import_jobs,
     // and mirror tables.
-    await runMigrationSet(rawDb, "Turso", MIGRATIONS);
+    await runMigrationSet(db, "primary", MIGRATIONS);
 
-    // Local libSQL on the box only needs the mirror tables. Skip silently
-    // when LOCAL_DB_URL is unset (Deno Deploy, dev without box).
-    if (localDb) {
-      await runMigrationSet(localDb, "local libSQL", MIRROR_MIGRATIONS);
+    // Remote Turso only needs the mirror tables. Skip silently when
+    // TURSO_DATABASE_URL is unset (Deno Deploy, dev without remote backup).
+    if (remoteDb) {
+      await runMigrationSet(remoteDb, "Turso remote", MIRROR_MIGRATIONS);
     }
 
     console.log("✅ All migrations completed successfully");
@@ -206,11 +206,11 @@ export async function runMigrations() {
 
 export async function getMigrationStatus() {
   try {
-    await rawDb.execute({
+    await db.execute({
       sql: MIGRATIONS_TABLE,
       args: [],
     });
-    const result = await rawDb.execute({
+    const result = await db.execute({
       sql:
         "SELECT version, description, executed_at FROM migrations ORDER BY id",
       args: [],

@@ -3,7 +3,7 @@
  * Stores user preferences in Turso/libSQL.
  */
 
-import { rawDb } from "./db.ts";
+import { db } from "./db.ts";
 import type { UserSettings } from "../shared/types.ts";
 import { decrypt, encrypt } from "./encryption.ts";
 
@@ -13,7 +13,7 @@ import { decrypt, encrypt } from "./encryption.ts";
  */
 export async function getUserSettings(did: string): Promise<UserSettings> {
   // Try to get existing settings
-  const result = await rawDb.execute({
+  const result = await db.execute({
     sql: `SELECT
             instapaper_enabled,
             instapaper_username_encrypted
@@ -44,7 +44,7 @@ export async function getUserSettings(did: string): Promise<UserSettings> {
   }
 
   // Create default settings for new user
-  await rawDb.execute({
+  await db.execute({
     sql: "INSERT INTO user_settings (did) VALUES (?)",
     args: [did],
   });
@@ -66,7 +66,7 @@ export async function updateUserSettings(
   if (updates.instapaperEnabled) {
     // Check if credentials are provided or already exist
     if (!updates.instapaperUsername && !updates.instapaperPassword) {
-      const existing = await rawDb.execute({
+      const existing = await db.execute({
         sql: `SELECT instapaper_username_encrypted
               FROM user_settings
               WHERE did = ?`,
@@ -91,7 +91,7 @@ export async function updateUserSettings(
   }
 
   // Check if settings exist
-  const existing = await rawDb.execute({
+  const existing = await db.execute({
     sql: "SELECT id FROM user_settings WHERE did = ?",
     args: [did],
   });
@@ -124,7 +124,7 @@ export async function updateUserSettings(
     updateFields.push("updated_at = CURRENT_TIMESTAMP");
     updateValues.push(did); // WHERE did = ?
 
-    await rawDb.execute({
+    await db.execute({
       sql: `UPDATE user_settings
             SET ${updateFields.join(", ")}
             WHERE did = ?`,
@@ -139,7 +139,7 @@ export async function updateUserSettings(
       ? await encrypt(updates.instapaperPassword)
       : null;
 
-    await rawDb.execute({
+    await db.execute({
       sql: `INSERT INTO user_settings
             (did, instapaper_enabled,
              instapaper_username_encrypted, instapaper_password_encrypted)

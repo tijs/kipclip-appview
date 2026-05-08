@@ -37,7 +37,6 @@ function clearSession() {
   setTestSessionProvider(null);
 }
 
-
 Deno.test("GET /api/live - 400 when upgrade header missing", async () => {
   withSession();
   try {

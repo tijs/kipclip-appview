@@ -1,23 +1,28 @@
 /**
- * Tests for U2 (plan 004): dual-write semantics in mirrorWrite + upsert layer.
+ * Tests for dual-write semantics in mirrorWrite + upsert layer.
  *
- * Default test env has no LOCAL_DB_URL → mirrorWriteEnabled() is false →
- * upserts route to rawDb only. To exercise the dual-write path we install a
- * fake `localDb` directly on the lib/db module and toggle MIRROR_DUAL_WRITE.
+ * Default test env has no TURSO_DATABASE_URL → mirrorWriteEnabled() is false →
+ * upserts route to the primary db only. To exercise the dual-write path we
+ * install a fake remoteDb directly on the lib/db module via _setTestRemoteDb
+ * and toggle MIRROR_DUAL_WRITE.
  *
  * Verifies:
- *   - Flag off → writes go to Turso only (legacy behavior preserved)
+ *   - Flag off → writes go to primary db only
  *   - Flag on + both DBs healthy → both receive the row
- *   - Flag on + Turso throws → local has the row, helper resolves, Sentry warns
- *   - Flag on + local throws → helper rejects (TAP must retry)
- *   - mirrorWriteEnabled() reflects flag + localDb presence
+ *   - Flag on + remote throws → primary committed, helper resolves, Sentry warns
+ *   - Flag on + primary throws → helper rejects (TAP must retry)
+ *   - mirrorWriteEnabled() reflects flag + remoteDb presence
  */
 
 import "./test-setup.ts";
-import { clearMirrorTables, rawDb } from "./mirror-test-setup.ts";
+import { clearMirrorTables, db } from "./mirror-test-setup.ts";
 
 import { assertEquals, assertRejects } from "@std/assert";
-import { _setTestLocalDb, mirrorWrite, mirrorWriteEnabled } from "../lib/db.ts";
+import {
+  _setTestRemoteDb,
+  mirrorWrite,
+  mirrorWriteEnabled,
+} from "../lib/db.ts";
 import { upsertBookmark } from "../mirror/upserts.ts";
 
 const DID = "did:plc:dualwrite";
@@ -33,41 +38,41 @@ function setFlag(on: boolean) {
   else Deno.env.delete("MIRROR_DUAL_WRITE");
 }
 
-function installFakeLocal(db: FakeDb | null) {
-  _setTestLocalDb(db);
+function installFakeRemote(fakeDb: FakeDb | null) {
+  _setTestRemoteDb(fakeDb);
 }
 
-Deno.test("mirrorWriteEnabled - flag on + localDb null → false", () => {
-  installFakeLocal(null);
+Deno.test("mirrorWriteEnabled - flag on + remoteDb null → false", () => {
+  installFakeRemote(null);
   setFlag(true);
   assertEquals(mirrorWriteEnabled(), false);
   setFlag(false);
 });
 
-Deno.test("mirrorWriteEnabled - flag off + localDb set → false", () => {
-  installFakeLocal({
+Deno.test("mirrorWriteEnabled - flag off + remoteDb set → false", () => {
+  installFakeRemote({
     execute: () => Promise.resolve({ rows: [], rowsAffected: 0 }),
   });
   setFlag(false);
   assertEquals(mirrorWriteEnabled(), false);
-  installFakeLocal(null);
+  installFakeRemote(null);
 });
 
-Deno.test("mirrorWriteEnabled - flag on + localDb set → true", () => {
-  installFakeLocal({
+Deno.test("mirrorWriteEnabled - flag on + remoteDb set → true", () => {
+  installFakeRemote({
     execute: () => Promise.resolve({ rows: [], rowsAffected: 0 }),
   });
   setFlag(true);
   assertEquals(mirrorWriteEnabled(), true);
   setFlag(false);
-  installFakeLocal(null);
+  installFakeRemote(null);
 });
 
-Deno.test("mirrorWrite - flag off → only Turso receives the write", async () => {
+Deno.test("mirrorWrite - flag off → only primary db receives the write", async () => {
   await clearMirrorTables();
-  installFakeLocal({
+  installFakeRemote({
     execute: () => {
-      throw new Error("local should not be called");
+      throw new Error("remote should not be called");
     },
   });
   setFlag(false);
@@ -77,23 +82,23 @@ Deno.test("mirrorWrite - flag off → only Turso receives the write", async () =
     args: [DID, Date.now()],
   });
 
-  const r = await rawDb.execute({
+  const r = await db.execute({
     sql: "SELECT did FROM tracked_dids WHERE did = ?",
     args: [DID],
   });
   assertEquals(r.rows.length, 1);
 
   setFlag(false);
-  installFakeLocal(null);
+  installFakeRemote(null);
 });
 
 Deno.test("mirrorWrite - flag on + both healthy → both receive the row", async () => {
   await clearMirrorTables();
 
-  const localCalls: { sql: string; args: unknown[] }[] = [];
-  installFakeLocal({
+  const remoteCalls: { sql: string; args: unknown[] }[] = [];
+  installFakeRemote({
     execute: (q) => {
-      localCalls.push(q);
+      remoteCalls.push(q);
       return Promise.resolve({ rows: [], rowsAffected: 0 });
     },
   });
@@ -104,83 +109,87 @@ Deno.test("mirrorWrite - flag on + both healthy → both receive the row", async
     args: [DID, Date.now()],
   });
 
-  // Local saw the write.
-  assertEquals(localCalls.length, 1);
-  // Turso also saw the write (in-memory DB has the row).
-  // mirrorWrite intentionally does not await the Turso write — give it a
-  // tick to settle before asserting.
-  await new Promise((r) => setTimeout(r, 20));
-  const r = await rawDb.execute({
+  // Remote saw the write.
+  assertEquals(remoteCalls.length, 1);
+  // Primary db also has the row.
+  const r = await db.execute({
     sql: "SELECT did FROM tracked_dids WHERE did = ?",
     args: [DID],
   });
   assertEquals(r.rows.length, 1);
 
   setFlag(false);
-  installFakeLocal(null);
+  installFakeRemote(null);
 });
 
-Deno.test("mirrorWrite - flag on + Turso throws → local committed, helper resolves", async () => {
+Deno.test("mirrorWrite - flag on + remote throws → primary committed, helper resolves", async () => {
   await clearMirrorTables();
-  const localCalls: { sql: string; args: unknown[] }[] = [];
-  installFakeLocal({
-    execute: (q) => {
-      localCalls.push(q);
-      return Promise.resolve({ rows: [], rowsAffected: 0 });
-    },
+
+  // Install a fake remote that throws.
+  installFakeRemote({
+    execute: (_q) => Promise.reject(new Error("remote boom")),
   });
   setFlag(true);
 
-  // Patch rawDb to throw.
-  const origExecute = rawDb.execute.bind(rawDb);
-  // deno-lint-ignore no-explicit-any
-  (rawDb as any).execute = (_q: any) => Promise.reject(new Error("turso boom"));
-
   try {
-    // Should resolve — local succeeded.
+    // Should resolve — primary succeeded.
     await mirrorWrite({
       sql: "INSERT INTO tracked_dids (did, added_at) VALUES (?, ?)",
       args: [DID, Date.now()],
     });
-    assertEquals(localCalls.length, 1);
-    // Allow background Turso failure to flush captureMessage import.
+    // Allow background remote failure to flush captureMessage import.
     await new Promise((r) => setTimeout(r, 20));
+
+    // Primary has the row.
+    const r = await db.execute({
+      sql: "SELECT did FROM tracked_dids WHERE did = ?",
+      args: [DID],
+    });
+    assertEquals(r.rows.length, 1);
   } finally {
-    // deno-lint-ignore no-explicit-any
-    (rawDb as any).execute = origExecute;
     setFlag(false);
-    installFakeLocal(null);
+    installFakeRemote(null);
   }
 });
 
-Deno.test("mirrorWrite - flag on + local throws → helper rejects (TAP must retry)", async () => {
+Deno.test("mirrorWrite - flag on + primary throws → helper rejects (TAP must retry)", async () => {
   await clearMirrorTables();
-  installFakeLocal({
-    execute: () => Promise.reject(new Error("local disk full")),
+  installFakeRemote({
+    execute: () => Promise.resolve({ rows: [], rowsAffected: 0 }),
   });
   setFlag(true);
 
-  await assertRejects(
-    () =>
-      mirrorWrite({
-        sql: "INSERT INTO tracked_dids (did, added_at) VALUES (?, ?)",
-        args: [DID, Date.now()],
-      }),
-    Error,
-    "local disk full",
-  );
+  // Patch the primary db.execute to throw.
+  const origExecute = db.execute.bind(db);
+  // deno-lint-ignore no-explicit-any
+  (db as any).execute = (_q: any) =>
+    Promise.reject(new Error("primary disk full"));
 
-  setFlag(false);
-  installFakeLocal(null);
+  try {
+    await assertRejects(
+      () =>
+        mirrorWrite({
+          sql: "INSERT INTO tracked_dids (did, added_at) VALUES (?, ?)",
+          args: [DID, Date.now()],
+        }),
+      Error,
+      "primary disk full",
+    );
+  } finally {
+    // deno-lint-ignore no-explicit-any
+    (db as any).execute = origExecute;
+    setFlag(false);
+    installFakeRemote(null);
+  }
 });
 
 Deno.test("upsertBookmark - flag on routes through mirrorWrite to both DBs", async () => {
   await clearMirrorTables();
 
-  const localCalls: { sql: string; args: unknown[] }[] = [];
-  installFakeLocal({
+  const remoteCalls: { sql: string; args: unknown[] }[] = [];
+  installFakeRemote({
     execute: (q) => {
-      localCalls.push(q);
+      remoteCalls.push(q);
       return Promise.resolve({ rows: [], rowsAffected: 0 });
     },
   });
@@ -196,15 +205,15 @@ Deno.test("upsertBookmark - flag on routes through mirrorWrite to both DBs", asy
     tags: ["news"],
   });
 
-  assertEquals(localCalls.length, 1);
+  assertEquals(remoteCalls.length, 1);
   await new Promise((r) => setTimeout(r, 20));
 
-  const r = await rawDb.execute({
+  const r = await db.execute({
     sql: "SELECT uri FROM bookmarks WHERE did = ?",
     args: [DID],
   });
   assertEquals(r.rows.length, 1);
 
   setFlag(false);
-  installFakeLocal(null);
+  installFakeRemote(null);
 });

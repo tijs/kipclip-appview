@@ -1,25 +1,21 @@
 /**
- * Tests for U3 (plan 004): mirrorRead local→Turso fallback in queries layer.
+ * Tests for mirrorRead semantics in the queries layer.
  *
- * Default test env has localDb=null → mirrorRead falls through to rawDb
- * directly (legacy behavior preserved by all existing tests). To exercise
- * the local-first path we install a fake localDb via _setTestLocalDb and
- * toggle MIRROR_DUAL_WRITE.
+ * mirrorRead now always uses the primary db — there is no fallback path.
+ * These tests verify that:
+ *   - mirrorRead always routes to the primary db regardless of MIRROR_DUAL_WRITE
+ *   - getMirrorInitialExtras uses the primary db directly
+ *   - Cross-DID isolation is preserved through the wrapper
  *
- * Verifies:
- *   - Flag on + local healthy → local serves, Turso untouched
- *   - Flag on + local throws → Turso serves, Sentry warning emitted
- *   - Flag off + localDb set → Turso serves directly (no wrapper logic)
- *   - getMirrorInitialExtras stays on Turso even with flag on (intentional;
- *     joins Turso-only user_settings)
- *   - Cross-DID isolation preserved through the wrapper
+ * The old local→Turso fallback behavior (flag on + local throws → Turso
+ * serves) no longer exists; those tests are removed.
  */
 
 import "./test-setup.ts";
-import { clearMirrorTables, rawDb } from "./mirror-test-setup.ts";
+import { clearMirrorTables, db } from "./mirror-test-setup.ts";
 
 import { assertEquals, assertExists } from "@std/assert";
-import { _setTestLocalDb, mirrorRead } from "../lib/db.ts";
+import { mirrorRead } from "../lib/db.ts";
 import {
   firstPageBookmarks,
   getMirrorInitialExtras,
@@ -36,66 +32,30 @@ import {
 const DID = "did:plc:fallback";
 const OTHER = "did:plc:other-fallback";
 
-interface FakeDb {
-  execute: (
-    q: { sql: string; args: unknown[] },
-  ) => Promise<{ rows: unknown[][] }>;
-}
-
 function setFlag(on: boolean) {
   if (on) Deno.env.set("MIRROR_DUAL_WRITE", "on");
   else Deno.env.delete("MIRROR_DUAL_WRITE");
 }
 
-Deno.test("mirrorRead - flag off → Turso direct (no wrapper)", async () => {
+Deno.test("mirrorRead - always uses primary db regardless of flag", async () => {
   setFlag(false);
-  _setTestLocalDb({
-    execute: () => {
-      throw new Error("local should not be called");
-    },
-  });
-
-  const r = await mirrorRead((db) =>
-    db.execute({ sql: "SELECT 1 AS x", args: [] })
+  const r = await mirrorRead((client) =>
+    client.execute({ sql: "SELECT 1 AS x", args: [] })
   );
   assertExists(r);
-  _setTestLocalDb(null);
+  assertEquals(r.rows[0][0], 1);
+
+  // Same with flag on — still uses primary db.
+  setFlag(true);
+  const r2 = await mirrorRead((client) =>
+    client.execute({ sql: "SELECT 2 AS x", args: [] })
+  );
+  assertExists(r2);
+  assertEquals(r2.rows[0][0], 2);
+  setFlag(false);
 });
 
-Deno.test("mirrorRead - flag on + local healthy → local serves, Turso untouched", async () => {
-  let localCalls = 0;
-  let tursoCalls = 0;
-  _setTestLocalDb({
-    execute: (_q) => {
-      localCalls++;
-      return Promise.resolve({ rows: [[42]], rowsAffected: 0 });
-    },
-  });
-  // Patch rawDb.execute to count calls.
-  const origExecute = rawDb.execute.bind(rawDb);
-  // deno-lint-ignore no-explicit-any
-  (rawDb as any).execute = (q: any) => {
-    tursoCalls++;
-    return origExecute(q);
-  };
-
-  try {
-    setFlag(true);
-    const r = await mirrorRead((db) =>
-      db.execute({ sql: "SELECT 1", args: [] })
-    );
-    assertEquals(r.rows[0][0], 42);
-    assertEquals(localCalls, 1);
-    assertEquals(tursoCalls, 0);
-  } finally {
-    // deno-lint-ignore no-explicit-any
-    (rawDb as any).execute = origExecute;
-    setFlag(false);
-    _setTestLocalDb(null);
-  }
-});
-
-Deno.test("mirrorRead - flag on + local throws → Turso serves, Sentry warns", async () => {
+Deno.test("getSyncStatus - reads from primary db", async () => {
   await clearMirrorTables();
   await upsertTrackedDid({
     did: DID,
@@ -103,24 +63,12 @@ Deno.test("mirrorRead - flag on + local throws → Turso serves, Sentry warns", 
     backfillCompleteAt: 2,
   });
 
-  // Local always throws.
-  _setTestLocalDb({
-    execute: () => Promise.reject(new Error("local boom")),
-  });
-  setFlag(true);
-
-  try {
-    const status = await getSyncStatus(DID);
-    // Turso has the row, so fallback served real data.
-    assertEquals(status.tracking, true);
-    assertEquals(status.backfillStartedAt, 1);
-  } finally {
-    setFlag(false);
-    _setTestLocalDb(null);
-  }
+  const status = await getSyncStatus(DID);
+  assertEquals(status.tracking, true);
+  assertEquals(status.backfillStartedAt, 1);
 });
 
-Deno.test("listAllBookmarks - flag on + local healthy → cross-DID isolation preserved", async () => {
+Deno.test("listAllBookmarks - cross-DID isolation preserved through mirrorRead", async () => {
   await clearMirrorTables();
   await upsertTrackedDid({
     did: DID,
@@ -147,25 +95,12 @@ Deno.test("listAllBookmarks - flag on + local healthy → cross-DID isolation pr
     tags: [],
   });
 
-  // Use a real local libSQL via the same in-memory rawDb client (since the
-  // test env shares the same in-memory DB) — easiest way to verify the
-  // wrapper invokes db.execute correctly without standing up a second DB.
-  _setTestLocalDb({
-    execute: (q) => rawDb.execute(q),
-  });
-  setFlag(true);
-
-  try {
-    const bookmarks = await listAllBookmarks(DID);
-    assertEquals(bookmarks.length, 1);
-    assertEquals(bookmarks[0].uri.includes(DID), true);
-  } finally {
-    setFlag(false);
-    _setTestLocalDb(null);
-  }
+  const bookmarks = await listAllBookmarks(DID);
+  assertEquals(bookmarks.length, 1);
+  assertEquals(bookmarks[0].uri.includes(DID), true);
 });
 
-Deno.test("firstPageBookmarks - flag on local healthy → mirror data returned", async () => {
+Deno.test("firstPageBookmarks - returns mirror data from primary db", async () => {
   await clearMirrorTables();
   await upsertBookmark({
     uri: `at://${DID}/community.lexicon.bookmarks.bookmark/p1`,
@@ -177,21 +112,11 @@ Deno.test("firstPageBookmarks - flag on local healthy → mirror data returned",
     tags: [],
   });
 
-  _setTestLocalDb({
-    execute: (q) => rawDb.execute(q),
-  });
-  setFlag(true);
-
-  try {
-    const page = await firstPageBookmarks(DID);
-    assertEquals(page.bookmarks.length, 1);
-  } finally {
-    setFlag(false);
-    _setTestLocalDb(null);
-  }
+  const page = await firstPageBookmarks(DID);
+  assertEquals(page.bookmarks.length, 1);
 });
 
-Deno.test("listTags - flag on local healthy → mirror tags returned", async () => {
+Deno.test("listTags - returns tags from primary db", async () => {
   await clearMirrorTables();
   await upsertTag({
     uri: `at://${DID}/com.kipclip.tag/t1`,
@@ -202,37 +127,32 @@ Deno.test("listTags - flag on local healthy → mirror tags returned", async () 
     createdAt: "2026-05-04T00:00:00Z",
   });
 
-  _setTestLocalDb({
-    execute: (q) => rawDb.execute(q),
-  });
-  setFlag(true);
-
-  try {
-    const tags = await listTags(DID);
-    assertEquals(tags.length, 1);
-    assertEquals(tags[0].value, "Rust");
-  } finally {
-    setFlag(false);
-    _setTestLocalDb(null);
-  }
+  const tags = await listTags(DID);
+  assertEquals(tags.length, 1);
+  assertEquals(tags[0].value, "Rust");
 });
 
-Deno.test("getMirrorInitialExtras - flag on still uses Turso (joins user_settings)", async () => {
+Deno.test("getMirrorInitialExtras - uses primary db directly", async () => {
   await clearMirrorTables();
 
-  // Local would throw if it were called — proves rawDb is used directly.
-  _setTestLocalDb({
-    execute: () => Promise.reject(new Error("local must not be called here")),
-  });
-  setFlag(true);
+  // Insert a tracked_did row so there's some state, but user_settings is
+  // on the primary — this just verifies the query runs without error.
+  const extras = await getMirrorInitialExtras(DID);
+  // Defaults when no rows: enabled=false, prefs=null.
+  assertEquals(extras.instapaperEnabled, false);
+  assertEquals(extras.preferences, null);
+});
 
-  try {
-    const extras = await getMirrorInitialExtras(DID);
-    // Defaults when no rows: enabled=false, prefs=null.
-    assertEquals(extras.instapaperEnabled, false);
-    assertEquals(extras.preferences, null);
-  } finally {
-    setFlag(false);
-    _setTestLocalDb(null);
-  }
+Deno.test("mirrorRead - db client executes queries correctly", async () => {
+  await clearMirrorTables();
+  await upsertTrackedDid({ did: DID, backfillStartedAt: 42 });
+
+  const r = await mirrorRead((client) =>
+    client.execute({
+      sql: "SELECT backfill_started_at FROM tracked_dids WHERE did = ?",
+      args: [DID],
+    })
+  );
+  assertEquals(r.rows.length, 1);
+  assertEquals(Number(r.rows[0][0]), 42);
 });

@@ -23,14 +23,15 @@ bookmark lexicon.
 ## Architecture
 
 - **Frontend**: React 19 + TypeScript + Tailwind CSS
-- **Backend**: Fresh 2.x on a Hetzner box (`kipclip.com`). Pull-based releases via signed `v*` git tags
+- **Backend**: Fresh 2.x on a Hetzner box (`kipclip.com`). Pull-based releases
+  via signed `v*` git tags
 - **AppView mirror**: every tracked user's bookmark / tag / annotation /
   preference records are mirrored from the user's PDS into a local libSQL
   database on the box, kept fresh by
   [TAP](https://github.com/bluesky-social/indigo) webhooks. Reads serve from the
   mirror; writes always go to the user's PDS via AT Protocol
-- **Database**: local libSQL (`/var/lib/kipclip/mirror.db`) for the mirror;
-  Turso/libSQL for OAuth sessions and warm-standby dual-writes
+- **Database**: local SQLite (`DATABASE_URL`) for all reads, sessions, and
+  settings; optional Turso remote for mirror dual-write warm-standby backup
 - **Bookmark storage (source of truth)**: user's PDS (not the AppView)
 - **Static assets**: Bunny CDN (`cdn.kipclip.com`)
 - **Edge**: Caddy on the box (TLS, security headers, CSP+SRI)
@@ -62,15 +63,17 @@ kipclip-appview/
 ### Prerequisites
 
 - Deno installed
-- Turso database (for OAuth sessions)
+- Deno and a writable local filesystem (for SQLite)
 
 ### Environment Variables
 
 ```bash
 COOKIE_SECRET=your-random-secret-string-at-least-32-chars  # Required
+DATABASE_URL=file:/var/lib/kipclip/kipclip.db  # Optional, defaults to file:.local/kipclip.db
+BASE_URL=https://kipclip.com  # Optional, derived from request if not set
+# Turso mirror backup (optional, warm-standby only):
 TURSO_DATABASE_URL=libsql://your-db.turso.io
 TURSO_AUTH_TOKEN=your-turso-auth-token
-BASE_URL=https://kipclip.com  # Optional, derived from request if not set
 ```
 
 The `COOKIE_SECRET` is required for encrypting OAuth session cookies.
@@ -104,7 +107,7 @@ Protocol authentication.
 1. User enters their AT Protocol handle
 2. App redirects to `/login?handle=user.bsky.social`
 3. OAuth package handles authentication with user's PDS
-4. Session stored in Turso database (14 days)
+4. Session stored in local SQLite (14 days)
 5. User can now view/add bookmarks
 
 For implementation details, see the

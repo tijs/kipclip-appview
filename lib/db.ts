@@ -1,22 +1,20 @@
-// Database module using Turso/libSQL.
+// Database module using libSQL.
 //
 // Two distinct DB connections, both libSQL-protocol:
-//   - tursoDb (also exported as rawDb for backwards compat) — the durable
-//     remote DB. Holds sessions, user_settings, import_jobs, AND the mirror
-//     tables. Always initialized.
-//   - localDb — optional local libSQL file on the box. When LOCAL_DB_URL is
-//     set, mirror tables are also created here and writes/reads can be
-//     dual-routed via the mirrorDb facade introduced in plan 004.
-//
-// localDb is null on Deno Deploy and any environment that does not set
-// LOCAL_DB_URL — code paths that depend on dual-write must check for null
-// or use the helpers in mirror/* which honor the MIRROR_DUAL_WRITE flag.
+//   - db (primary) — always initialized. Uses native @libsql/client for
+//     file: scheme, web client for remote. Holds sessions, user_settings,
+//     import_jobs, AND the mirror tables. This is the authoritative store.
+//   - remoteDb — optional Turso remote for mirror dual-write backup.
+//     Only initialized when TURSO_DATABASE_URL is set and is not a file: URL.
+//     remoteDb is null on any environment that does not set TURSO_DATABASE_URL
+//     — code paths that depend on dual-write must check for null or use the
+//     helpers in mirror/* which honor the MIRROR_DUAL_WRITE flag.
 
-const dbUrl = Deno.env.get("TURSO_DATABASE_URL") || "file:.local/kipclip.db";
+const dbUrl = Deno.env.get("DATABASE_URL") || "file:.local/kipclip.db";
 const isLocal = dbUrl.startsWith("file:");
 const isTestDb = dbUrl.startsWith("libsql://test");
 
-const localDbUrl = Deno.env.get("LOCAL_DB_URL");
+const remoteDbUrl = Deno.env.get("TURSO_DATABASE_URL");
 
 interface DbClient {
   execute: (
@@ -24,13 +22,13 @@ interface DbClient {
   ) => Promise<{ rows: unknown[][]; rowsAffected: number }>;
 }
 
-let rawDb: DbClient;
-let localDb: DbClient | null = null;
+let db: DbClient;
+let remoteDb: DbClient | null = null;
 
 if (isTestDb) {
   // Mock client for tests - doesn't actually connect
   console.error("✅ Using mock database (test mode)");
-  rawDb = {
+  db = {
     execute: (
       _query: { sql: string; args: unknown[] },
     ): Promise<{ rows: unknown[][]; rowsAffected: number }> => {
@@ -39,7 +37,7 @@ if (isTestDb) {
     },
   };
 } else {
-  // Use native client for local file, web client for remote Turso
+  // Use native client for local file, web client for remote
   const { createClient } = isLocal
     ? await import("@libsql/client")
     : await import("@libsql/client/web");
@@ -51,7 +49,7 @@ if (isTestDb) {
 
   // Wrap the client to provide a consistent interface
   // The libSQL client returns Row objects, we convert to arrays for compatibility
-  rawDb = {
+  db = {
     execute: async (
       query: { sql: string; args: unknown[] },
     ): Promise<{ rows: unknown[][]; rowsAffected: number }> => {
@@ -65,32 +63,34 @@ if (isTestDb) {
     },
   };
 
-  console.error(`✅ Using ${isLocal ? "local" : "Turso"} database`);
+  console.error(`✅ Using ${isLocal ? "local" : "remote"} database`);
 
-  // Optional second connection: local libSQL on the box. Only used when the
-  // operator opts in by setting LOCAL_DB_URL. Always file: scheme — a remote
-  // libSQL URL here would defeat the point (local-fast reads).
-  if (localDbUrl) {
-    if (!localDbUrl.startsWith("file:")) {
+  // Optional second connection: remote Turso for mirror dual-write backup.
+  // Only used when the operator opts in by setting TURSO_DATABASE_URL to a
+  // remote libsql:// URL. A file: URL here would be nonsensical (the primary
+  // is already local) and is rejected.
+  if (remoteDbUrl) {
+    if (remoteDbUrl.startsWith("file:")) {
       console.warn(
-        `⚠️ LOCAL_DB_URL must use file: scheme; got "${localDbUrl}" — ignoring`,
+        `⚠️ TURSO_DATABASE_URL must use a remote URL; got "${remoteDbUrl}" — ignoring`,
       );
     } else {
-      // Open the local file in a try/catch so a missing/locked/corrupt
-      // mirror.db on boot does NOT crash the whole service. mirrorRead()
-      // already falls back to Turso when localDb is null, so degraded
-      // boot is preferable to a CrashLoop. Sentry captures the warning
-      // so the operator notices.
+      // Open the remote connection in a try/catch so a transient Turso outage
+      // at boot does NOT crash the whole service. mirrorWrite() still writes
+      // to the primary db; the remote backup is best-effort.
       try {
-        const { createClient: createLocalClient } = await import(
-          "@libsql/client"
+        const { createClient: createRemoteClient } = await import(
+          "@libsql/client/web"
         );
-        const localClient = createLocalClient({ url: localDbUrl });
-        localDb = {
+        const remoteClient = createRemoteClient({
+          url: remoteDbUrl,
+          authToken: Deno.env.get("TURSO_AUTH_TOKEN"),
+        });
+        remoteDb = {
           execute: async (
             query: { sql: string; args: unknown[] },
           ): Promise<{ rows: unknown[][]; rowsAffected: number }> => {
-            const result = await localClient.execute({
+            const result = await remoteClient.execute({
               sql: query.sql,
               args: query.args as any,
             });
@@ -98,71 +98,71 @@ if (isTestDb) {
             return { rows, rowsAffected: Number(result.rowsAffected ?? 0) };
           },
         };
-        console.error(`✅ Local libSQL initialized at ${localDbUrl}`);
+        console.error(`✅ Remote Turso mirror initialized at ${remoteDbUrl}`);
       } catch (err) {
         console.warn(
-          `⚠️ Failed to open local libSQL at ${localDbUrl}: ${
+          `⚠️ Failed to open remote Turso at ${remoteDbUrl}: ${
             String(err)
-          } — continuing Turso-only`,
+          } — continuing primary-only`,
         );
         try {
           const { captureMessage } = await import("./sentry.ts");
           captureMessage(
-            "mirror local init failed: continuing Turso-only",
+            "mirror remote init failed: continuing primary-only",
             "error",
-            { error: String(err), url: localDbUrl },
+            { error: String(err), url: remoteDbUrl },
           );
         } catch { /* sentry optional at boot */ }
-        localDb = null;
+        remoteDb = null;
       }
     }
   }
 }
 
-export { localDb, rawDb };
+export { db, remoteDb };
 
 /**
- * Test-only: install a fake localDb so suites can exercise the dual-write
- * code path without provisioning a real local libSQL file. Pass null to
- * restore the default (no local DB).
+ * Test-only: install a fake remoteDb so suites can exercise the dual-write
+ * code path without provisioning a real remote Turso connection. Pass null to
+ * restore the default (no remote DB).
  */
-export function _setTestLocalDb(db: typeof localDb): void {
-  localDb = db;
+export function _setTestRemoteDb(fakeDb: typeof remoteDb): void {
+  remoteDb = fakeDb;
 }
 
 /**
- * Returns true when dual-write should fan out (local authoritative + Turso
- * best-effort). False when either the env flag is off OR localDb wasn't
- * initialized — in which case writes go to Turso only (legacy behavior).
+ * Returns true when dual-write should fan out (primary authoritative + Turso
+ * best-effort). False when either the env flag is off OR remoteDb wasn't
+ * initialized — in which case writes go to db only.
  */
 export function mirrorWriteEnabled(): boolean {
-  return Deno.env.get("MIRROR_DUAL_WRITE") === "on" && localDb !== null;
+  return Deno.env.get("MIRROR_DUAL_WRITE") === "on" && remoteDb !== null;
 }
 
 /**
  * Mirror write: dual-write when enabled, single-write otherwise.
  *
  * Dual-write semantics:
- *   - Local libSQL is authoritative. The promise resolves only after the
- *     local write succeeds. Local failure rejects, so callers (e.g. the TAP
- *     webhook) can return 5xx and let TAP retry.
- *   - Turso is best-effort. The Turso write is dispatched in parallel and
- *     awaited, but on failure we capture a Sentry warning and resolve
+ *   - Primary db is authoritative. The promise resolves only after the
+ *     primary write succeeds. Primary failure rejects, so callers (e.g. the
+ *     TAP webhook) can return 5xx and let TAP retry.
+ *   - Remote Turso is best-effort. The remote write is dispatched in parallel
+ *     and awaited, but on failure we capture a Sentry warning and resolve
  *     successfully. A Turso outage must not cause webhook retry storms; the
  *     mirror catches up via the next TAP delivery (idempotent upserts).
  *
- * Sentry signal: "mirror dual-write: turso failed" (warning level).
+ * Sentry signal: "mirror dual-write: remote failed" (warning level).
  */
 export async function mirrorWrite(query: {
   sql: string;
   args: unknown[];
 }): Promise<void> {
-  if (mirrorWriteEnabled() && localDb) {
-    // Run both in parallel: local must succeed (await), Turso can fail (catch).
-    const tursoPromise = rawDb.execute(query).catch(async (err) => {
+  if (mirrorWriteEnabled() && remoteDb) {
+    // Primary must succeed (await); remote can fail (catch).
+    const remotePromise = remoteDb.execute(query).catch(async (err) => {
       const { captureMessage } = await import("./sentry.ts");
       captureMessage(
-        "mirror dual-write: turso failed",
+        "mirror dual-write: remote failed",
         "warning",
         {
           sql: query.sql.split("\n")[0]?.trim().slice(0, 120),
@@ -170,47 +170,32 @@ export async function mirrorWrite(query: {
         },
       );
     });
-    await localDb.execute(query);
-    // Don't await Turso — but don't drop it either. Allow the webhook to
-    // return 200 the moment local commits; Turso settles in background.
+    await db.execute(query);
+    // Don't await remote — but don't drop it either. Allow the webhook to
+    // return 200 the moment primary commits; remote settles in background.
     // Floating promise is intentional and the catch above prevents an
     // unhandled rejection.
-    void tursoPromise;
+    void remotePromise;
     return;
   }
-  await rawDb.execute(query);
+  await db.execute(query);
 }
 
 /**
- * Mirror read: try local libSQL first when dual-write is enabled, fall back
- * to Turso on failure. Returns Turso directly when dual-write is off.
+ * Mirror read: always uses the primary db, which is always local and
+ * authoritative.
  *
- * The fn callback receives whichever client is being attempted so callers
- * can write `mirrorRead((db) => db.execute({sql, args}))` without juggling
- * connection objects themselves.
- *
- * Sentry signal: "mirror read fallback: local→turso" (warning level).
+ * The fn callback receives the primary db client so callers can write
+ * `mirrorRead((db) => db.execute({sql, args}))` without juggling connection
+ * objects themselves.
  */
 export async function mirrorRead<T>(
-  fn: (db: { execute: typeof rawDb.execute }) => Promise<T>,
+  fn: (client: DbClient) => Promise<T>,
 ): Promise<T> {
-  if (mirrorWriteEnabled() && localDb) {
-    try {
-      return await fn(localDb);
-    } catch (err) {
-      const { captureMessage } = await import("./sentry.ts");
-      captureMessage(
-        "mirror read fallback: local→turso",
-        "warning",
-        { error: String(err) },
-      );
-      return await fn(rawDb);
-    }
-  }
-  return await fn(rawDb);
+  return await fn(db);
 }
 
-// Initialize tables using migrations (with retry for transient Turso errors)
+// Initialize tables using migrations (with retry for transient errors)
 export async function initializeTables() {
   // Skip migrations for test database
   if (isTestDb) {
