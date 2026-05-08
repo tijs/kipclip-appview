@@ -30,6 +30,7 @@ import {
   parseSearchQuery,
   toggleTagInQuery,
 } from "../../shared/search-query.ts";
+import { connectLiveEvents, type LiveEvent } from "../lib/live-events.ts";
 
 const DEFAULT_SETTINGS: UserSettings = {
   instapaperEnabled: false,
@@ -566,6 +567,78 @@ export function AppProvider({ children }: { children: ReactNode }) {
       globalThis.removeEventListener("pageshow", handlePageShow);
     };
   }, [session]);
+
+  // Live event channel: server pushes mirror-applied TAP events for the
+  // authenticated DID. Re-fetches the affected slice so sibling-collection
+  // mutations (e.g. tag counts after a bookmark edit) and PDS-side edits
+  // from another device propagate without a manual refresh.
+  //
+  // The in-flight refs collapse overlapping live-driven refetches into one.
+  // Without them, two bursts arriving 101ms apart (each carrying both a
+  // tag and a bookmark event) would fire 4 fetches; with them, a fresh
+  // refetch is only kicked off when the previous one has settled.
+  const liveTagsInFlightRef = useRef(false);
+  const liveBookmarksInFlightRef = useRef(false);
+  const livePreferencesInFlightRef = useRef(false);
+  useEffect(() => {
+    if (!session) return;
+    const conn = connectLiveEvents({
+      onEvents: (events: LiveEvent[]) => {
+        let needsTags = false;
+        let needsBookmarks = false;
+        let needsPreferences = false;
+        for (const ev of events) {
+          if (ev.type !== "record" || !ev.collection) continue;
+          if (ev.collection === "com.kipclip.tag") {
+            needsTags = true;
+          } else if (
+            ev.collection === "community.lexicon.bookmarks.bookmark"
+          ) {
+            // Bookmark mutations affect tag counts in the sidebar; refresh
+            // the bookmark list and the tag list together.
+            needsBookmarks = true;
+            needsTags = true;
+          } else if (
+            ev.collection === "com.kipclip.annotation" ||
+            ev.collection === "app.bookmark.annotation"
+          ) {
+            needsBookmarks = true;
+          } else if (ev.collection === "com.kipclip.preferences") {
+            needsPreferences = true;
+          }
+        }
+        if (needsTags && !liveTagsInFlightRef.current) {
+          liveTagsInFlightRef.current = true;
+          loadTags()
+            .catch(() => {})
+            .finally(() => {
+              liveTagsInFlightRef.current = false;
+            });
+        }
+        if (needsBookmarks && !liveBookmarksInFlightRef.current) {
+          liveBookmarksInFlightRef.current = true;
+          loadBookmarks()
+            .catch(() => {})
+            .finally(() => {
+              liveBookmarksInFlightRef.current = false;
+            });
+        }
+        if (needsPreferences && !livePreferencesInFlightRef.current) {
+          livePreferencesInFlightRef.current = true;
+          apiGet("/api/preferences")
+            .then((r) => (r.ok ? r.json() : null))
+            .then((p: UserPreferences | null) => {
+              if (p) setPreferences(p);
+            })
+            .catch(() => {})
+            .finally(() => {
+              livePreferencesInFlightRef.current = false;
+            });
+        }
+      },
+    });
+    return () => conn.close();
+  }, [session?.did]);
 
   // Supporter actions
   async function refreshSupporterStatus(): Promise<boolean> {

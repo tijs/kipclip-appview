@@ -10,6 +10,7 @@ import { app } from "../main.ts";
 import { initOAuth } from "../lib/oauth-config.ts";
 import { setTestSessionProvider } from "../lib/session.ts";
 import { createMockSessionResult } from "./test-helpers.ts";
+import { _addSocketForTest, _clearSocketsForTest } from "../routes/api/live.ts";
 
 initOAuth(new URL("https://kipclip.com"));
 const baseHandler = app.handler();
@@ -865,4 +866,107 @@ Deno.test("POST /api/sync/hook - replayed event is rejected (replayed:true)", as
   assertEquals(body2.applied, false);
   assertEquals(body2.replayed, true);
   assertEquals(body2.id, evt.id);
+});
+
+interface BroadcastMockSocket {
+  readyState: number;
+  send: (payload: string) => void;
+  sent: string[];
+}
+
+function broadcastMockSocket(): BroadcastMockSocket {
+  const s: BroadcastMockSocket = {
+    readyState: 1,
+    sent: [],
+    send(payload) {
+      s.sent.push(payload);
+    },
+  };
+  return s;
+}
+
+Deno.test("POST /api/sync/hook - bookmark create broadcasts to live socket for the DID", async () => {
+  await clearMirrorTables();
+  _clearSocketsForTest();
+  const sock = broadcastMockSocket();
+  _addSocketForTest(SESSION_DID, sock as unknown as WebSocket);
+
+  const evt = recordEvent(
+    "community.lexicon.bookmarks.bookmark",
+    "live",
+    "create",
+    {
+      subject: "https://example.com/live",
+      createdAt: "2026-05-08T00:00:00.000Z",
+    },
+    "bafyLive",
+  );
+  const res = await handler(
+    new Request("http://127.0.0.1:8000/api/sync/hook", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(evt),
+    }),
+  );
+  assertEquals(res.status, 200);
+
+  assertEquals(sock.sent.length, 1);
+  const payload = JSON.parse(sock.sent[0]);
+  assertEquals(payload.type, "record");
+  assertEquals(payload.did, SESSION_DID);
+  assertEquals(payload.collection, "community.lexicon.bookmarks.bookmark");
+  assertEquals(payload.rkey, "live");
+  assertEquals(payload.op, "create");
+  assertEquals(typeof payload.indexedAt, "number");
+
+  _clearSocketsForTest();
+});
+
+Deno.test("POST /api/sync/hook - DID isolation: socket on DID-A receives no events for DID-B", async () => {
+  await clearMirrorTables();
+  _clearSocketsForTest();
+  const sockA = broadcastMockSocket();
+  _addSocketForTest("did:plc:other-listener", sockA as unknown as WebSocket);
+
+  const evt = recordEvent(
+    "community.lexicon.bookmarks.bookmark",
+    "isolate",
+    "create",
+    {
+      subject: "https://example.com/isolate",
+      createdAt: "2026-05-08T00:00:00.000Z",
+    },
+    "bafyIso",
+    false,
+    SESSION_DID, // event for SESSION_DID, not the listener's DID
+  );
+  await handler(
+    new Request("http://127.0.0.1:8000/api/sync/hook", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(evt),
+    }),
+  );
+  assertEquals(sockA.sent.length, 0);
+
+  _clearSocketsForTest();
+});
+
+Deno.test("POST /api/sync/hook - non-record event does not broadcast", async () => {
+  await clearMirrorTables();
+  _clearSocketsForTest();
+  const sock = broadcastMockSocket();
+  _addSocketForTest(SESSION_DID, sock as unknown as WebSocket);
+
+  const res = await handler(
+    new Request("http://127.0.0.1:8000/api/sync/hook", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: 9999, type: "unknown" }),
+    }),
+  );
+  assertEquals(res.status, 200);
+  assertEquals(sock.sent.length, 0);
+
+  _clearSocketsForTest();
 });

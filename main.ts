@@ -22,6 +22,7 @@ import { captureError } from "./lib/sentry.ts";
 import { registerAuthRoutes } from "./routes/api/auth.ts";
 import { registerBookmarkRoutes } from "./routes/api/bookmarks.ts";
 import { registerInitialDataRoutes } from "./routes/api/initial-data.ts";
+import { registerLiveRoutes } from "./routes/api/live.ts";
 import { registerSettingsRoutes } from "./routes/api/settings.ts";
 import { registerBulkRoutes } from "./routes/api/bulk.ts";
 import { registerImportRoutes } from "./routes/api/import.ts";
@@ -149,6 +150,9 @@ app = registerShareApiRoutes(app);
 // The /api/sync/hook ipFilter middleware is registered inside
 // registerSyncRoutes so the route and its gate stay together.
 app = registerSyncRoutes(app);
+
+// Live event WebSocket route (server → SPA push).
+app = registerLiveRoutes(app);
 
 // System API routes (/api/version, /api/health) -- release observability
 app = registerSystemRoutes(app);

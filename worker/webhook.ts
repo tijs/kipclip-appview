@@ -30,6 +30,7 @@ import {
   upsertTag,
   upsertTrackedDid,
 } from "../mirror/upserts.ts";
+import { broadcastToDid } from "../routes/api/live.ts";
 
 const BOOKMARK_COLLECTION = "community.lexicon.bookmarks.bookmark";
 const ANNOTATION_COLLECTIONS = new Set([
@@ -245,7 +246,16 @@ export async function processEvent(
   evt: MarshallableEvt,
 ): Promise<WebhookResult> {
   if (evt.type === "record" && evt.record) {
+    // processRecordEvent throws on upsert failure → broadcast does not run,
+    // and TAP retries the event on the 500.
     await processRecordEvent(evt.record);
+    broadcastToDid(evt.record.did, {
+      type: "record",
+      collection: evt.record.collection,
+      rkey: evt.record.rkey,
+      op: evt.record.action,
+      indexedAt: Date.now(),
+    });
     return { id: evt.id, type: "record", applied: true };
   }
   if (evt.type === "identity" && evt.identity) {

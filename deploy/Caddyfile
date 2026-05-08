@@ -36,9 +36,17 @@
 	#                                     user PDS records, so https: is
 	#                                     unavoidable
 	#   font-src 'self' data:           — emoji fonts inline as data URIs
-	#   connect-src 'self' + bsky/atprotofans/analytics — OAuth + Bluesky
-	#                                     + supporter check + analytics
-	#                                     beacon
+	#   connect-src 'self' + wss://*.kipclip.com + bsky/atprotofans/analytics
+	#                                   — OAuth + Bluesky + supporter
+	#                                     check + analytics beacon + the
+	#                                     /api/live WebSocket upgrade.
+	#                                     CSP3 (Chrome 96+, Firefox 95+,
+	#                                     Safari 15.4+) treats `'self'` as
+	#                                     covering same-origin wss for an
+	#                                     HTTPS document, so the explicit
+	#                                     wss:// hosts here are belt-and-
+	#                                     suspenders for older browsers
+	#                                     and pin the staging hostname.
 	#   frame-ancestors 'none'          — clickjacking; mirrors X-Frame-
 	#                                     Options: DENY in main.ts:74
 	#   form-action 'self'              — only POST to own origin
@@ -55,7 +63,7 @@
 	# Report-Only is the only safe first deploy. Self-hosted PDS users are
 	# the highest-likelihood missing entry — connect-src will need their PDS
 	# host added (or relaxed to `https:`) before flipping to enforcing.
-	header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' https://esm.sh https://scripts.simpleanalyticscdn.com; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; font-src 'self' data:; connect-src 'self' https://*.bsky.social https://*.bsky.network https://bsky.social https://public.api.bsky.app https://atprotofans.com https://queue.simpleanalyticscdn.com; frame-ancestors 'none'; form-action 'self'; base-uri 'self'; object-src 'none'; upgrade-insecure-requests; report-to csp-endpoint"
+	header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' https://esm.sh https://scripts.simpleanalyticscdn.com; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; font-src 'self' data:; connect-src 'self' wss://kipclip.com wss://www.kipclip.com wss://staging.kipclip.com https://*.bsky.social https://*.bsky.network https://bsky.social https://public.api.bsky.app https://atprotofans.com https://queue.simpleanalyticscdn.com; frame-ancestors 'none'; form-action 'self'; base-uri 'self'; object-src 'none'; upgrade-insecure-requests; report-to csp-endpoint"
 	header Report-To `{"group":"csp-endpoint","max_age":10886400,"endpoints":[{"url":"/api/csp-report"}]}`
 	header X-Content-Type-Options "nosniff"
 	header Referrer-Policy "strict-origin-when-cross-origin"

@@ -4,6 +4,25 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Live event WebSocket channel at `/api/live`. After a user signs in, the SPA
+  opens a WebSocket back to the server; every TAP webhook event applied to the
+  mirror for that DID is pushed to the open tab as a JSON message
+  (`{ type, collection, rkey, op, indexedAt }`). The client coalesces bursts
+  into 100ms batches and reconnects with 1s → 30s exponential backoff. Closes
+  while the document is hidden and re-opens on `visibilitychange`.
+  Authentication uses the existing OAuth session cookie (same-origin upgrade
+  carries the cookie). Auth-less upgrades return 401.
+
+### Fixed
+
+- The tag sidebar / tag-count list no longer goes stale after a bookmark edit
+  removes a tag. Bookmark, tag, annotation, and preferences events arriving over
+  the live channel now drive a focused refetch of the affected slice (tags /
+  bookmarks / preferences). Multi-device edits and PDS-side mutations from
+  another client also propagate without manual refresh.
+
 ### Changed
 
 - Upgraded `@fresh/core` from 2.2.0 to 2.3.3.

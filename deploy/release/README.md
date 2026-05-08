@@ -72,7 +72,8 @@ Two options:
 
 When `deploy/Caddyfile`, `deploy/systemd/*.service`,
 `deploy/release/*.{service,timer,rules}`, or `deploy/release/kipclip.sudoers`
-need to update:
+need to update (e.g. the `wss://kipclip.com` connect-src entry that the
+`/api/live` WebSocket needs in CSP):
 
 ```bash
 ssh kipclip-box "cd /var/lib/kipclip/source && sudo git pull && \
