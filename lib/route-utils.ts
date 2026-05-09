@@ -220,7 +220,7 @@ export async function listAllRecords(
  * Behavior:
  *   - Tracked DID + MIRROR_MODE=read: serve from mirror. Mirror is authoritative;
  *     empty result is returned as `[]` (does NOT fall through to PDS).
- *   - Tracked DID + Turso failure: capture warning to Sentry and fall through to PDS.
+ *   - Tracked DID + DB failure: capture warning to Sentry and fall through to PDS.
  *   - Untracked DID / MIRROR_MODE=off: PDS path unchanged.
  *   - `forcePds: true`: bypass mirror entirely (for migration scripts that need raw PDS).
  */

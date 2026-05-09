@@ -2,7 +2,7 @@
 // SQLiteStorage creates iron_session_storage automatically on first use.
 // Migration 005 backfills columns added in atproto-storage@1.1.0 for existing installs.
 
-import { db, remoteDb } from "./db.ts";
+import { db } from "./db.ts";
 import { MIRROR_MIGRATIONS } from "../mirror/schema.ts";
 
 // Migration tracking table
@@ -16,7 +16,6 @@ const MIGRATIONS_TABLE = `
 `;
 
 // Non-mirror migrations: sessions / user_settings / import_jobs.
-// These live on the primary db. The remote Turso backup only mirrors tables.
 const NON_MIRROR_MIGRATIONS: Array<{
   version: string;
   description: string;
@@ -208,12 +207,6 @@ export async function runMigrations() {
     // Primary db gets every migration: sessions, settings, import_jobs,
     // and mirror tables.
     await runMigrationSet(db, "primary", MIGRATIONS);
-
-    // Remote Turso only needs the mirror tables. Skip silently when
-    // TURSO_DATABASE_URL is unset (Deno Deploy, dev without remote backup).
-    if (remoteDb) {
-      await runMigrationSet(remoteDb, "Turso remote", MIRROR_MIGRATIONS);
-    }
 
     console.log("✅ All migrations completed successfully");
   } catch (error) {

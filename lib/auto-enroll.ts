@@ -13,7 +13,7 @@ import {
   upsertPreferences,
   upsertTag,
 } from "../mirror/upserts.ts";
-import { mirrorWrite } from "./db.ts";
+import { db } from "./db.ts";
 import { getMirrorMode } from "./mirror-config.ts";
 import { captureMessage } from "./sentry.ts";
 
@@ -169,7 +169,7 @@ export function autoEnrollIfNeeded(did: string, pdsUrl: string): void {
       await runBackfill(did, pdsUrl);
 
       const now = Date.now();
-      await mirrorWrite({
+      await db.execute({
         sql: `
           INSERT INTO tracked_dids
             (did, pds_url, added_at, backfill_started_at, backfill_complete_at, last_seq, last_event_at)

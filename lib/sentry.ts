@@ -31,7 +31,7 @@ if (SENTRY_DSN) {
           return null;
         }
       }
-      // Skip transient DNS resolution failures (Deno Deploy infra issue)
+      // Skip transient DNS resolution failures
       if (
         error instanceof Error &&
         error.message?.includes("ENOTFOUND")

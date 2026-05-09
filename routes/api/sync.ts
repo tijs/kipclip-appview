@@ -20,12 +20,11 @@ import { getSyncStatus } from "../../mirror/queries.ts";
 import { handleWebhookRequest } from "../../worker/webhook.ts";
 
 export function registerSyncRoutes(app: App<unknown>): App<unknown> {
-  // Loopback-only allowlist on the TAP webhook. On the Hetzner box this is
-  // belt-and-suspenders behind Caddy's 403 on public hosts; on Deno Deploy
-  // (no Caddy in front) it is the primary gate. Note: when Caddy proxies
-  // external traffic to localhost, those requests also arrive as 127.0.0.1,
-  // so this filter does not distinguish TAP from Caddy-forwarded requests —
-  // the Basic-auth check inside handleWebhookRequest is the actual TAP gate.
+  // Loopback-only allowlist on the TAP webhook. Belt-and-suspenders behind
+  // Caddy's 403 on public hosts. Note: when Caddy proxies external traffic to
+  // localhost, those requests also arrive as 127.0.0.1, so this filter does
+  // not distinguish TAP from Caddy-forwarded requests — the Basic-auth check
+  // inside handleWebhookRequest is the actual TAP gate.
   app = app.use(
     "/api/sync/hook",
     ipFilter({ allowList: ["127.0.0.1", "::1"] }),

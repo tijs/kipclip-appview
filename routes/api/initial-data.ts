@@ -108,8 +108,7 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
         );
       }
       if (mirrorDecision.fromMirror) {
-        // Wrap the mirror branch so a Turso connection flake (eu-west-1
-        // ↔ Deno Deploy US sometimes drops requests) falls through to
+        // Wrap the mirror branch so a DB failure falls through to
         // the PDS path below instead of 500-ing the user. Sentry warning
         // surfaces the degradation event in production.
         try {

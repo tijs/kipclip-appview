@@ -49,11 +49,10 @@ webhook on the box.
 
 ### Storage layout
 
-| Tier                | Where                                                                             | What                                                                                                                                       | Who reads/writes                                                           |
-| ------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
-| **PDS**             | user's personal data server                                                       | source of truth for all bookmark/tag/annotation/preference records                                                                         | server writes (PUT bookmark, etc); fallback reads when mirror miss         |
-| **Primary (local)** | `DATABASE_URL` — file-backed SQLite on the box                                    | all tables: OAuth sessions, user_settings, import_jobs, and all mirror tables. Always authoritative.                                       | server reads/writes (primary); TAP webhook upserts mirror tables           |
-| **Turso/libSQL**    | `TURSO_DATABASE_URL` — remote `libsql://kipclip-prod-tijs.aws-eu-west-1.turso.io` | warm-standby backup of mirror tables AND sessions (dual-write behind `MIRROR_DUAL_WRITE=on`); primary DB for Deno Deploy fallback instance | mirror+session writes when enabled; Deno Deploy reads/writes sessions here |
+| Tier                | Where                                                                          | What                                                                                                 | Who reads/writes                                                   |
+| ------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| **PDS**             | user's personal data server                                                    | source of truth for all bookmark/tag/annotation/preference records                                   | server writes (PUT bookmark, etc); fallback reads when mirror miss |
+| **Primary (local)** | `DATABASE_URL` — file-backed SQLite on the box (`/var/lib/kipclip/kipclip.db`) | all tables: OAuth sessions, user_settings, import_jobs, and all mirror tables. Always authoritative. | server reads/writes (primary); TAP webhook upserts mirror tables   |
 
 When `MIRROR_MODE=read` (production default on the box) and a DID is tracked AND
 backfill has started, mirror-aware reads serve from the primary local SQLite
@@ -101,7 +100,7 @@ Key patterns:
 Uses framework-agnostic OAuth libraries from jsr:
 
 - `@tijs/atproto-oauth` - OAuth orchestration and route handlers
-- `@tijs/atproto-storage` - SQLite session storage with Turso adapter
+- `@tijs/atproto-storage` - SQLite session storage
 
 OAuth is eagerly initialized at startup when `BASE_URL` is set; falls back to
 per-request derivation from `ctx.url` when unset (local dev).
@@ -144,11 +143,8 @@ Box-only primary DB variable: `DATABASE_URL=file:/var/lib/kipclip/kipclip.db`
 (path to the primary local SQLite — defaults to `file:.local/kipclip.db` when
 unset, which works for local dev but should be set explicitly on the box).
 
-Box-only mirror/remote variables: `TURSO_DATABASE_URL=libsql://...` +
-`TURSO_AUTH_TOKEN=...` (optional Turso remote for dual-write backup),
-`MIRROR_DUAL_WRITE=on` (turns on best-effort remote dual-write),
-`MIRROR_MODE=read` (serves mirror reads from primary local SQLite for tracked
-DIDs).
+Box-only mirror variable: `MIRROR_MODE=read` (serves mirror reads from primary
+local SQLite for tracked DIDs).
 
 Box-only TAP variables: `TAP_WEBHOOK_SECRET` (matches TAP's `TAP_ADMIN_PASSWORD`
 — TAP reuses admin auth as outbound webhook auth, sent as

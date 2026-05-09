@@ -80,7 +80,7 @@ import {
   shouldReadFromMirror,
 } from "../lib/mirror-config.ts";
 
-Deno.test("shouldReadFromMirror - getSyncStatus throws → fromMirror=false (Turso outage degrades to PDS, not 500)", async () => {
+Deno.test("shouldReadFromMirror - getSyncStatus throws → fromMirror=false (DB error degrades to PDS, not 500)", async () => {
   Deno.env.set("MIRROR_MODE", "read");
   _resetMirrorModeCache();
   _resetSyncStatusCache();
@@ -91,13 +91,13 @@ Deno.test("shouldReadFromMirror - getSyncStatus throws → fromMirror=false (Tur
   // deno-lint-ignore no-explicit-any
   (db as any).execute = (q: any) => {
     if (typeof q?.sql === "string" && q.sql.includes("FROM tracked_dids")) {
-      throw new Error("turso boom");
+      throw new Error("db boom");
     }
     return orig(q);
   };
 
   try {
-    const decision = await shouldReadFromMirror("did:plc:tursoboom");
+    const decision = await shouldReadFromMirror("did:plc:dbboom");
     assertEquals(decision.fromMirror, false);
     assertEquals(decision.syncing, false);
     assertEquals(decision.status.tracking, false);

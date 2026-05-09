@@ -4,24 +4,31 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-05-09
+
+### Removed
+
+- **Turso remote dual-write and Deno Deploy warm-standby**: removed `remoteDb`,
+  `sessionDb`, `mirrorWrite`, and all Turso/Deno Deploy infrastructure. Session
+  and mirror data now write exclusively to the primary local SQLite on the
+  Hetzner box. Data verified complete before removal (265/265 sessions matched;
+  primary had more mirror rows than Turso backup).
+
 ## [0.19.2] - 2026-05-09
 
 ### Fixed
 
-- **Tags empty for fresh users**: new tags created immediately after auto-enrollment
-  were invisible until TAP delivered the event. Tag create/update/delete now
-  synchronously writes to the local mirror before returning the HTTP response,
-  closing the same-session race window.
+- **Tags empty for fresh users**: new tags created immediately after
+  auto-enrollment were invisible until TAP delivered the event. Tag
+  create/update/delete now synchronously writes to the local mirror before
+  returning the HTTP response, closing the same-session race window.
 - **Tag cache served stale data for mirror-fallback users**: GET /api/tags now
   only reads from and stores to the in-process cache when the user is NOT being
   served from the mirror, preventing a stale PDS-fallback snapshot from
   shadowing fresh mirror data.
-- **Merge-duplicates missed cache invalidation**: POST /api/tags/merge-duplicates
-  now invalidates the tag cache after merging, so the next GET reflects the
-  merged state immediately.
-- **Session dual-write ordering**: remote Turso write is now dispatched after
-  the primary SQLite write succeeds, eliminating the window where a primary
-  failure could leave an orphan session row in Turso.
+- **Merge-duplicates missed cache invalidation**: POST
+  /api/tags/merge-duplicates now invalidates the tag cache after merging, so the
+  next GET reflects the merged state immediately.
 - **SQLite PRAGMA synchronous=NORMAL**: added documentation comment noting the
   OS-crash durability trade-off accepted for this workload.
 
