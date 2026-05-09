@@ -29,8 +29,42 @@ import { tagIncludes, tagsEqual } from "../../shared/tag-utils.ts";
 import { mergeTagDuplicates } from "../../lib/migration-merge-tags.ts";
 import { shouldReadFromMirror } from "../../lib/mirror-config.ts";
 import { listTags as listMirrorTags } from "../../mirror/queries.ts";
+import { deleteTag, upsertTag } from "../../mirror/upserts.ts";
 import { captureMessage } from "../../lib/sentry.ts";
 import { createTimer } from "../../lib/server-timing.ts";
+
+// In-process tag cache for the PDS fallback path.
+// Tracked (mirror) users bypass this — they read from local SQLite directly.
+// TTL of 60s matches the tab-refocus debounce on the frontend.
+interface TagCacheEntry {
+  tags: EnrichedTag[];
+  fetchedAt: number;
+}
+const TAG_CACHE_TTL_MS = 60_000;
+const tagCache = new Map<string, TagCacheEntry>();
+
+function getCachedTags(did: string): EnrichedTag[] | null {
+  const entry = tagCache.get(did);
+  if (!entry) return null;
+  if (Date.now() - entry.fetchedAt > TAG_CACHE_TTL_MS) {
+    tagCache.delete(did);
+    return null;
+  }
+  return entry.tags;
+}
+
+function setCachedTags(did: string, tags: EnrichedTag[]): void {
+  tagCache.set(did, { tags, fetchedAt: Date.now() });
+}
+
+function invalidateCachedTags(did: string): void {
+  tagCache.delete(did);
+}
+
+/** @internal Test cleanup only */
+export function _clearTagCache(): void {
+  tagCache.clear();
+}
 
 export function registerTagRoutes(app: App<any>): App<any> {
   // List tags. Reads from mirror when MIRROR_MODE=read and the DID is tracked
@@ -73,6 +107,16 @@ export function registerTagRoutes(app: App<any>): App<any> {
         }
       }
 
+      const cached = getCachedTags(oauthSession.did);
+      if (cached) {
+        return timer.finalize(
+          setSessionCookie(
+            Response.json({ tags: cached } as ListTagsResponse),
+            setCookieHeader,
+          ),
+        );
+      }
+
       const records = await timer.span(
         "pds-tags",
         () => listAllRecords(oauthSession, TAG_COLLECTION),
@@ -83,6 +127,7 @@ export function registerTagRoutes(app: App<any>): App<any> {
         value: record.value.value,
         createdAt: record.value.createdAt,
       }));
+      setCachedTags(oauthSession.did, tags);
 
       const result: ListTagsResponse = { tags };
       return timer.finalize(
@@ -175,6 +220,18 @@ export function registerTagRoutes(app: App<any>): App<any> {
         value: value,
         createdAt: record.createdAt,
       };
+
+      // Dual-write to mirror so the tag is immediately visible when the DID is
+      // tracked — TAP delivery can lag seconds after PDS write.
+      invalidateCachedTags(oauthSession.did);
+      upsertTag({
+        uri: data.uri,
+        did: oauthSession.did,
+        rkey: data.uri.split("/").pop() ?? "",
+        cid: data.cid,
+        value,
+        createdAt: record.createdAt,
+      }).catch(() => {});
 
       const result: AddTagResponse = { success: true, tag };
       return setSessionCookie(Response.json(result), setCookieHeader);
@@ -331,6 +388,16 @@ export function registerTagRoutes(app: App<any>): App<any> {
         createdAt: record.createdAt,
       };
 
+      invalidateCachedTags(oauthSession.did);
+      upsertTag({
+        uri: data.uri,
+        did: oauthSession.did,
+        rkey,
+        cid: data.cid,
+        value: newValue,
+        createdAt: record.createdAt,
+      }).catch(() => {});
+
       const result: UpdateTagResponse = { success: true, tag };
       return setSessionCookie(Response.json(result), setCookieHeader);
     } catch (error: any) {
@@ -446,6 +513,12 @@ export function registerTagRoutes(app: App<any>): App<any> {
         const errorText = await deleteResponse.text();
         throw new Error(`Failed to delete tag record: ${errorText}`);
       }
+
+      invalidateCachedTags(oauthSession.did);
+      deleteTag(
+        `at://${oauthSession.did}/${TAG_COLLECTION}/${rkey}`,
+        oauthSession.did,
+      ).catch(() => {});
 
       const result: DeleteTagResponse = { success: true };
       return setSessionCookie(Response.json(result), setCookieHeader);

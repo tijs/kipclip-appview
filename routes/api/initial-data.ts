@@ -114,15 +114,22 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
         // surfaces the degradation event in production.
         try {
           if (isFirstPage) {
+            // extras is two single-row index lookups — sub-ms. Run it serially
+            // first so its timer measures only its own work, not the time spent
+            // waiting for firstPageBookmarks to release the shared sync SQLite
+            // connection (@libsql/client uses one connection; Promise.all does
+            // not parallelize synchronous DB calls in Deno's event loop).
+            const extras = await timer.span(
+              "mirror-extras",
+              () => getMirrorInitialExtras(oauthSession.did),
+            );
+            // bookmarks (SQLite, CPU-bound) and supporter (HTTP, I/O-bound)
+            // use different resources and genuinely overlap.
             const parallelStart = performance.now();
-            const [page, extras, isSupporter] = await Promise.all([
+            const [page, isSupporter] = await Promise.all([
               timer.span(
                 "mirror-bookmarks",
                 () => firstPageBookmarks(oauthSession.did),
-              ),
-              timer.span(
-                "mirror-extras",
-                () => getMirrorInitialExtras(oauthSession.did),
               ),
               timer.span(
                 "supporter",

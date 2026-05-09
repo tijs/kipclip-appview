@@ -47,6 +47,14 @@ if (isTestDb) {
     authToken: Deno.env.get("TURSO_AUTH_TOKEN"),
   });
 
+  // SQLite pragmas for local file connections only.
+  // These are no-ops over the Turso HTTP wire protocol.
+  if (isLocal) {
+    await client.execute("PRAGMA busy_timeout = 5000");
+    await client.execute("PRAGMA cache_size = -65536");
+    await client.execute("PRAGMA synchronous = NORMAL");
+  }
+
   // Wrap the client to provide a consistent interface
   // The libSQL client returns Row objects, we convert to arrays for compatibility
   db = {
@@ -122,11 +130,16 @@ if (isTestDb) {
 export { db, remoteDb };
 
 /**
- * Session-aware dual-write client. Wraps the primary db but fans out non-SELECT
- * queries to remoteDb synchronously when MIRROR_DUAL_WRITE=on. Both writes must
- * succeed — unlike mirror tables (which can re-sync via TAP), sessions cannot be
- * recovered from PDS, so a silent remote failure on logout would leave a phantom
- * valid session on the Deno Deploy fallback instance.
+ * Session-aware dual-write client. Wraps the primary db but fans out writes
+ * to remoteDb when MIRROR_DUAL_WRITE=on.
+ *
+ * Write semantics differ by statement type:
+ *   - DELETE (logout): synchronous on both. A phantom valid session on Deno
+ *     Deploy after logout is a security issue — both must commit before resolve.
+ *   - INSERT/UPDATE (token refresh, session create): fire-and-forget on remote.
+ *     Same semantics as mirrorWrite(). A stale session on Deno Deploy after
+ *     token refresh self-heals via re-refresh; blocking the caller on a cold
+ *     Turso write caused 600–1300 ms session spikes.
  *
  * Pass to sqliteAdapter() in oauth-config.ts instead of the bare db.
  */
@@ -136,10 +149,25 @@ export const sessionDb: DbClient = {
   ): Promise<{ rows: unknown[][]; rowsAffected: number }> => {
     const isWrite = !/^\s*SELECT\b/i.test(query.sql);
     if (isWrite && mirrorWriteEnabled() && remoteDb) {
-      const [primaryResult] = await Promise.all([
-        db.execute(query),
-        remoteDb.execute(query),
-      ]);
+      const isDelete = /^\s*DELETE\b/i.test(query.sql);
+      if (isDelete) {
+        // Logout must be synchronous on both sides (see comment above).
+        const [primaryResult] = await Promise.all([
+          db.execute(query),
+          remoteDb.execute(query),
+        ]);
+        return primaryResult;
+      }
+      // Token refresh / session create: fire-and-forget remote write.
+      const remotePromise = remoteDb.execute(query).catch(async (err) => {
+        const { captureMessage } = await import("./sentry.ts");
+        captureMessage("session dual-write: remote failed", "warning", {
+          sql: query.sql.split("\n")[0]?.trim().slice(0, 120),
+          error: String(err),
+        });
+      });
+      const primaryResult = await db.execute(query);
+      void remotePromise;
       return primaryResult;
     }
     return db.execute(query);
