@@ -40,7 +40,7 @@ function getCacheControl(path: string): string {
 
 /**
  * Resolve a path relative to the project root.
- * Works on both local development (file://) and Deno Deploy (app://).
+ * Works on file:// (local development and production on the Hetzner box).
  */
 function resolveProjectPath(path: string, baseUrl: string): string {
   // Remove leading slash from path
@@ -50,12 +50,11 @@ function resolveProjectPath(path: string, baseUrl: string): string {
   const baseUrlObj = new URL(baseUrl);
 
   if (baseUrlObj.protocol === "file:") {
-    // Local development - resolve from filesystem
+    // Resolve from filesystem
     const baseDir = dirname(fromFileUrl(baseUrl));
     return join(baseDir, cleanPath);
   } else {
-    // Deno Deploy (app://) - resolve relative to base
-    // import.meta.url is like "app:///main.ts", so dirname gives "app:///"
+    // Fallback for non-file: protocols (e.g. app://)
     const basePath = dirname(baseUrlObj.pathname);
     return join(basePath, cleanPath);
   }

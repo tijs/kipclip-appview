@@ -4,6 +4,14 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+### Removed
+
+- **Turso remote dual-write and Deno Deploy warm-standby**: removed `remoteDb`,
+  `sessionDb`, `mirrorWrite`, and all Turso/Deno Deploy infrastructure. Session
+  and mirror data now write exclusively to the primary local SQLite on the
+  Hetzner box. Data verified complete before removal (265/265 sessions matched;
+  primary had more mirror rows than Turso backup).
+
 ## [0.19.2] - 2026-05-09
 
 ### Fixed
@@ -19,9 +27,6 @@ All notable changes to kipclip are documented in this file.
 - **Merge-duplicates missed cache invalidation**: POST
   /api/tags/merge-duplicates now invalidates the tag cache after merging, so the
   next GET reflects the merged state immediately.
-- **Session dual-write ordering**: remote Turso write is now dispatched after
-  the primary SQLite write succeeds, eliminating the window where a primary
-  failure could leave an orphan session row in Turso.
 - **SQLite PRAGMA synchronous=NORMAL**: added documentation comment noting the
   OS-crash durability trade-off accepted for this workload.
 

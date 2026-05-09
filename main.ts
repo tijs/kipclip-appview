@@ -4,8 +4,8 @@
  */
 
 import { App, staticFiles } from "@fresh/core";
-// Static import required — dynamic import inside a conditional is not bundled
-// by Deno Deploy. The load() call is gated instead (not the import).
+// Static import required — top-level await requires a static import at module
+// level. The load() call is gated instead (not the import).
 import { load } from "@std/dotenv";
 import { initializeTables } from "./lib/db.ts";
 import { logMirrorMode } from "./lib/mirror-config.ts";
@@ -59,9 +59,8 @@ logMirrorMode();
 // Create the Fresh app.
 // trustProxy applies X-Forwarded-Proto and X-Forwarded-Host to ctx.url
 // before handlers see it. Assumes a trusted reverse proxy is in front
-// (Caddy on the Hetzner box, Deno Deploy's edge on the warm standby) —
-// running this app bare on a public interface would let attackers spoof
-// the scheme/host via forged headers.
+// (Caddy on the Hetzner box) — running this app bare on a public interface
+// would let attackers spoof the scheme/host via forged headers.
 let app = new App({ trustProxy: true });
 
 // ============================================================================

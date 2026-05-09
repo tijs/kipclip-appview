@@ -9,8 +9,7 @@
  * Rules:
  *   - Unauthenticated upgrade is rejected with HTTP 401 (no upgrade).
  *   - One process holds the registry. On the Hetzner box that's a single
- *     systemd unit; on Deno Deploy this becomes per-region but we accept the
- *     degradation (Deploy is warm standby, not the live target for TAP).
+ *     systemd unit.
  *   - Heartbeat: server emits `{type:"ping"}` every 30s. Client must reply
  *     with `{type:"pong"}`. Two consecutive missed pongs close the socket
  *     with code 1011 — the half-open detection that Caddy / browser / OS
