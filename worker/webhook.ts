@@ -17,6 +17,7 @@
  */
 
 import { captureError } from "../lib/sentry.ts";
+import { mirrorWrite } from "../lib/db.ts";
 import {
   deleteAnnotation,
   deleteBookmark,
@@ -28,7 +29,6 @@ import {
   upsertBookmark,
   upsertPreferences,
   upsertTag,
-  upsertTrackedDid,
 } from "../mirror/upserts.ts";
 import { broadcastToDid } from "../routes/api/live.ts";
 
@@ -358,17 +358,17 @@ async function processIdentityEvent(_e: IdentityEvt): Promise<void> {
   // a local cache. For now no-op so TAP can ack.
 }
 
-async function touchTracked(did: string, r: RecordEvt): Promise<void> {
+async function touchTracked(did: string, _r: RecordEvt): Promise<void> {
   const now = Date.now();
-  // On the first live event we set BOTH started + complete so the row never has
-  // complete-without-started (which would fail the mirror-read gate that
-  // requires backfill_started_at !== null). Existing non-null values are
-  // preserved by upsertTrackedDid's COALESCE clauses.
-  await upsertTrackedDid({
-    did,
-    lastEventAt: now,
-    backfillStartedAt: r.live ? now : null,
-    backfillCompleteAt: r.live ? now : null,
+  // UPDATE-only: never insert a new row. Inserting would set backfill_started_at
+  // = now which opens the mirror gate for a DID whose mirror is empty — callers
+  // would then serve 0 bookmarks instead of falling through to PDS.
+  // upsertTrackedDid is intentionally NOT used here.
+  await mirrorWrite({
+    sql: `UPDATE tracked_dids
+            SET last_event_at = MAX(?, COALESCE(last_event_at, 0))
+          WHERE did = ?`,
+    args: [now, did],
   });
 }
 

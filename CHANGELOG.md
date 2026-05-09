@@ -4,6 +4,16 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- `touchTracked` in the TAP webhook handler no longer inserts a new
+  `tracked_dids` row for DIDs that have not been explicitly enrolled in mirror
+  sync. Previously, the first live TAP event for an untracked DID would create a
+  row with `backfill_started_at = now`, opening the mirror gate when the mirror
+  contained only a single record — causing all other bookmarks to disappear from
+  the UI. `touchTracked` now issues an UPDATE-only query that is a no-op for
+  untracked DIDs.
+
 ## [0.18.2] - 2026-05-08
 
 ### Fixed
