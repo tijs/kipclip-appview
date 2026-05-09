@@ -52,6 +52,9 @@ if (isTestDb) {
   if (isLocal) {
     await client.execute("PRAGMA busy_timeout = 5000");
     await client.execute("PRAGMA cache_size = -65536");
+    // NORMAL: flushes at checkpoints, not every commit. Survives process
+    // crashes; OS crash can lose the last ~1-2 committed transactions.
+    // Acceptable tradeoff for a bookmark manager.
     await client.execute("PRAGMA synchronous = NORMAL");
   }
 
@@ -137,9 +140,10 @@ export { db, remoteDb };
  *   - DELETE (logout): synchronous on both. A phantom valid session on Deno
  *     Deploy after logout is a security issue — both must commit before resolve.
  *   - INSERT/UPDATE (token refresh, session create): fire-and-forget on remote.
- *     Same semantics as mirrorWrite(). A stale session on Deno Deploy after
- *     token refresh self-heals via re-refresh; blocking the caller on a cold
- *     Turso write caused 600–1300 ms session spikes.
+ *     Same semantics as mirrorWrite(). A missed token-refresh write on Deno
+ *     Deploy self-heals on the next refresh; a missed session-create means the
+ *     user re-authenticates. Blocking the caller on a cold Turso write caused
+ *     600–1300 ms session spikes.
  *
  * Pass to sqliteAdapter() in oauth-config.ts instead of the bare db.
  */
@@ -158,7 +162,10 @@ export const sessionDb: DbClient = {
         ]);
         return primaryResult;
       }
-      // Token refresh / session create: fire-and-forget remote write.
+      // Token refresh / session create: primary first, then fire-and-forget remote.
+      // Primary must succeed before remote is dispatched — otherwise a primary
+      // failure leaves an orphan row in Turso with no matching primary record.
+      const primaryResult = await db.execute(query);
       const remotePromise = remoteDb.execute(query).catch(async (err) => {
         const { captureMessage } = await import("./sentry.ts");
         captureMessage("session dual-write: remote failed", "warning", {
@@ -166,7 +173,6 @@ export const sessionDb: DbClient = {
           error: String(err),
         });
       });
-      const primaryResult = await db.execute(query);
       void remotePromise;
       return primaryResult;
     }

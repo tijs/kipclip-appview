@@ -32,39 +32,14 @@ import { listTags as listMirrorTags } from "../../mirror/queries.ts";
 import { deleteTag, upsertTag } from "../../mirror/upserts.ts";
 import { captureMessage } from "../../lib/sentry.ts";
 import { createTimer } from "../../lib/server-timing.ts";
+import {
+  _clearTagCache,
+  getCachedTags,
+  invalidateCachedTags,
+  setCachedTags,
+} from "../../lib/tag-cache.ts";
 
-// In-process tag cache for the PDS fallback path.
-// Tracked (mirror) users bypass this — they read from local SQLite directly.
-// TTL of 60s matches the tab-refocus debounce on the frontend.
-interface TagCacheEntry {
-  tags: EnrichedTag[];
-  fetchedAt: number;
-}
-const TAG_CACHE_TTL_MS = 60_000;
-const tagCache = new Map<string, TagCacheEntry>();
-
-function getCachedTags(did: string): EnrichedTag[] | null {
-  const entry = tagCache.get(did);
-  if (!entry) return null;
-  if (Date.now() - entry.fetchedAt > TAG_CACHE_TTL_MS) {
-    tagCache.delete(did);
-    return null;
-  }
-  return entry.tags;
-}
-
-function setCachedTags(did: string, tags: EnrichedTag[]): void {
-  tagCache.set(did, { tags, fetchedAt: Date.now() });
-}
-
-function invalidateCachedTags(did: string): void {
-  tagCache.delete(did);
-}
-
-/** @internal Test cleanup only */
-export function _clearTagCache(): void {
-  tagCache.clear();
-}
+export { _clearTagCache };
 
 export function registerTagRoutes(app: App<any>): App<any> {
   // List tags. Reads from mirror when MIRROR_MODE=read and the DID is tracked
@@ -104,17 +79,23 @@ export function registerTagRoutes(app: App<any>): App<any> {
           );
           // Fall through to the PDS path below — gives the user real tags
           // instead of an empty sidebar when Turso flakes briefly.
+          // Do NOT serve the PDS cache here: mirror users may have newer data
+          // that was written since the cache was populated.
         }
       }
 
-      const cached = getCachedTags(oauthSession.did);
-      if (cached) {
-        return timer.finalize(
-          setSessionCookie(
-            Response.json({ tags: cached } as ListTagsResponse),
-            setCookieHeader,
-          ),
-        );
+      // PDS cache: only serve to untracked users. Mirror users who fell through
+      // above need a fresh PDS fetch, not a snapshot that predates TAP delivery.
+      if (!decision.fromMirror) {
+        const cached = getCachedTags(oauthSession.did);
+        if (cached) {
+          return timer.finalize(
+            setSessionCookie(
+              Response.json({ tags: cached } as ListTagsResponse),
+              setCookieHeader,
+            ),
+          );
+        }
       }
 
       const records = await timer.span(
@@ -127,7 +108,9 @@ export function registerTagRoutes(app: App<any>): App<any> {
         value: record.value.value,
         createdAt: record.value.createdAt,
       }));
-      setCachedTags(oauthSession.did, tags);
+      if (!decision.fromMirror) {
+        setCachedTags(oauthSession.did, tags);
+      }
 
       const result: ListTagsResponse = { tags };
       return timer.finalize(
@@ -222,16 +205,25 @@ export function registerTagRoutes(app: App<any>): App<any> {
       };
 
       // Dual-write to mirror so the tag is immediately visible when the DID is
-      // tracked — TAP delivery can lag seconds after PDS write.
+      // tracked — TAP delivery can lag seconds after PDS write. Awaiting the
+      // local SQLite write (sub-ms) ensures mirror users see the new tag on the
+      // next GET /api/tags before we return. The Turso remote write inside
+      // upsertTag remains fire-and-forget.
       invalidateCachedTags(oauthSession.did);
-      upsertTag({
+      await upsertTag({
         uri: data.uri,
         did: oauthSession.did,
         rkey: data.uri.split("/").pop() ?? "",
         cid: data.cid,
         value,
         createdAt: record.createdAt,
-      }).catch(() => {});
+      }).catch((err) =>
+        captureMessage("tag mirror-write failed", "warning", {
+          op: "POST /api/tags",
+          did: oauthSession.did,
+          error: String(err),
+        })
+      );
 
       const result: AddTagResponse = { success: true, tag };
       return setSessionCookie(Response.json(result), setCookieHeader);
@@ -389,14 +381,20 @@ export function registerTagRoutes(app: App<any>): App<any> {
       };
 
       invalidateCachedTags(oauthSession.did);
-      upsertTag({
+      await upsertTag({
         uri: data.uri,
         did: oauthSession.did,
         rkey,
         cid: data.cid,
         value: newValue,
         createdAt: record.createdAt,
-      }).catch(() => {});
+      }).catch((err) =>
+        captureMessage("tag mirror-write failed", "warning", {
+          op: "PUT /api/tags/:rkey",
+          did: oauthSession.did,
+          error: String(err),
+        })
+      );
 
       const result: UpdateTagResponse = { success: true, tag };
       return setSessionCookie(Response.json(result), setCookieHeader);
@@ -515,10 +513,16 @@ export function registerTagRoutes(app: App<any>): App<any> {
       }
 
       invalidateCachedTags(oauthSession.did);
-      deleteTag(
+      await deleteTag(
         `at://${oauthSession.did}/${TAG_COLLECTION}/${rkey}`,
         oauthSession.did,
-      ).catch(() => {});
+      ).catch((err) =>
+        captureMessage("tag mirror-write failed", "warning", {
+          op: "DELETE /api/tags/:rkey",
+          did: oauthSession.did,
+          error: String(err),
+        })
+      );
 
       const result: DeleteTagResponse = { success: true };
       return setSessionCookie(Response.json(result), setCookieHeader);
@@ -551,6 +555,7 @@ export function registerTagRoutes(app: App<any>): App<any> {
         tagRecords,
         bookmarkRecords,
       );
+      invalidateCachedTags(oauthSession.did);
       return setSessionCookie(Response.json(result), setCookieHeader);
     } catch (error: any) {
       console.error("Error merging duplicate tags:", error);

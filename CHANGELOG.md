@@ -4,6 +4,33 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.19.2] - 2026-05-09
+
+### Fixed
+
+- **Tags empty for fresh users**: new tags created immediately after auto-enrollment
+  were invisible until TAP delivered the event. Tag create/update/delete now
+  synchronously writes to the local mirror before returning the HTTP response,
+  closing the same-session race window.
+- **Tag cache served stale data for mirror-fallback users**: GET /api/tags now
+  only reads from and stores to the in-process cache when the user is NOT being
+  served from the mirror, preventing a stale PDS-fallback snapshot from
+  shadowing fresh mirror data.
+- **Merge-duplicates missed cache invalidation**: POST /api/tags/merge-duplicates
+  now invalidates the tag cache after merging, so the next GET reflects the
+  merged state immediately.
+- **Session dual-write ordering**: remote Turso write is now dispatched after
+  the primary SQLite write succeeds, eliminating the window where a primary
+  failure could leave an orphan session row in Turso.
+- **SQLite PRAGMA synchronous=NORMAL**: added documentation comment noting the
+  OS-crash durability trade-off accepted for this workload.
+
+### Changed
+
+- Extracted in-process tag cache to `lib/tag-cache.ts` (was inline in
+  `routes/api/tags.ts`); tag mutations now log mirror-write failures to Sentry
+  instead of silently swallowing them.
+
 ## [0.19.1] - 2026-05-09
 
 ### Removed
