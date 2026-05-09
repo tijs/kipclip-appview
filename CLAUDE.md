@@ -220,11 +220,12 @@ to it (see `deploy/release/README.md`).
 
 To cut a new release from any machine with push perms:
 
-1. Update `CHANGELOG.md` — rename `[Unreleased]` to `[vX.Y.Z] - YYYY-MM-DD` and
+1. Run `deno task quality && deno task test` — must be clean before tagging
+2. Update `CHANGELOG.md` — rename `[Unreleased]` to `[vX.Y.Z] - YYYY-MM-DD` and
    add a fresh `[Unreleased]` section above
-2. Commit the changelog update
-3. Tag the commit: `git tag -a vX.Y.Z -m "vX.Y.Z - Short description"`
-4. Push with tags: `git push origin main --tags`
+3. Commit the changelog update
+4. Tag the commit: `git tag -a vX.Y.Z -m "vX.Y.Z - Short description"`
+5. Push with tags: `git push origin main --tags`
 
 Within ~60s, the box swaps to the new tag. Verify with
 `curl https://kipclip.com/api/version`. The frontend Footer shows the running
