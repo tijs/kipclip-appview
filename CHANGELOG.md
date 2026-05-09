@@ -4,13 +4,32 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-05-09
+
+### Added
+
+- **Auto-enrollment**: all users are now automatically enrolled in the local
+  mirror on their first `/api/initial-data` request when `MIRROR_MODE=read`.
+  Previously the mirror architecture was built but never activated for new users
+  — only the operator's own DID was tracked. `lib/auto-enroll.ts` runs a full
+  PDS backfill in the background (all 5 collections), then atomically inserts
+  the `tracked_dids` row with both `backfill_started_at` and
+  `backfill_complete_at` set so the mirror gate opens only after data is ready.
+  Users never see a "syncing" state with 0 bookmarks.
+
 ### Fixed
 
 - Bookmarks are now sorted newest-first by `createdAt` in the UI. Previously,
   PDS-fallback reads returned records in ascending rkey order, which placed
   recently-added bookmarks (TID rkeys, e.g. `3ml...`) at position ~1700 in a
   3000-bookmark library — invisibly behind all older hex-rkey imports. Mirror
-  reads were already `createdAt DESC`; this change makes PDS fallback consistent.
+  reads were already `createdAt DESC`; this change makes PDS fallback
+  consistent.
+- Empty-mirror safeguard now falls through to PDS for any tracked DID returning
+  0 bookmarks, regardless of `syncing` state. Previously the guard was skipped
+  while `syncing=true`, meaning a DID enrolled via Settings → Sync (which starts
+  TAP tracking but does not run a backfill) could open the mirror gate with an
+  empty mirror.
 - `touchTracked` in the TAP webhook handler no longer inserts a new
   `tracked_dids` row for DIDs that have not been explicitly enrolled in mirror
   sync. Previously, the first live TAP event for an untracked DID would create a
@@ -30,10 +49,6 @@ All notable changes to kipclip are documented in this file.
   mid-backfill row.
 - `MIRROR_WEBHOOK_ACK_ASYNC` env var is now read per-request instead of at
   module load, allowing tests to toggle it between cases.
-- Added empty-mirror safeguard to `/api/bookmarks` and `/api/initial-data`: when
-  the mirror gate is open but `backfill_complete_at` is set and the mirror
-  returns 0 bookmarks, the route falls through to PDS instead of returning an
-  empty library. A Sentry warning is emitted so operator can investigate.
 - Added 14 webhook regression tests covering all collection types, all event
   actions, identity events, and the `backfill_complete_at` completion signal.
 

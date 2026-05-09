@@ -38,6 +38,7 @@ import type {
   UserSettings,
 } from "../../shared/types.ts";
 import { newestTidCursor } from "../../lib/tid.ts";
+import { autoEnrollIfNeeded } from "../../lib/auto-enroll.ts";
 
 /** Pick the lower rate limit remaining from two PDS responses. */
 function pickLowestRateLimit(
@@ -100,6 +101,12 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
         "mirror-decision",
         () => shouldReadFromMirror(oauthSession.did),
       );
+      if (isFirstPage && !mirrorDecision.fromMirror) {
+        autoEnrollIfNeeded(
+          oauthSession.did,
+          oauthSession.pdsUrl ?? "",
+        );
+      }
       if (mirrorDecision.fromMirror) {
         // Wrap the mirror branch so a Turso connection flake (eu-west-1
         // ↔ Deno Deploy US sometimes drops requests) falls through to
@@ -126,10 +133,7 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
             // Safeguard: a backfill-complete mirror with 0 bookmarks is
             // suspicious. Fall through so PDS confirms rather than returning
             // an empty library that may be a data integrity problem.
-            if (
-              page.bookmarks.length === 0 && !page.cursor &&
-              !mirrorDecision.syncing
-            ) {
+            if (page.bookmarks.length === 0 && !page.cursor) {
               captureMessage(
                 "mirror empty safeguard: falling through to PDS",
                 "warning",

@@ -67,7 +67,7 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
           // suspicious — either the user genuinely has none (PDS will confirm),
           // or the tracking metadata is wrong. Either way, falling through costs
           // one PDS call; returning [] incorrectly costs the user all their data.
-          if (bookmarks.length === 0 && !mirrorDecision.syncing) {
+          if (bookmarks.length === 0) {
             captureMessage(
               "mirror empty safeguard: falling through to PDS",
               "warning",
