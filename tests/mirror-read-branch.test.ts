@@ -217,25 +217,30 @@ Deno.test("GET /api/tags - read mode + tracked DID serves from mirror", async ()
   }
 });
 
-Deno.test("GET /api/tags - read mode + tracked DID + no rows returns empty", async () => {
-  await clearMirrorTables();
-  await upsertTrackedDid({
-    did: DID,
-    backfillStartedAt: 1,
-    backfillCompleteAt: 2,
-  });
-  setMirrorMode("read");
-  withSession();
-  try {
-    const res = await handler(new Request("https://kipclip.com/api/tags"));
-    assertEquals(res.status, 200);
-    const body = await res.json();
-    assertEquals(body.tags, []);
-  } finally {
-    clearSession();
-    setMirrorMode("off");
-  }
-});
+Deno.test(
+  "GET /api/tags - read mode + tracked DID + no mirror rows falls through to PDS (empty in test env)",
+  async () => {
+    // Safeguard: mirror empty → fall through to PDS. PDS mock returns [] in
+    // test env so the assertion is the same, but the path is now PDS not mirror.
+    await clearMirrorTables();
+    await upsertTrackedDid({
+      did: DID,
+      backfillStartedAt: 1,
+      backfillCompleteAt: 2,
+    });
+    setMirrorMode("read");
+    withSession();
+    try {
+      const res = await handler(new Request("https://kipclip.com/api/tags"));
+      assertEquals(res.status, 200);
+      const body = await res.json();
+      assertEquals(body.tags, []);
+    } finally {
+      clearSession();
+      setMirrorMode("off");
+    }
+  },
+);
 
 Deno.test("GET /api/tags - off mode falls through to PDS path", async () => {
   await clearMirrorTables();
@@ -262,3 +267,108 @@ Deno.test("GET /api/tags - no session returns 401", async () => {
   const res = await handler(new Request("https://kipclip.com/api/tags"));
   assertEquals(res.status, 401);
 });
+
+// Regression: POST /api/bookmarks with a new tag must write the tag to the
+// mirror immediately so GET /api/tags returns it without waiting for TAP.
+// Previously createNewTagRecords was fire-and-forget with no mirror write —
+// mirror users saw 0 tags in the sidebar until TAP delivered the event.
+Deno.test(
+  "POST /api/bookmarks with new tag → tag visible in GET /api/tags without TAP (mirror user)",
+  async () => {
+    await clearMirrorTables();
+    await upsertTrackedDid({
+      did: DID,
+      backfillStartedAt: 1,
+      backfillCompleteAt: 2,
+    });
+    setMirrorMode("read");
+
+    // Function-based session mock so we can inspect request bodies and return
+    // correct URIs for bookmark vs tag createRecord calls.
+    setTestSessionProvider(() =>
+      Promise.resolve({
+        session: {
+          did: DID,
+          pdsUrl: "https://test.pds.example",
+          handle: "test.handle",
+          makeRequest: (
+            _method: string,
+            endpoint: string,
+            opts?: { body?: unknown; headers?: Record<string, string> },
+          ): Promise<Response> => {
+            if (endpoint.includes("createRecord")) {
+              const raw = opts?.body as string | undefined;
+              const parsed = raw ? JSON.parse(raw) : {};
+              const collection = parsed.collection ?? "";
+              const isTag = collection.includes("com.kipclip.tag");
+              const rkey = isTag ? "tagrkey1" : "bkrkey1";
+              return Promise.resolve(
+                new Response(
+                  JSON.stringify({
+                    uri: `at://${DID}/${collection}/${rkey}`,
+                    cid: `cid-${rkey}`,
+                  }),
+                  {
+                    status: 200,
+                    headers: { "Content-Type": "application/json" },
+                  },
+                ),
+              );
+            }
+            // listRecords, putRecord (annotation), etc.
+            return Promise.resolve(
+              new Response(JSON.stringify({ records: [] }), {
+                status: 200,
+                headers: { "Content-Type": "application/json" },
+              }),
+            );
+          },
+        } as any,
+        setCookieHeader: "sid=mock; Path=/; HttpOnly",
+      })
+    );
+
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = () =>
+      Promise.resolve(
+        new Response("<html><title>Test</title></html>", {
+          status: 200,
+          headers: { "Content-Type": "text/html" },
+        }),
+      );
+
+    try {
+      const res = await handler(
+        new Request("https://kipclip.com/api/bookmarks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: "https://example.com", tags: ["rust"] }),
+        }),
+      );
+      assertEquals(res.status, 200);
+      const bookmarkBody = await res.json();
+      assertEquals(bookmarkBody.bookmark.tags, ["rust"]);
+
+      // createNewTagRecords fires from a .then() chain after the response is
+      // returned. Yield to the microtask queue to let the chain settle:
+      // PDS createRecord → upsertTag → mirror write.
+      await new Promise((r) => setTimeout(r, 20));
+
+      const tagsRes = await handler(
+        new Request("https://kipclip.com/api/tags"),
+      );
+      assertEquals(tagsRes.status, 200);
+      const tagsBody = await tagsRes.json();
+      const tagValues = tagsBody.tags.map((t: { value: string }) => t.value);
+      assertEquals(
+        tagValues.includes("rust"),
+        true,
+        `tag must appear in sidebar without TAP; got: ${JSON.stringify(tagValues)}`,
+      );
+    } finally {
+      setTestSessionProvider(null);
+      globalThis.fetch = origFetch;
+      setMirrorMode("off");
+    }
+  },
+);
