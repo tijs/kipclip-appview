@@ -99,7 +99,7 @@ Captured during the most recent drill. Update after each drill.
 
 | Step                     | Target       | Last measured |
 | ------------------------ | ------------ | ------------- |
-| Restore from Storage Box | < 5 min      | —             |
+| Restore from Scaleway S3 | < 5 min      | —             |
 | SQLite copy + chown      | < 1 min      | —             |
 | TAP resume to live edge  | < 5 min      | —             |
 | **Total RTO**            | **< 15 min** | —             |
