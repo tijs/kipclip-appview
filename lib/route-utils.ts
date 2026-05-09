@@ -99,15 +99,18 @@ export async function createNewTagRecords(
   oauthSession: any,
   tags: string[],
   existingRecords?: any[],
-): Promise<void> {
+): Promise<
+  Array<{ uri: string; cid: string; value: string; createdAt: string }>
+> {
   const records = existingRecords ??
     await listAllRecords(oauthSession, TAG_COLLECTION);
   const existingTagValues: string[] = records.map((rec: any) =>
     rec.value?.value
   ).filter(Boolean);
   const newTags = tags.filter((t) => !tagIncludes(existingTagValues, t));
-  await Promise.all(newTags.map((tagValue) =>
-    oauthSession.makeRequest(
+  const results = await Promise.all(newTags.map(async (tagValue) => {
+    const createdAt = new Date().toISOString();
+    const res = await oauthSession.makeRequest(
       "POST",
       `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.createRecord`,
       {
@@ -115,13 +118,28 @@ export async function createNewTagRecords(
         body: JSON.stringify({
           repo: oauthSession.did,
           collection: TAG_COLLECTION,
-          record: { value: tagValue, createdAt: new Date().toISOString() },
+          record: { value: tagValue, createdAt },
         }),
       },
-    ).catch((err: any) =>
-      console.error(`Failed to create tag "${tagValue}":`, err)
-    )
-  ));
+    ).catch((err: any) => {
+      console.error(`Failed to create tag "${tagValue}":`, err);
+      return null;
+    });
+    if (!res || !res.ok) return null;
+    const data = await res.json().catch(() => null);
+    if (!data?.uri) return null;
+    return {
+      uri: data.uri as string,
+      cid: data.cid as string,
+      value: tagValue,
+      createdAt,
+    };
+  }));
+  return results.filter((
+    r,
+  ): r is { uri: string; cid: string; value: string; createdAt: string } =>
+    r !== null
+  );
 }
 
 /** Rate limit info from PDS response headers */

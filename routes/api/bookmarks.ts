@@ -35,7 +35,9 @@ import { getUserPreferences } from "../../lib/preferences.ts";
 import { sendToInstapaperAsync } from "../../lib/instapaper.ts";
 import { shouldReadFromMirror } from "../../lib/mirror-config.ts";
 import { listAllBookmarks } from "../../mirror/queries.ts";
+import { upsertTag } from "../../mirror/upserts.ts";
 import { captureMessage } from "../../lib/sentry.ts";
+import { invalidateCachedTags } from "../../lib/tag-cache.ts";
 import type {
   AddBookmarkRequest,
   AddBookmarkResponse,
@@ -258,11 +260,32 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         image: metadata.image,
       };
 
-      // Create PDS tag records for new tags (non-blocking)
+      // Create PDS tag records for new tags, then mirror-write + invalidate cache
+      // so GET /api/tags reflects new tags immediately without waiting for TAP.
       if (validatedTags.length > 0) {
-        createNewTagRecords(oauthSession, validatedTags, tagRecords).catch(
-          (err) => console.error("Failed to create tag records:", err),
-        );
+        createNewTagRecords(oauthSession, validatedTags, tagRecords).then(
+          (created) => {
+            invalidateCachedTags(oauthSession.did);
+            return Promise.all(
+              created.map((tag) =>
+                upsertTag({
+                  uri: tag.uri,
+                  did: oauthSession.did,
+                  rkey: tag.uri.split("/").pop() ?? "",
+                  cid: tag.cid,
+                  value: tag.value,
+                  createdAt: tag.createdAt,
+                }).catch((err) =>
+                  captureMessage("tag mirror-write failed", "warning", {
+                    op: "POST /api/bookmarks (inline tag)",
+                    did: oauthSession.did,
+                    error: String(err),
+                  })
+                )
+              ),
+            );
+          },
+        ).catch((err) => console.error("Failed to create tag records:", err));
       }
 
       const result: AddBookmarkResponse = { success: true, bookmark };
