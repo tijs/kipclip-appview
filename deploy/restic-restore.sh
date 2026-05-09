@@ -2,13 +2,12 @@
 # Restore the most recent restic snapshot to a scratch directory.
 #
 # Use this script for:
-#   - Periodic restore drills (verify backups are usable; required before
-#     phase 3 DNS flip per plan 004 R5).
-#   - Disaster recovery (rebuild Turso + local mirror.db on a fresh box).
+#   - Periodic restore drills (verify backups are usable).
+#   - Disaster recovery (restore primary SQLite + TAP state on a fresh box).
 #
 # Restores into $RESTORE_DIR (default /tmp/kipclip-restore) WITHOUT touching
-# the live DBs. The operator is responsible for moving files into place
-# (turso db shell <db> < dump.sql; mv mirror-snap.sqlite /var/lib/kipclip/mirror.db).
+# the live DB. The operator is responsible for moving files into place
+# (cp primary-snap.sqlite /var/lib/kipclip/kipclip.db).
 #
 # Required env (in /etc/kipclip/restic.env):
 #   RESTIC_REPOSITORY
@@ -33,9 +32,8 @@ else
   exit 1
 fi
 
-# Restore dir contains plaintext OAuth access/refresh tokens, DPoP
-# private keys, and session cookies in the Turso dump. Lock it down to
-# the invoking user only — no group/other access.
+# Restore dir contains plaintext OAuth access/refresh tokens and DPoP private
+# keys. Lock it down to the invoking user only.
 umask 077
 mkdir -p "$RESTORE_DIR"
 chmod 0700 "$RESTORE_DIR"
@@ -54,25 +52,29 @@ echo
 cat <<EOF
 Next steps (drill or DR):
 
-  Drill (verify only — DO NOT replace live DBs):
-    1. Read the Turso dump:
-         less $RESTORE_DIR/tmp/kipclip-turso-dump.sql
-       Confirm it contains expected CREATE TABLE + INSERT lines.
-    2. Sanity-check the local mirror snapshot:
-         sqlite3 $RESTORE_DIR/tmp/kipclip-mirror-snap.sqlite \\
-           "SELECT COUNT(*) FROM bookmarks;"
-    3. Compare row counts to the live mirror as a smoke test.
+  Drill (verify only — DO NOT replace live DB):
+    1. Sanity-check the primary SQLite snapshot:
+         sqlite3 $RESTORE_DIR/tmp/kipclip-primary-snap.sqlite \\
+           "SELECT 'bookmarks', COUNT(*) FROM bookmarks
+            UNION ALL SELECT 'tags', COUNT(*) FROM tags
+            UNION ALL SELECT 'tracked_dids', COUNT(*) FROM tracked_dids;"
+    2. Compare row counts to the live DB as a smoke test.
+    3. Tear down the scratch dir (contains OAuth tokens):
+         shred -u $RESTORE_DIR/tmp/kipclip-primary-snap.sqlite 2>/dev/null || true
+         rm -rf $RESTORE_DIR
 
-  Disaster recovery (replace live DBs):
-    1. Stop the kipclip app:
+  Disaster recovery (replace live DB):
+    1. Stop the app:
          systemctl stop kipclip
-    2. Restore Turso (creates a NEW db; or overwrite an empty one):
-         turso db shell <new-db-name> < $RESTORE_DIR/tmp/kipclip-turso-dump.sql
-    3. Restore local mirror.db:
-         mv $RESTORE_DIR/tmp/kipclip-mirror-snap.sqlite /var/lib/kipclip/mirror.db
-         chown kipclip:kipclip /var/lib/kipclip/mirror.db
-    4. Restore TAP cursor:
+    2. Restore primary SQLite:
+         mv /var/lib/kipclip/kipclip.db /var/lib/kipclip/kipclip.db.bak.\$(date +%s)
+         cp $RESTORE_DIR/tmp/kipclip-primary-snap.sqlite /var/lib/kipclip/kipclip.db
+         chown kipclip:kipclip /var/lib/kipclip/kipclip.db
+         chmod 0640 /var/lib/kipclip/kipclip.db
+    3. Restore TAP cursor:
          rsync -a $RESTORE_DIR/var/lib/tap/ /var/lib/tap/
-    5. Update env (if Turso URL changed) and restart:
+         chown -R tap:tap /var/lib/tap
+    4. Restart services:
          systemctl start kipclip
+         systemctl start tap
 EOF

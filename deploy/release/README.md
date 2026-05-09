@@ -111,11 +111,6 @@ Defence layers in effect on the box:
 3. **Basic-auth secret** — the actual TAP-vs-user gate on the box. Always keep
    `TAP_WEBHOOK_SECRET` and `TAP_ADMIN_PASSWORD` in sync.
 
-On Deno Deploy (warm standby) only layers 2 and 3 apply. Layer 2 is the primary
-gate there: edge-routed requests do not arrive from loopback, so the filter
-rejects everything. TAP only fires to the box, so the warm standby never sees
-legitimate webhook traffic.
-
 Rollout (must be coordinated; both sides need the same secret in the same
 maintenance window — TAP currently uses one secret for both inbound API auth and
 outbound webhook auth, so changing it rotates both at once):

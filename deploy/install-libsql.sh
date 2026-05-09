@@ -2,21 +2,20 @@
 # One-shot setup for local libSQL on the kipclip box.
 #
 # Creates /var/lib/kipclip/ owned by the kipclip user, ensures sqlite3 is
-# available for backup snapshots, and seeds the empty mirror.db file. The
+# available for backup snapshots, and seeds the empty kipclip.db file. The
 # app process opens this file directly via the @libsql/client native driver
-# when LOCAL_DB_URL=file:/var/lib/kipclip/mirror.db is set in its environment.
+# when DATABASE_URL=file:/var/lib/kipclip/kipclip.db is set in its environment.
 #
-# Run as root once during phase 3 cutover. Idempotent.
+# Run as root once on a fresh box. Idempotent.
 #
 # After this script completes:
-#   1. Add LOCAL_DB_URL=file:/var/lib/kipclip/mirror.db to the app's env file
-#   2. Add MIRROR_DUAL_WRITE=on to the app's env file
-#   3. Restart the app — migrations will create mirror tables on first boot
+#   1. Add DATABASE_URL=file:/var/lib/kipclip/kipclip.db to the app's env file
+#   2. Restart the app — migrations will create all tables on first boot
 set -euo pipefail
 
 KIPCLIP_USER="${KIPCLIP_USER:-kipclip}"
 DATA_DIR="/var/lib/kipclip"
-DB_FILE="${DATA_DIR}/mirror.db"
+DB_FILE="${DATA_DIR}/kipclip.db"
 
 if [[ $EUID -ne 0 ]]; then
   echo "ERROR: must run as root" >&2
@@ -60,17 +59,14 @@ fi
 
 cat <<EOF
 
-Local libSQL installed.
+Local SQLite installed.
 
 Next steps:
-  1. Edit the kipclip app env file (typically /etc/kipclip/app.env) and add:
-       LOCAL_DB_URL=file:${DB_FILE}
-       MIRROR_DUAL_WRITE=on
+  1. Edit /etc/kipclip/env and add:
+       DATABASE_URL=file:${DB_FILE}
   2. Restart the app:
        systemctl restart kipclip
-  3. Tail the logs to confirm both DBs initialize:
+  3. Tail the logs to confirm migrations run:
        journalctl -u kipclip -f
-     You should see "✅ Local libSQL initialized" + mirror migrations running
-     against "local libSQL".
 
 EOF

@@ -15,7 +15,6 @@ bookmark lexicon.
 - Automatic URL enrichment (title extraction)
 - View and manage your bookmarks
 - Reading List: filter bookmarks by a configurable tag (default: "toread")
-- User settings stored in Turso database
 - Uses
   [community.lexicon.bookmarks.bookmark](https://github.com/lexicon-community/lexicon/blob/main/community/lexicon/bookmarks/bookmark.json)
   schema
@@ -31,7 +30,7 @@ bookmark lexicon.
   [TAP](https://github.com/bluesky-social/indigo) webhooks. Reads serve from the
   mirror; writes always go to the user's PDS via AT Protocol
 - **Database**: local SQLite (`DATABASE_URL`) for all reads, sessions, and
-  settings; optional Turso remote for mirror dual-write warm-standby backup
+  settings
 - **Bookmark storage (source of truth)**: user's PDS (not the AppView)
 - **Static assets**: Bunny CDN (`cdn.kipclip.com`)
 - **Edge**: Caddy on the box (TLS, security headers, CSP+SRI)
@@ -71,9 +70,6 @@ kipclip-appview/
 COOKIE_SECRET=your-random-secret-string-at-least-32-chars  # Required
 DATABASE_URL=file:/var/lib/kipclip/kipclip.db  # Optional, defaults to file:.local/kipclip.db
 BASE_URL=https://kipclip.com  # Optional, derived from request if not set
-# Turso mirror backup (optional, warm-standby only):
-TURSO_DATABASE_URL=libsql://your-db.turso.io
-TURSO_AUTH_TOKEN=your-turso-auth-token
 ```
 
 The `COOKIE_SECRET` is required for encrypting OAuth session cookies.
