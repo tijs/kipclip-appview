@@ -47,6 +47,9 @@ export function TagInput({
   }
 
   function handleRemoveTag(tagValue: string) {
+    // Intentional: removing a tag still counts as engagement, so it surfaces
+    // in the Recent zone alongside add/toggle. "Tags I'm working with" is
+    // the model, not "tags I'm filtering by."
     trackTagUsage(tagValue);
     onTagsChange(tags.filter((t) => t !== tagValue));
   }

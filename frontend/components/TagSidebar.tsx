@@ -50,6 +50,15 @@ export function TagSidebar() {
     return resolved;
   }, [tags, recentTags, isSearching]);
 
+  // Tags shown in the alphabetical list, excluding those already surfaced in
+  // the Recent zone — avoids visual duplicates and (on mobile, where Recent
+  // and the rest share a single <ul>) duplicate React keys.
+  const restTags = useMemo(() => {
+    if (recentTagObjects.length === 0) return filteredTags;
+    const recentUris = new Set(recentTagObjects.map((t) => t.uri));
+    return filteredTags.filter((t) => !recentUris.has(t.uri));
+  }, [filteredTags, recentTagObjects]);
+
   // Manual refresh (for retry button)
   async function loadTags() {
     setRefreshing(true);
@@ -239,13 +248,13 @@ export function TagSidebar() {
               <ul className="flex gap-2 flex-shrink-0 items-center">
                 {!isSearching && recentTagObjects.map(renderTag)}
                 {!isSearching && recentTagObjects.length > 0 &&
-                  filteredTags.length > 0 && (
+                  restTags.length > 0 && (
                   <li
                     aria-hidden="true"
                     className="border-l border-gray-300 h-6 mx-1 flex-shrink-0"
                   />
                 )}
-                {filteredTags.map(renderTag)}
+                {restTags.map(renderTag)}
               </ul>
             )}
           <button
@@ -286,11 +295,14 @@ export function TagSidebar() {
               />
             </svg>
             <input
-              type="text"
+              type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Escape") setSearchQuery("");
+                if (e.key === "Escape") {
+                  setSearchQuery("");
+                  (e.target as HTMLInputElement).blur();
+                }
               }}
               placeholder="Search tags"
               aria-label="Search tags"
@@ -435,11 +447,14 @@ export function TagSidebar() {
               />
             </svg>
             <input
-              type="text"
+              type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Escape") setSearchQuery("");
+                if (e.key === "Escape") {
+                  setSearchQuery("");
+                  (e.target as HTMLInputElement).blur();
+                }
               }}
               placeholder="Search tags"
               aria-label="Search tags"
@@ -474,10 +489,10 @@ export function TagSidebar() {
                     </ul>
                   </section>
                 )}
-                {recentTagObjects.length > 0 && filteredTags.length > 0 && (
+                {recentTagObjects.length > 0 && restTags.length > 0 && (
                   <div className="border-t border-gray-200 mx-3 my-3" />
                 )}
-                <ul className="space-y-1">{filteredTags.map(renderTag)}</ul>
+                <ul className="space-y-1">{restTags.map(renderTag)}</ul>
               </>
             )}
         </div>

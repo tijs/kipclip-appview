@@ -94,6 +94,17 @@ Deno.test("nextRecentTags trims input before storing and comparing", () => {
   assertEquals(nextRecentTags(["swift"], "  ai  "), ["ai", "swift"]);
 });
 
+Deno.test("nextRecentTags trim + case-insensitive dedupe combine", () => {
+  assertEquals(
+    nextRecentTags(["swift", "ai"], "  SWIFT  "),
+    ["SWIFT", "ai"],
+  );
+});
+
+Deno.test("MAX_RECENT_TAGS is 8 (canary — bump deliberately if changing)", () => {
+  assertEquals(MAX_RECENT_TAGS, 8);
+});
+
 // ============================================================================
 // loadRecentTags
 
@@ -166,5 +177,53 @@ Deno.test("saveRecentTags then loadRecentTags round-trips correctly", () => {
     assertEquals(loadRecentTags(), ["swift", "ai", "atproto"]);
   } finally {
     mock.restore();
+  }
+});
+
+Deno.test("saveRecentTags swallows quota-exceeded errors", () => {
+  const original = globalThis.localStorage;
+  Object.defineProperty(globalThis, "localStorage", {
+    value: {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error("QuotaExceededError");
+      },
+      removeItem: () => {},
+      clear: () => {},
+      get length() {
+        return 0;
+      },
+      key: () => null,
+    },
+    writable: true,
+    configurable: true,
+  });
+  try {
+    // Must not throw.
+    saveRecentTags(["swift"]);
+  } finally {
+    Object.defineProperty(globalThis, "localStorage", {
+      value: original,
+      writable: true,
+      configurable: true,
+    });
+  }
+});
+
+Deno.test("loadRecentTags returns [] when localStorage is undefined (SSR)", () => {
+  const original = globalThis.localStorage;
+  Object.defineProperty(globalThis, "localStorage", {
+    value: undefined,
+    writable: true,
+    configurable: true,
+  });
+  try {
+    assertEquals(loadRecentTags(), []);
+  } finally {
+    Object.defineProperty(globalThis, "localStorage", {
+      value: original,
+      writable: true,
+      configurable: true,
+    });
   }
 });

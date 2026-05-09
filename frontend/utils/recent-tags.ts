@@ -9,6 +9,7 @@ const STORAGE_KEY = "kipclip:recent-tags";
 export const MAX_RECENT_TAGS = 8;
 
 export function loadRecentTags(): string[] {
+  if (typeof localStorage === "undefined") return [];
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (!stored) return [];
@@ -21,9 +22,10 @@ export function loadRecentTags(): string[] {
 }
 
 export function saveRecentTags(tags: string[]): void {
+  if (typeof localStorage === "undefined") return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tags));
-  } catch { /* localStorage unavailable */ }
+  } catch { /* localStorage unavailable or quota exceeded */ }
 }
 
 /**
