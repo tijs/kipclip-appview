@@ -343,7 +343,8 @@ otherwise it silently turns into permanent dead state.
 built in `App.tsx` (`{mirrorSyncing && <span>…syncing…</span>}`). As of v0.19.0,
 auto-enrollment (`lib/auto-enroll.ts`) opens the mirror gate atomically after
 backfill completes, so `mirrorSyncing` is `true` only for users who enrolled via
-Settings → Sync before auto-enroll shipped. New users will never see the pill.
+the operator backfill script before auto-enroll shipped. New users will never
+see the pill.
 
 ## Cross-References
 
