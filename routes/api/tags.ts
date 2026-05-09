@@ -63,20 +63,38 @@ export function registerTagRoutes(app: App<any>): App<any> {
             "mirror-tags",
             () => listMirrorTags(oauthSession.did),
           );
+          // Safeguard: a backfill-complete mirror with 0 tags is suspicious —
+          // the user may have tags on PDS that TAP hasn't delivered yet (e.g.
+          // TAP enrollment lag, or tags created via bookmark inline-create before
+          // mirror-write was added). Fall through to PDS so the sidebar is never
+          // empty when the user actually has tags.
+          if (tags.length === 0) {
+            captureMessage(
+              "mirror empty safeguard: falling through to PDS",
+              "debug",
+              { did: oauthSession.did, op: "GET /api/tags" },
+            );
+            throw new Error("mirror_empty_fallthrough");
+          }
           const result: ListTagsResponse = { tags };
           return timer.finalize(
             setSessionCookie(Response.json(result), setCookieHeader),
           );
         } catch (mirrorErr) {
-          captureMessage(
-            "mirror read fallback to PDS",
-            "warning",
-            {
-              did: oauthSession.did,
-              op: "GET /api/tags",
-              error: String(mirrorErr),
-            },
-          );
+          if (
+            !(mirrorErr instanceof Error &&
+              mirrorErr.message === "mirror_empty_fallthrough")
+          ) {
+            captureMessage(
+              "mirror read fallback to PDS",
+              "warning",
+              {
+                did: oauthSession.did,
+                op: "GET /api/tags",
+                error: String(mirrorErr),
+              },
+            );
+          }
           // Fall through to the PDS path below — gives the user real tags
           // instead of an empty sidebar when the DB fails briefly.
           // Do NOT serve the PDS cache here: mirror users may have newer data
