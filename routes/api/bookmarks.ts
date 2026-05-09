@@ -70,7 +70,7 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
           if (bookmarks.length === 0) {
             captureMessage(
               "mirror empty safeguard: falling through to PDS",
-              "warning",
+              "debug",
               { did: oauthSession.did, op: "GET /api/bookmarks" },
             );
             throw new Error("mirror_empty_fallthrough");

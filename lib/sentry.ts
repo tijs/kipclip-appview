@@ -76,7 +76,7 @@ export function captureError(
  */
 export function captureMessage(
   message: string,
-  level: "info" | "warning" | "error" = "warning",
+  level: "debug" | "info" | "warning" | "error" = "warning",
   context?: Record<string, unknown>,
 ): void {
   console.log(`[${level.toUpperCase()}]`, message, context);

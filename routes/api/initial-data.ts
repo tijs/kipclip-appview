@@ -142,7 +142,7 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
             if (page.bookmarks.length === 0 && !page.cursor) {
               captureMessage(
                 "mirror empty safeguard: falling through to PDS",
-                "warning",
+                "debug",
                 { did: oauthSession.did, op: "GET /api/initial-data" },
               );
               throw new Error("mirror_empty_fallthrough");
