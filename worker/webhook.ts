@@ -72,7 +72,11 @@ export interface WebhookResult {
   replayed?: boolean;
 }
 
-const ACK_ASYNC = Deno.env.get("MIRROR_WEBHOOK_ACK_ASYNC") === "1";
+// Read fresh per-request (not cached at module load) so tests can toggle the
+// flag between cases. Sub-µs cost; this is a DB-bound path.
+function ackAsync(): boolean {
+  return Deno.env.get("MIRROR_WEBHOOK_ACK_ASYNC") === "1";
+}
 
 // Defense-in-depth shared secret between TAP and kipclip. The Caddy
 // `respond @hook 403` rule is the primary barrier; this check catches
@@ -217,7 +221,7 @@ export async function handleWebhookRequest(req: Request): Promise<Response> {
     }
   }
 
-  if (ACK_ASYNC) {
+  if (ackAsync()) {
     // Ack immediately so TAP advances its outbox cursor; process in background.
     // Required during backfill when burst load + Turso latency exceeds TAP's
     // 30s webhook timeout. Idempotent upserts make at-least-once writes safe;
@@ -358,17 +362,26 @@ async function processIdentityEvent(_e: IdentityEvt): Promise<void> {
   // a local cache. For now no-op so TAP can ack.
 }
 
-async function touchTracked(did: string, _r: RecordEvt): Promise<void> {
+async function touchTracked(did: string, r: RecordEvt): Promise<void> {
   const now = Date.now();
   // UPDATE-only: never insert a new row. Inserting would set backfill_started_at
   // = now which opens the mirror gate for a DID whose mirror is empty — callers
   // would then serve 0 bookmarks instead of falling through to PDS.
   // upsertTrackedDid is intentionally NOT used here.
+  //
+  // On the first live (post-backfill) event, stamp backfill_complete_at via
+  // COALESCE — once stamped it is never regressed. Non-live (backfill replay)
+  // events leave backfill_complete_at unchanged so the gate stays closed until
+  // live traffic confirms backfill caught up.
   await mirrorWrite({
     sql: `UPDATE tracked_dids
-            SET last_event_at = MAX(?, COALESCE(last_event_at, 0))
+            SET last_event_at = MAX(?, COALESCE(last_event_at, 0)),
+                backfill_complete_at = CASE
+                  WHEN ? = 1 THEN COALESCE(backfill_complete_at, ?)
+                  ELSE backfill_complete_at
+                END
           WHERE did = ?`,
-    args: [now, did],
+    args: [now, r.live ? 1 : 0, now, did],
   });
 }
 

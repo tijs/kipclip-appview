@@ -13,6 +13,24 @@ All notable changes to kipclip are documented in this file.
   contained only a single record — causing all other bookmarks to disappear from
   the UI. `touchTracked` now issues an UPDATE-only query that is a no-op for
   untracked DIDs.
+- Restored `backfill_complete_at` completion signal: `touchTracked` now stamps
+  `backfill_complete_at` on the first live (post-backfill) event for enrolled
+  DIDs using `COALESCE` so the timestamp is never regressed. Previously this was
+  inadvertently removed alongside the INSERT footgun.
+- Migration 009 backfills `backfill_complete_at` for enrolled DIDs that were
+  stuck in permanent `syncing=true` state due to the missing completion signal.
+- `/api/sync/track` now calls `insertTrackedDidForEnrollment` (INSERT OR IGNORE)
+  instead of `upsertTrackedDid` (INSERT ON CONFLICT UPDATE), making the
+  enrollment intent explicit and preventing re-enrollment from clobbering a
+  mid-backfill row.
+- `MIRROR_WEBHOOK_ACK_ASYNC` env var is now read per-request instead of at
+  module load, allowing tests to toggle it between cases.
+- Added empty-mirror safeguard to `/api/bookmarks` and `/api/initial-data`: when
+  the mirror gate is open but `backfill_complete_at` is set and the mirror
+  returns 0 bookmarks, the route falls through to PDS instead of returning an
+  empty library. A Sentry warning is emitted so operator can investigate.
+- Added 14 webhook regression tests covering all collection types, all event
+  actions, identity events, and the `backfill_complete_at` completion signal.
 
 ## [0.18.2] - 2026-05-08
 

@@ -20,7 +20,7 @@ import {
 } from "../../lib/route-utils.ts";
 import { getSessionFromRequest } from "../../lib/session.ts";
 import { getSyncStatus } from "../../mirror/queries.ts";
-import { upsertTrackedDid } from "../../mirror/upserts.ts";
+import { insertTrackedDidForEnrollment } from "../../mirror/upserts.ts";
 import { handleWebhookRequest } from "../../worker/webhook.ts";
 
 const TAP_CONTROL_URL = Deno.env.get("TAP_CONTROL_URL") ??
@@ -96,7 +96,7 @@ export function registerSyncRoutes(app: App<unknown>): App<unknown> {
         );
       }
 
-      await upsertTrackedDid({
+      await insertTrackedDidForEnrollment({
         did: body.did,
         pdsUrl: body.pdsUrl ?? session.pdsUrl ?? null,
         backfillStartedAt: Date.now(),

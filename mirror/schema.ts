@@ -112,4 +112,20 @@ export const MIRROR_MIGRATIONS: MigrationEntry[] = [
         ON seen_webhook_events(seen_at)
     `,
   },
+  {
+    version: "009",
+    description:
+      "Backfill backfill_complete_at for enrolled DIDs stuck in syncing state",
+    // touchTracked was previously UPDATE-only and didn't stamp backfill_complete_at,
+    // leaving enrolled DIDs permanently stuck with syncing=true. Use last_event_at
+    // as a proxy: if live events arrived after backfill started, backfill completed.
+    sql: `
+      UPDATE tracked_dids
+        SET backfill_complete_at = last_event_at
+      WHERE backfill_started_at IS NOT NULL
+        AND backfill_complete_at IS NULL
+        AND last_event_at IS NOT NULL
+        AND last_event_at > backfill_started_at
+    `,
+  },
 ];

@@ -63,6 +63,18 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
       if (mirrorDecision.fromMirror) {
         try {
           const bookmarks = await listAllBookmarks(oauthSession.did);
+          // Safeguard: a backfill-complete mirror with 0 bookmarks is
+          // suspicious — either the user genuinely has none (PDS will confirm),
+          // or the tracking metadata is wrong. Either way, falling through costs
+          // one PDS call; returning [] incorrectly costs the user all their data.
+          if (bookmarks.length === 0 && !mirrorDecision.syncing) {
+            captureMessage(
+              "mirror empty safeguard: falling through to PDS",
+              "warning",
+              { did: oauthSession.did, op: "GET /api/bookmarks" },
+            );
+            throw new Error("mirror_empty_fallthrough");
+          }
           const result: ListBookmarksResponse = { bookmarks };
           return setSessionCookie(Response.json(result), setCookieHeader);
         } catch (mirrorErr) {

@@ -123,6 +123,20 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
               ),
             ]);
             timer.add("first-page-parallel", performance.now() - parallelStart);
+            // Safeguard: a backfill-complete mirror with 0 bookmarks is
+            // suspicious. Fall through so PDS confirms rather than returning
+            // an empty library that may be a data integrity problem.
+            if (
+              page.bookmarks.length === 0 && !page.cursor &&
+              !mirrorDecision.syncing
+            ) {
+              captureMessage(
+                "mirror empty safeguard: falling through to PDS",
+                "warning",
+                { did: oauthSession.did, op: "GET /api/initial-data" },
+              );
+              throw new Error("mirror_empty_fallthrough");
+            }
             const settings: UserSettings = {
               instapaperEnabled: extras.instapaperEnabled,
               instapaperUsername: extras.instapaperEnabled &&

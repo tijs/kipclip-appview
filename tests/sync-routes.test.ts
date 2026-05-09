@@ -3,7 +3,7 @@
  */
 
 import "./test-setup.ts";
-import { clearMirrorTables } from "./mirror-test-setup.ts";
+import { clearMirrorTables, db } from "./mirror-test-setup.ts";
 
 import { assertEquals } from "@std/assert";
 import { app } from "../main.ts";
@@ -492,32 +492,55 @@ Deno.test("POST /api/sync/hook - bookmark + annotation + tag events fill mirror"
   assertEquals(tags.length, 1);
 });
 
-Deno.test("POST /api/sync/hook - live=true marks backfillCompleteAt", async () => {
-  await clearMirrorTables();
-  const evt = recordEvent(
-    "community.lexicon.bookmarks.bookmark",
-    "live1",
-    "create",
-    {
-      subject: "https://example.com/live1",
-      createdAt: "2026-05-01T00:00:00.000Z",
-    },
-    "bafyLive",
-    /* live */ true,
-  );
-  const res = await handler(
-    new Request("http://127.0.0.1:8000/api/sync/hook", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(evt),
-    }),
-  );
-  assertEquals(res.status, 200);
-  const { getSyncStatus } = await import("../mirror/queries.ts");
-  const s = await getSyncStatus(SESSION_DID);
-  assertEquals(s.tracking, true);
-  assertEquals(typeof s.backfillCompleteAt, "number");
-});
+Deno.test(
+  "POST /api/sync/hook - live=true stamps backfillCompleteAt for enrolled DID",
+  async () => {
+    await clearMirrorTables();
+
+    // Simulate a properly enrolled DID: backfill started, not yet complete.
+    const enrolledAt = Date.now() - 10000;
+    await db.execute({
+      sql:
+        `INSERT INTO tracked_dids (did, added_at, backfill_started_at, backfill_complete_at, last_event_at)
+         VALUES (?, ?, ?, NULL, ?)`,
+      args: [SESSION_DID, enrolledAt, enrolledAt, enrolledAt],
+    });
+
+    const evt = recordEvent(
+      "community.lexicon.bookmarks.bookmark",
+      "live1",
+      "create",
+      {
+        subject: "https://example.com/live1",
+        createdAt: "2026-05-01T00:00:00.000Z",
+      },
+      "bafyLive",
+      /* live */ true,
+    );
+    const res = await handler(
+      new Request("http://127.0.0.1:8000/api/sync/hook", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(evt),
+      }),
+    );
+    assertEquals(res.status, 200);
+
+    const { getSyncStatus } = await import("../mirror/queries.ts");
+    const s = await getSyncStatus(SESSION_DID);
+    assertEquals(s.tracking, true, "enrolled DID must still be tracked");
+    assertEquals(
+      typeof s.backfillCompleteAt,
+      "number",
+      "live event must stamp backfill_complete_at for enrolled DID",
+    );
+    assertEquals(
+      s.backfillCompleteAt! > enrolledAt,
+      true,
+      "backfillCompleteAt must be after enrollment",
+    );
+  },
+);
 
 Deno.test("POST /api/sync/hook - identity event acks without writes", async () => {
   await clearMirrorTables();
