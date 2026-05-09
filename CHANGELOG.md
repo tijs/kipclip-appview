@@ -4,6 +4,17 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.19.1] - 2026-05-09
+
+### Removed
+
+- `POST /api/sync/track` endpoint removed. The endpoint was never reachable from
+  the UI (no frontend caller existed) and its design was incorrect — it opened
+  the mirror gate by writing `backfill_started_at` without running a PDS
+  backfill. Auto-enrollment (`lib/auto-enroll.ts`) supersedes it correctly: full
+  backfill first, then both timestamps written atomically. Also removes
+  `insertTrackedDidForEnrollment` (its only caller) and all related tests.
+
 ## [0.19.0] - 2026-05-09
 
 ### Added
@@ -27,8 +38,8 @@ All notable changes to kipclip are documented in this file.
   consistent.
 - Empty-mirror safeguard now falls through to PDS for any tracked DID returning
   0 bookmarks, regardless of `syncing` state. Previously the guard was skipped
-  while `syncing=true`, meaning a DID enrolled via Settings → Sync (which starts
-  TAP tracking but does not run a backfill) could open the mirror gate with an
+  while `syncing=true`, meaning a DID enrolled via the operator backfill script
+  before `backfill_complete_at` was stamped could open the mirror gate with an
   empty mirror.
 - `touchTracked` in the TAP webhook handler no longer inserts a new
   `tracked_dids` row for DIDs that have not been explicitly enrolled in mirror
