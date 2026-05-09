@@ -363,7 +363,9 @@ Deno.test(
       assertEquals(
         tagValues.includes("rust"),
         true,
-        `tag must appear in sidebar without TAP; got: ${JSON.stringify(tagValues)}`,
+        `tag must appear in sidebar without TAP; got: ${
+          JSON.stringify(tagValues)
+        }`,
       );
     } finally {
       setTestSessionProvider(null);
