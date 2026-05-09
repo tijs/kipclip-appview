@@ -4,6 +4,21 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-05-09
+
+### Added
+
+- **Tag sidebar search**: always-visible search input at the top of the desktop
+  sidebar and the mobile horizontal bar. Filters the tag list live by
+  case-insensitive substring match. `type="search"` for native clear; ESC clears
+  and blurs.
+- **Recent tags zone**: surfaces the last 8 tags you touched (filtered, applied
+  to a bookmark, removed) above the alphabetical list, with a "RECENT" label on
+  desktop and recents-leading on the mobile bar. Updates from sidebar clicks and
+  any tag input — covers AddBookmark, EditBookmark, and BulkTagModal via the
+  shared `TagInput` component. Persisted per-device in localStorage under
+  `kipclip:recent-tags`. No backend changes.
+
 ## [0.20.0] - 2026-05-09
 
 ### Removed
