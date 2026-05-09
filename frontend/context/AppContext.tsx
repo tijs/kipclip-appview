@@ -396,11 +396,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const first = await fetchFirstPage();
     applyServerMeta(first);
-    // Trust the server's cursor order rather than re-sorting by createdAt.
-    // Mirror returns (created_at, uri) DESC; PDS-fallback returns rkey-desc
-    // (reverse:true). For all-TID rkeys these are equivalent; legacy hex
-    // rkeys would otherwise produce a discontinuity at every page boundary
-    // (first 50 ordered by createdAt, rest by rkey).
+    // Bookmarks arrive in PDS rkey-ascending order; filteredBookmarks re-sorts
+    // by createdAt DESC so the final rendered list is always newest-first.
     setBookmarks(first.bookmarks);
     setFirstPageReady(true);
 
@@ -427,8 +424,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (pending.length === 0) return;
       const chunk = pending.splice(0, pending.length);
       pagesSinceFlush = 0;
-      // Append-only, no re-sort. See comment above: server cursor order is
-      // already globally consistent so concat preserves it.
       setBookmarks((prev) => prev.concat(chunk));
     };
 
@@ -739,7 +734,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     perf.end("tagFilter");
-    return result;
+    // Sort newest-first by createdAt. PDS fallback returns records in rkey
+    // order (ascending), which puts new TID-rkey bookmarks (3m...) after all
+    // old hex-rkey imports (b89a...) — making recently-added bookmarks
+    // invisible at position 1700+. Mirror reads return createdAt DESC already,
+    // so this sort is a no-op for mirror users and a correctness fix for PDS.
+    return [...result].sort((a, b) =>
+      (b.createdAt ?? "").localeCompare(a.createdAt ?? "")
+    );
   }, [bookmarks, tagIndex, selectedTags, parsedQuery.text]);
 
   const readingListBookmarks = useMemo(
@@ -775,7 +777,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       result = result.filter((b) => matchesSearch(b, readingListSearchQuery));
     }
 
-    return result;
+    return [...result].sort((a, b) =>
+      (b.createdAt ?? "").localeCompare(a.createdAt ?? "")
+    );
   }, [
     readingListBookmarks,
     tagIndex,

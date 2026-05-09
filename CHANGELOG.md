@@ -6,6 +6,11 @@ All notable changes to kipclip are documented in this file.
 
 ### Fixed
 
+- Bookmarks are now sorted newest-first by `createdAt` in the UI. Previously,
+  PDS-fallback reads returned records in ascending rkey order, which placed
+  recently-added bookmarks (TID rkeys, e.g. `3ml...`) at position ~1700 in a
+  3000-bookmark library — invisibly behind all older hex-rkey imports. Mirror
+  reads were already `createdAt DESC`; this change makes PDS fallback consistent.
 - `touchTracked` in the TAP webhook handler no longer inserts a new
   `tracked_dids` row for DIDs that have not been explicitly enrolled in mirror
   sync. Previously, the first live TAP event for an untracked DID would create a
