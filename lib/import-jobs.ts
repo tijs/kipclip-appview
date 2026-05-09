@@ -1,6 +1,6 @@
 /**
  * Import job database operations.
- * Stores chunked import work in Turso/libSQL for client-driven batch processing.
+ * Stores chunked import work in SQLite for client-driven batch processing.
  */
 
 import { db } from "./db.ts";

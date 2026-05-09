@@ -1,6 +1,6 @@
 /**
  * User settings database operations.
- * Stores user preferences in Turso/libSQL.
+ * Stores user preferences in SQLite.
  */
 
 import { db } from "./db.ts";

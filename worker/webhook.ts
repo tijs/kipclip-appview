@@ -17,7 +17,7 @@
  */
 
 import { captureError } from "../lib/sentry.ts";
-import { mirrorWrite } from "../lib/db.ts";
+import { db } from "../lib/db.ts";
 import {
   deleteAnnotation,
   deleteBookmark,
@@ -223,7 +223,7 @@ export async function handleWebhookRequest(req: Request): Promise<Response> {
 
   if (ackAsync()) {
     // Ack immediately so TAP advances its outbox cursor; process in background.
-    // Required during backfill when burst load + Turso latency exceeds TAP's
+    // Required during backfill when burst load exceeds TAP's
     // 30s webhook timeout. Idempotent upserts make at-least-once writes safe;
     // event loss on Deno crash is acceptable since owner can re-track.
     queueMicrotask(() => {
@@ -373,7 +373,7 @@ async function touchTracked(did: string, r: RecordEvt): Promise<void> {
   // COALESCE — once stamped it is never regressed. Non-live (backfill replay)
   // events leave backfill_complete_at unchanged so the gate stays closed until
   // live traffic confirms backfill caught up.
-  await mirrorWrite({
+  await db.execute({
     sql: `UPDATE tracked_dids
             SET last_event_at = MAX(?, COALESCE(last_event_at, 0)),
                 backfill_complete_at = CASE

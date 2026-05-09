@@ -1,6 +1,6 @@
 /**
  * Import API routes.
- * POST /api/import — prepare: parse file, dedup, store chunked work in Turso.
+ * POST /api/import — prepare: parse file, dedup, store chunked work in SQLite.
  * POST /api/import/:jobId/process — process one chunk via applyWrites.
  * GET /api/import/:jobId — get current job status.
  */

@@ -4,12 +4,10 @@
  * importing application code.
  *
  * Deliberately does NOT load `.env`. The `deno task test` command sets every
- * env var the test path needs (TURSO_DATABASE_URL, COOKIE_SECRET, etc.), and
- * loading `.env` would only drag in the developer's real SENTRY_DSN — which
- * causes the warning-path `captureError` calls in tests like
- * `mirror-config.test.ts` (that deliberately throw `Error("turso boom")` to
- * exercise the PDS fallback) to ship test-injected errors to the developer's
- * Sentry project. Tests must never phone home.
+ * env var the test path needs (DATABASE_URL, COOKIE_SECRET, etc.), and
+ * loading `.env` would only drag in the developer's real SENTRY_DSN and
+ * ship test-injected errors to the developer's Sentry project.
+ * Tests must never phone home.
  */
 
 // Ensure required environment variables are set

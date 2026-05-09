@@ -2,7 +2,7 @@
  * Tests for fetchOwnerBookmarkRecords + fetchOwnerTagRecords (U1, plan 003).
  *
  * Covers mirror-vs-PDS branching, mirror authority on empty result,
- * Turso-failure fallback path, and forcePds override.
+ * DB-failure fallback path, and forcePds override.
  */
 
 import "./test-setup.ts";
@@ -136,13 +136,13 @@ Deno.test("fetchOwnerBookmarkRecords - tracked + empty mirror → returns [] (mi
   setMode("off");
 });
 
-Deno.test("fetchOwnerBookmarkRecords - mirror Turso throws → falls back to PDS", async () => {
+Deno.test("fetchOwnerBookmarkRecords - mirror DB throws → falls back to PDS", async () => {
   await clearMirrorTables();
   setMode("read");
   await seedTracked();
   await seedBookmark("a");
 
-  // Force Turso failure by closing connection: easiest way is to dynamically
+  // Force DB failure by closing connection: easiest way is to dynamically
   // monkey-patch db.execute. The helper catches and falls back to PDS.
   const orig = db.execute.bind(db);
   let calls = 0;
@@ -311,7 +311,7 @@ Deno.test("fetchOwnerTagRecords - tracked + mirror empty → [] (no PDS leak)", 
   setMode("off");
 });
 
-Deno.test("fetchOwnerTagRecords - Turso throws → PDS fallback", async () => {
+Deno.test("fetchOwnerTagRecords - DB throws → PDS fallback", async () => {
   await clearMirrorTables();
   setMode("read");
   await seedTracked();

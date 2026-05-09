@@ -86,7 +86,7 @@ export interface MirrorReadDecision {
  *
  * shouldReadFromMirror is called once per single-record helper invocation. A
  * bulk add-tags on N bookmarks calls fetchOwnerBookmarkRecord +
- * fetchOwnerAnnotationRecord per item = 2N getSyncStatus Turso roundtrips
+ * fetchOwnerAnnotationRecord per item = 2N getSyncStatus db roundtrips
  * for the same DID returning an identical row. Tracked-DID state (backfill
  * complete? last seq?) changes on TAP webhook ticks (~seconds), so a
  * 1000ms TTL collapses the bulk hot path to one lookup without making
@@ -124,9 +124,9 @@ export async function shouldReadFromMirror(
   try {
     status = await cachedSyncStatus(did);
   } catch (err) {
-    // getSyncStatus hits Turso. If Turso is unreachable, fall through to
-    // PDS rather than 500ing every edit path. The mirror's whole purpose
-    // is to shield the PDS from load — a Turso outage should degrade to
+    // getSyncStatus failure (e.g. DB unavailable) falls through to PDS
+    // rather than 500ing every edit path. The mirror's whole purpose
+    // is to shield the PDS from load — a DB outage should degrade to
     // direct PDS reads, not to "everything broken." Helpers that consume
     // the returned decision will see fromMirror=false and use PDS.
     captureMessage(

@@ -1,20 +1,13 @@
 // Database module using libSQL.
 //
-// Two distinct DB connections, both libSQL-protocol:
-//   - db (primary) — always initialized. Uses native @libsql/client for
-//     file: scheme, web client for remote. Holds sessions, user_settings,
-//     import_jobs, AND the mirror tables. This is the authoritative store.
-//   - remoteDb — optional Turso remote for mirror dual-write backup.
-//     Only initialized when TURSO_DATABASE_URL is set and is not a file: URL.
-//     remoteDb is null on any environment that does not set TURSO_DATABASE_URL
-//     — code paths that depend on dual-write must check for null or use the
-//     helpers in mirror/* which honor the MIRROR_DUAL_WRITE flag.
+// Single db connection backed by the primary local SQLite file on the box
+// (DATABASE_URL=file:/var/lib/kipclip/kipclip.db). In local dev it defaults
+// to file:.local/kipclip.db. Holds all tables: OAuth sessions, user_settings,
+// import_jobs, and all mirror tables.
 
 const dbUrl = Deno.env.get("DATABASE_URL") || "file:.local/kipclip.db";
 const isLocal = dbUrl.startsWith("file:");
 const isTestDb = dbUrl.startsWith("libsql://test");
-
-const remoteDbUrl = Deno.env.get("TURSO_DATABASE_URL");
 
 interface DbClient {
   execute: (
@@ -23,7 +16,6 @@ interface DbClient {
 }
 
 let db: DbClient;
-let remoteDb: DbClient | null = null;
 
 if (isTestDb) {
   // Mock client for tests - doesn't actually connect
@@ -37,18 +29,13 @@ if (isTestDb) {
     },
   };
 } else {
-  // Use native client for local file, web client for remote
-  const { createClient } = isLocal
-    ? await import("@libsql/client")
-    : await import("@libsql/client/web");
+  const { createClient } = await import("@libsql/client");
 
   const client = createClient({
     url: dbUrl,
-    authToken: Deno.env.get("TURSO_AUTH_TOKEN"),
   });
 
   // SQLite pragmas for local file connections only.
-  // These are no-ops over the Turso HTTP wire protocol.
   if (isLocal) {
     await client.execute("PRAGMA busy_timeout = 5000");
     await client.execute("PRAGMA cache_size = -65536");
@@ -58,8 +45,8 @@ if (isTestDb) {
     await client.execute("PRAGMA synchronous = NORMAL");
   }
 
-  // Wrap the client to provide a consistent interface
-  // The libSQL client returns Row objects, we convert to arrays for compatibility
+  // Wrap the client to provide a consistent interface.
+  // The libSQL client returns Row objects; convert to arrays for compatibility.
   db = {
     execute: async (
       query: { sql: string; args: unknown[] },
@@ -68,191 +55,15 @@ if (isTestDb) {
         sql: query.sql,
         args: query.args as any,
       });
-      // Convert Row objects to arrays (Object.values)
       const rows = result.rows.map((row) => Object.values(row));
       return { rows, rowsAffected: Number(result.rowsAffected ?? 0) };
     },
   };
 
   console.error(`✅ Using ${isLocal ? "local" : "remote"} database`);
-
-  // Optional second connection: remote Turso for mirror dual-write backup.
-  // Only used when the operator opts in by setting TURSO_DATABASE_URL to a
-  // remote libsql:// URL. A file: URL here would be nonsensical (the primary
-  // is already local) and is rejected.
-  if (remoteDbUrl) {
-    if (remoteDbUrl.startsWith("file:")) {
-      console.warn(
-        `⚠️ TURSO_DATABASE_URL must use a remote URL; got "${remoteDbUrl}" — ignoring`,
-      );
-    } else {
-      // Open the remote connection in a try/catch so a transient Turso outage
-      // at boot does NOT crash the whole service. mirrorWrite() still writes
-      // to the primary db; the remote backup is best-effort.
-      try {
-        const { createClient: createRemoteClient } = await import(
-          "@libsql/client/web"
-        );
-        const remoteClient = createRemoteClient({
-          url: remoteDbUrl,
-          authToken: Deno.env.get("TURSO_AUTH_TOKEN"),
-        });
-        remoteDb = {
-          execute: async (
-            query: { sql: string; args: unknown[] },
-          ): Promise<{ rows: unknown[][]; rowsAffected: number }> => {
-            const result = await remoteClient.execute({
-              sql: query.sql,
-              args: query.args as any,
-            });
-            const rows = result.rows.map((row) => Object.values(row));
-            return { rows, rowsAffected: Number(result.rowsAffected ?? 0) };
-          },
-        };
-        console.error(`✅ Remote Turso mirror initialized at ${remoteDbUrl}`);
-      } catch (err) {
-        console.warn(
-          `⚠️ Failed to open remote Turso at ${remoteDbUrl}: ${
-            String(err)
-          } — continuing primary-only`,
-        );
-        try {
-          const { captureMessage } = await import("./sentry.ts");
-          captureMessage(
-            "mirror remote init failed: continuing primary-only",
-            "error",
-            { error: String(err), url: remoteDbUrl },
-          );
-        } catch { /* sentry optional at boot */ }
-        remoteDb = null;
-      }
-    }
-  }
 }
 
-export { db, remoteDb };
-
-/**
- * Session-aware dual-write client. Wraps the primary db but fans out writes
- * to remoteDb when MIRROR_DUAL_WRITE=on.
- *
- * Write semantics differ by statement type:
- *   - DELETE (logout): synchronous on both. A phantom valid session on Deno
- *     Deploy after logout is a security issue — both must commit before resolve.
- *   - INSERT/UPDATE (token refresh, session create): fire-and-forget on remote.
- *     Same semantics as mirrorWrite(). A missed token-refresh write on Deno
- *     Deploy self-heals on the next refresh; a missed session-create means the
- *     user re-authenticates. Blocking the caller on a cold Turso write caused
- *     600–1300 ms session spikes.
- *
- * Pass to sqliteAdapter() in oauth-config.ts instead of the bare db.
- */
-export const sessionDb: DbClient = {
-  execute: async (
-    query: { sql: string; args: unknown[] },
-  ): Promise<{ rows: unknown[][]; rowsAffected: number }> => {
-    const isWrite = !/^\s*SELECT\b/i.test(query.sql);
-    if (isWrite && mirrorWriteEnabled() && remoteDb) {
-      const isDelete = /^\s*DELETE\b/i.test(query.sql);
-      if (isDelete) {
-        // Logout must be synchronous on both sides (see comment above).
-        const [primaryResult] = await Promise.all([
-          db.execute(query),
-          remoteDb.execute(query),
-        ]);
-        return primaryResult;
-      }
-      // Token refresh / session create: primary first, then fire-and-forget remote.
-      // Primary must succeed before remote is dispatched — otherwise a primary
-      // failure leaves an orphan row in Turso with no matching primary record.
-      const primaryResult = await db.execute(query);
-      const remotePromise = remoteDb.execute(query).catch(async (err) => {
-        const { captureMessage } = await import("./sentry.ts");
-        captureMessage("session dual-write: remote failed", "warning", {
-          sql: query.sql.split("\n")[0]?.trim().slice(0, 120),
-          error: String(err),
-        });
-      });
-      void remotePromise;
-      return primaryResult;
-    }
-    return db.execute(query);
-  },
-};
-
-/**
- * Test-only: install a fake remoteDb so suites can exercise the dual-write
- * code path without provisioning a real remote Turso connection. Pass null to
- * restore the default (no remote DB).
- */
-export function _setTestRemoteDb(fakeDb: typeof remoteDb): void {
-  remoteDb = fakeDb;
-}
-
-/**
- * Returns true when dual-write should fan out (primary authoritative + Turso
- * best-effort). False when either the env flag is off OR remoteDb wasn't
- * initialized — in which case writes go to db only.
- */
-export function mirrorWriteEnabled(): boolean {
-  return Deno.env.get("MIRROR_DUAL_WRITE") === "on" && remoteDb !== null;
-}
-
-/**
- * Mirror write: dual-write when enabled, single-write otherwise.
- *
- * Dual-write semantics:
- *   - Primary db is authoritative. The promise resolves only after the
- *     primary write succeeds. Primary failure rejects, so callers (e.g. the
- *     TAP webhook) can return 5xx and let TAP retry.
- *   - Remote Turso is best-effort. The remote write is dispatched in parallel
- *     and awaited, but on failure we capture a Sentry warning and resolve
- *     successfully. A Turso outage must not cause webhook retry storms; the
- *     mirror catches up via the next TAP delivery (idempotent upserts).
- *
- * Sentry signal: "mirror dual-write: remote failed" (warning level).
- */
-export async function mirrorWrite(query: {
-  sql: string;
-  args: unknown[];
-}): Promise<void> {
-  if (mirrorWriteEnabled() && remoteDb) {
-    // Primary must succeed (await); remote can fail (catch).
-    const remotePromise = remoteDb.execute(query).catch(async (err) => {
-      const { captureMessage } = await import("./sentry.ts");
-      captureMessage(
-        "mirror dual-write: remote failed",
-        "warning",
-        {
-          sql: query.sql.split("\n")[0]?.trim().slice(0, 120),
-          error: String(err),
-        },
-      );
-    });
-    await db.execute(query);
-    // Don't await remote — but don't drop it either. Allow the webhook to
-    // return 200 the moment primary commits; remote settles in background.
-    // Floating promise is intentional and the catch above prevents an
-    // unhandled rejection.
-    void remotePromise;
-    return;
-  }
-  await db.execute(query);
-}
-
-/**
- * Mirror read: always uses the primary db, which is always local and
- * authoritative.
- *
- * The fn callback receives the primary db client so callers can write
- * `mirrorRead((db) => db.execute({sql, args}))` without juggling connection
- * objects themselves.
- */
-export async function mirrorRead<T>(
-  fn: (client: DbClient) => Promise<T>,
-): Promise<T> {
-  return await fn(db);
-}
+export { db };
 
 // Initialize tables using migrations (with retry for transient errors)
 export async function initializeTables() {

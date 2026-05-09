@@ -78,7 +78,7 @@ export function registerTagRoutes(app: App<any>): App<any> {
             },
           );
           // Fall through to the PDS path below — gives the user real tags
-          // instead of an empty sidebar when Turso flakes briefly.
+          // instead of an empty sidebar when the DB fails briefly.
           // Do NOT serve the PDS cache here: mirror users may have newer data
           // that was written since the cache was populated.
         }
@@ -204,11 +204,10 @@ export function registerTagRoutes(app: App<any>): App<any> {
         createdAt: record.createdAt,
       };
 
-      // Dual-write to mirror so the tag is immediately visible when the DID is
+      // Write to mirror so the tag is immediately visible when the DID is
       // tracked — TAP delivery can lag seconds after PDS write. Awaiting the
       // local SQLite write (sub-ms) ensures mirror users see the new tag on the
-      // next GET /api/tags before we return. The Turso remote write inside
-      // upsertTag remains fire-and-forget.
+      // next GET /api/tags before we return.
       invalidateCachedTags(oauthSession.did);
       await upsertTag({
         uri: data.uri,
