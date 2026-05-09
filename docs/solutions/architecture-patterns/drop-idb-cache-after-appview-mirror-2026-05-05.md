@@ -339,6 +339,12 @@ mirrorSyncing: boolean;
 A context field added without a current consumer must carry a removal tripwire —
 otherwise it silently turns into permanent dead state.
 
+**Resolution (2026-05-09):** This specific tripwire was satisfied — the pill was
+built in `App.tsx` (`{mirrorSyncing && <span>…syncing…</span>}`). As of v0.19.0,
+auto-enrollment (`lib/auto-enroll.ts`) opens the mirror gate atomically after
+backfill completes, so `mirrorSyncing` is `true` only for users who enrolled via
+Settings → Sync before auto-enroll shipped. New users will never see the pill.
+
 ## Cross-References
 
 - **Plan:**
@@ -356,3 +362,7 @@ otherwise it silently turns into permanent dead state.
   [`docs/solutions/performance-issues/tap-webhook-burst-timeout-storm-2026-05-03.md`](../performance-issues/tap-webhook-burst-timeout-storm-2026-05-03.md)
   — TAP webhook backpressure; orthogonal to this learning but part of the same
   migration arc.
+- **Mirror activation gap:**
+  [`docs/solutions/architecture-patterns/mirror-activation-gap-auto-enroll-2026-05-09.md`](mirror-activation-gap-auto-enroll-2026-05-09.md)
+  — auto-enrollment implementation that resolved the `mirrorSyncing` tripwire
+  and fixed the empty-mirror safeguard logic inversion.

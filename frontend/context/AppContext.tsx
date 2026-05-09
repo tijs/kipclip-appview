@@ -194,18 +194,7 @@ interface AppState {
   bookmarkSearchQuery: string;
   readingListSearchQuery: string;
   isSupporter: boolean;
-  /**
-   * Server-reported mirror-backfill flag. True when /api/initial-data was
-   * served from the mirror but backfill is still running for this DID.
-   * Wired through to context so a follow-up can render an in-progress
-   * indicator without another AppContext change.
-   *
-   * TODO(phase4-followup): consume this in the UI as a "still syncing your
-   * data" pill within 14 days of phase 4 merging (by ~2026-05-19). If the
-   * follow-up slips, remove this field rather than leaving dead context
-   * state. Tracking memo:
-   * memory/project_post_phase4_followups.md (item 1).
-   */
+  /** True while the mirror backfill is still in progress (syncing=true in the API response). */
   mirrorSyncing: boolean;
 }
 
