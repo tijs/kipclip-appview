@@ -4,6 +4,8 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-05-09
+
 ### Removed
 
 - **Turso remote dual-write and Deno Deploy warm-standby**: removed `remoteDb`,
