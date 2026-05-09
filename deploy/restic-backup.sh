@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Nightly restic backup of kipclip durable state to Hetzner Storage Box.
+# Nightly restic backup of kipclip durable state to Scaleway S3.
 #
 # Backs up:
 #   - Primary SQLite hot snapshot (kipclip.db — all tables: OAuth sessions,

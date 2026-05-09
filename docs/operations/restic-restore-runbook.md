@@ -1,7 +1,7 @@
 # Restic restore runbook
 
-How to restore kipclip durable state from the Hetzner Storage Box. Use this
-runbook for periodic drills and genuine disaster recovery.
+How to restore kipclip durable state from the Scaleway S3. Use this runbook for
+periodic drills and genuine disaster recovery.
 
 ## What's backed up
 
@@ -20,7 +20,7 @@ Retention: 14 daily, 4 weekly, 6 monthly.
 
 ## Prerequisites
 
-- `restic` on PATH, authenticated to the Storage Box repo.
+- `restic` on PATH, authenticated to the Scaleway S3 repo.
 - `/etc/kipclip/restic.env` populated with `RESTIC_REPOSITORY`,
   `RESTIC_PASSWORD`, and (for S3 backends) `AWS_ACCESS_KEY_ID` /
   `AWS_SECRET_ACCESS_KEY`.
@@ -121,6 +121,6 @@ Captured during the most recent drill. Update after each drill.
 - **`restic check` fails.** Repo corruption. Investigate before next backup
   runs; do NOT prune until resolved (forget operations on a corrupt repo can
   lose data).
-- **Storage Box quota exceeded.** Retention policy may need tightening, or the
+- **Scaleway S3 quota exceeded.** Retention policy may need tightening, or the
   primary SQLite has grown unusually large. The systemd unit's failure surfaces
   via `systemctl status restic-backup`.
