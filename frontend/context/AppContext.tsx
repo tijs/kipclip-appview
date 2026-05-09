@@ -31,6 +31,11 @@ import {
   toggleTagInQuery,
 } from "../../shared/search-query.ts";
 import { connectLiveEvents, type LiveEvent } from "../lib/live-events.ts";
+import {
+  loadRecentTags,
+  nextRecentTags,
+  saveRecentTags,
+} from "../utils/recent-tags.ts";
 
 const DEFAULT_SETTINGS: UserSettings = {
   instapaperEnabled: false,
@@ -216,6 +221,10 @@ interface AppContextValue extends AppState {
   deleteTag: (uri: string) => void;
   loadTags: () => Promise<void>;
 
+  // Recent tag actions
+  recentTags: string[];
+  trackTagUsage: (tagValue: string) => void;
+
   // Combined initial data loading (avoids token refresh race condition)
   loadInitialData: () => Promise<void>;
   // Force a full refresh, paginating through every page.
@@ -282,6 +291,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [readingListSelectedTags, setReadingListSelectedTags] = useState<
     Set<string>
   >(new Set());
+  const [recentTags, setRecentTags] = useState<string[]>(() =>
+    loadRecentTags()
+  );
+
+  function trackTagUsage(tagValue: string) {
+    setRecentTags((prev) => {
+      const next = nextRecentTags(prev, tagValue);
+      saveRecentTags(next);
+      return next;
+    });
+  }
   const [bookmarkSearchQuery, setBookmarkSearchQuery] = useState(() => {
     const params = new URLSearchParams(globalThis.location.search);
     return params.get("q") || "";
@@ -686,6 +706,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Filter actions
   function toggleTag(tagValue: string) {
+    trackTagUsage(tagValue);
     setBookmarkSearchQuery(toggleTagInQuery(bookmarkSearchQuery, tagValue));
   }
 
@@ -900,6 +921,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     updateTag,
     deleteTag,
     loadTags,
+    recentTags,
+    trackTagUsage,
     loadInitialData,
     refreshData,
     toggleTag,

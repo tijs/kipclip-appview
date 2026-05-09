@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AddTag } from "./AddTag.tsx";
 import { EditTag } from "./EditTag.tsx";
@@ -17,6 +17,7 @@ export function TagSidebar() {
     addTag,
     updateTag,
     deleteTag,
+    recentTags,
     session,
   } = useApp();
   const formatDate = useDateFormat();
@@ -26,6 +27,37 @@ export function TagSidebar() {
   const [editingTag, setEditingTag] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const trimmedQuery = searchQuery.trim().toLowerCase();
+  const isSearching = trimmedQuery.length > 0;
+
+  const filteredTags = useMemo(() => {
+    if (!isSearching) return tags;
+    return tags.filter((t) => t.value.toLowerCase().includes(trimmedQuery));
+  }, [tags, trimmedQuery, isSearching]);
+
+  // Resolve recent tag strings to live EnrichedTag objects, dropping any
+  // entries whose tag was deleted from the user's library.
+  const recentTagObjects = useMemo(() => {
+    if (isSearching || recentTags.length === 0) return [];
+    const byLower = new Map(tags.map((t) => [t.value.toLowerCase(), t]));
+    const resolved: typeof tags = [];
+    for (const v of recentTags) {
+      const match = byLower.get(v.toLowerCase());
+      if (match) resolved.push(match);
+    }
+    return resolved;
+  }, [tags, recentTags, isSearching]);
+
+  // Tags shown in the alphabetical list, excluding those already surfaced in
+  // the Recent zone — avoids visual duplicates and (on mobile, where Recent
+  // and the rest share a single <ul>) duplicate React keys.
+  const restTags = useMemo(() => {
+    if (recentTagObjects.length === 0) return filteredTags;
+    const recentUris = new Set(recentTagObjects.map((t) => t.uri));
+    return filteredTags.filter((t) => !recentUris.has(t.uri));
+  }, [filteredTags, recentTagObjects]);
 
   // Manual refresh (for retry button)
   async function loadTags() {
@@ -206,9 +238,23 @@ export function TagSidebar() {
                 No tags yet
               </div>
             )
+            : isSearching && filteredTags.length === 0
+            ? (
+              <div className="flex-1 text-xs text-gray-500 flex-shrink-0">
+                No matches
+              </div>
+            )
             : (
-              <ul className="flex gap-2 flex-shrink-0">
-                {tags.map(renderTag)}
+              <ul className="flex gap-2 flex-shrink-0 items-center">
+                {!isSearching && recentTagObjects.map(renderTag)}
+                {!isSearching && recentTagObjects.length > 0 &&
+                  restTags.length > 0 && (
+                  <li
+                    aria-hidden="true"
+                    className="border-l border-gray-300 h-6 mx-1 flex-shrink-0"
+                  />
+                )}
+                {restTags.map(renderTag)}
               </ul>
             )}
           <button
@@ -232,6 +278,38 @@ export function TagSidebar() {
             </svg>
           </button>
         </div>
+        {/* Search row */}
+        {tags.length > 0 && (
+          <div className="relative px-3 pb-2">
+            <svg
+              className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z"
+              />
+            </svg>
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setSearchQuery("");
+                  (e.target as HTMLInputElement).blur();
+                }
+              }}
+              placeholder="Search tags"
+              aria-label="Search tags"
+              className="w-full bg-transparent border-0 border-b border-gray-300 focus:border-coral outline-none pl-7 pr-1 py-1.5 text-sm placeholder-gray-400"
+            />
+          </div>
+        )}
         {/* Action row: appears when tags are selected */}
         {selectedTags.size > 0 && (
           <div className="flex items-center gap-2 px-3 py-2 border-t border-gray-100">
@@ -353,6 +431,38 @@ export function TagSidebar() {
           </div>
         )}
 
+        {tags.length > 0 && (
+          <div className="relative mb-3">
+            <svg
+              className="w-4 h-4 absolute left-1 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z"
+              />
+            </svg>
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setSearchQuery("");
+                  (e.target as HTMLInputElement).blur();
+                }
+              }}
+              placeholder="Search tags"
+              aria-label="Search tags"
+              className="w-full bg-transparent border-0 border-b border-gray-300 focus:border-coral outline-none pl-7 pr-1 py-2 text-sm placeholder-gray-400"
+            />
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto overflow-x-hidden">
           {tags.length === 0
             ? (
@@ -361,7 +471,30 @@ export function TagSidebar() {
                 <p className="text-xs">Create your first tag to get started</p>
               </div>
             )
-            : <ul className="space-y-1">{tags.map(renderTag)}</ul>}
+            : isSearching && filteredTags.length === 0
+            ? (
+              <div className="text-center py-6 text-gray-500 text-xs">
+                No tags match "{searchQuery.trim()}"
+              </div>
+            )
+            : (
+              <>
+                {recentTagObjects.length > 0 && (
+                  <section className="mb-2">
+                    <h3 className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 px-3 mt-1 mb-2">
+                      Recent
+                    </h3>
+                    <ul className="space-y-1">
+                      {recentTagObjects.map(renderTag)}
+                    </ul>
+                  </section>
+                )}
+                {recentTagObjects.length > 0 && restTags.length > 0 && (
+                  <div className="border-t border-gray-200 mx-3 my-3" />
+                )}
+                <ul className="space-y-1">{restTags.map(renderTag)}</ul>
+              </>
+            )}
         </div>
       </aside>
 

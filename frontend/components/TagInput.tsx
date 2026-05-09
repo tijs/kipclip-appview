@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { KeyboardEvent } from "react";
 import type { EnrichedTag } from "../../shared/types.ts";
+import { useApp } from "../context/AppContext.tsx";
 
 interface TagInputProps {
   tags: string[];
@@ -17,6 +18,7 @@ export function TagInput({
   disabled = false,
   compact = false,
 }: TagInputProps) {
+  const { trackTagUsage } = useApp();
   const [tagInput, setTagInput] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
 
@@ -37,12 +39,18 @@ export function TagInput({
     const existing = availableTags.find(
       (t) => t.value.toLowerCase() === tagValue.toLowerCase(),
     );
-    onTagsChange([...tags, existing ? existing.value : tagValue]);
+    const resolved = existing ? existing.value : tagValue;
+    trackTagUsage(resolved);
+    onTagsChange([...tags, resolved]);
     setTagInput("");
     setShowSuggestions(false);
   }
 
   function handleRemoveTag(tagValue: string) {
+    // Intentional: removing a tag still counts as engagement, so it surfaces
+    // in the Recent zone alongside add/toggle. "Tags I'm working with" is
+    // the model, not "tags I'm filtering by."
+    trackTagUsage(tagValue);
     onTagsChange(tags.filter((t) => t !== tagValue));
   }
 
