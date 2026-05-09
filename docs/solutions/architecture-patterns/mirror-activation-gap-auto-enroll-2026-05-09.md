@@ -37,8 +37,9 @@ the mirror at sub-millisecond latency instead of hitting the user's PDS.
 The mirror read path was built and enabled in production (`MIRROR_MODE=read`)
 for over a month. During that time, 94 of 95 users were served entirely from PDS
 fallback — the mirror was never activated for them. Only the operator's own DID
-had been manually enrolled via the the operator backfill script UI. The
-architecture was complete; the default population step was missing.
+had been manually enrolled via the operator backfill script
+(`scripts/backfill-mirror.ts`). The architecture was complete; the default
+population step was missing.
 
 Two concrete bugs compounded the impact once enrollment was fixed:
 

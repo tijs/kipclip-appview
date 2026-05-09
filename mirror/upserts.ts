@@ -238,32 +238,6 @@ export async function deletePreferences(did: string): Promise<void> {
 }
 
 /**
- * Enroll a DID into mirror sync. INSERT OR IGNORE so re-enrollment is a
- * safe no-op — TAP's /repos/add is idempotent and callers may retry.
- *
- * Only the enrollment path (/api/sync/track) should call this function.
- * Progress updates during event processing use mirrorWrite directly in
- * worker/webhook.ts to avoid accidentally creating rows for untracked DIDs.
- */
-export async function insertTrackedDidForEnrollment(state: {
-  did: string;
-  pdsUrl?: string | null;
-  backfillStartedAt: number;
-}): Promise<void> {
-  const now = Date.now();
-  await mirrorWrite({
-    sql: `
-      INSERT OR IGNORE INTO tracked_dids (
-        did, pds_url, added_at, backfill_started_at, backfill_complete_at,
-        last_seq, last_event_at
-      ) VALUES (?, ?, ?, ?, NULL, NULL, NULL)
-    `,
-    args: [state.did, state.pdsUrl ?? null, now, state.backfillStartedAt],
-  });
-}
-
-/**
- * @deprecated Use insertTrackedDidForEnrollment for the enrollment path.
  * Insert or update a tracked_dids row. Numeric fields advance monotonically
  * (last_seq, last_event_at) so out-of-order webhook deliveries don't regress.
  * On INSERT, added_at is stamped to now.
