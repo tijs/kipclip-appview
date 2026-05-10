@@ -4,6 +4,15 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.1] - 2026-05-10
+
+### Fixed
+
+- Bookmarklet save popup: clarified that pressing Enter in the tag field
+  creates a new tag. The compact `TagInput` previously hid this hint, so users
+  thought only existing tags could be added. Replaced the unrelated footer note
+  with an inline hint directly under the tag input.
+
 ## [0.24.0] - 2026-05-10
 
 ### Changed
