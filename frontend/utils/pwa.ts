@@ -3,6 +3,20 @@
  */
 
 /**
+ * Check if the user agent is iOS / iPadOS Safari.
+ * iPadOS reports "MacIntel" platform but supports touch — sniff that too.
+ */
+export function isIOS(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  if (/iPad|iPhone|iPod/.test(ua)) return true;
+  // iPadOS 13+ masquerades as Mac; touch points disambiguate.
+  // deno-lint-ignore no-explicit-any
+  const maxTouch = (navigator as any).maxTouchPoints ?? 0;
+  return ua.includes("Mac") && maxTouch > 1;
+}
+
+/**
  * Check if the app is running as a standalone PWA (installed to home screen)
  */
 export function isStandalonePwa(): boolean {

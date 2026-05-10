@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { isStandalonePwa, openOAuthPopup } from "../utils/pwa.ts";
+import { isIOS, isStandalonePwa, openOAuthPopup } from "../utils/pwa.ts";
 import { Button } from "./Button.tsx";
 import {
   getSavedIdentities,
@@ -173,8 +173,13 @@ export function Login() {
         loginUrl += `&redirect=${encodeURIComponent(redirect)}`;
       }
 
-      // PWA mode: use popup OAuth to avoid losing PWA context
-      if (isStandalonePwa()) {
+      // PWA mode. iOS standalone PWA escapes window.open() to Safari, which
+      // has its own cookie jar — popup-based OAuth never returns the session
+      // cookie to the PWA. Use top-level navigation so the OAuth round trip
+      // stays inside the PWA webview and the cookie lands in the PWA's jar.
+      // Android Chrome PWA shares the cookie jar with Chrome, so popup still
+      // works there.
+      if (isStandalonePwa() && !isIOS()) {
         loginUrl += "&pwa=true";
         try {
           await openOAuthPopup(loginUrl);

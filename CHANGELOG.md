@@ -4,6 +4,21 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.4] - 2026-05-10
+
+### Fixed
+
+- iOS standalone PWA login: OAuth round trip now uses top-level navigation
+  instead of `window.open()`. iOS escapes popups to Safari, which has its own
+  cookie jar — the `sid` cookie set by the OAuth callback never reached the
+  PWA, so users landed back at the homepage signed out. Top-level nav keeps
+  the round trip inside the PWA webview. Android Chrome PWA still uses the
+  popup flow (Chrome shares its cookie jar with the browser).
+- Standalone PWA users at `/` now see the login form instead of the marketing
+  homepage when no session is present. Previously a failed/missing session
+  rendered `<Home />`, making post-OAuth reload look like "logged out on the
+  signup page."
+
 ## [0.24.3] - 2026-05-10
 
 ### Changed

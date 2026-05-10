@@ -20,6 +20,7 @@ import { TermsOfUse } from "./TermsOfUse.tsx";
 import { useApp } from "../context/AppContext.tsx";
 import { apiPost } from "../utils/api.ts";
 import { saveIdentity } from "../utils/saved-identities.ts";
+import { isStandalonePwa } from "../utils/pwa.ts";
 
 type ViewType = "bookmarks" | "reading-list";
 
@@ -184,7 +185,11 @@ export function App() {
   }
 
   if (!session) {
-    if (currentPath === "/") {
+    // Standalone PWA users land on `/` from the home-screen icon. Showing
+    // the marketing page there hides Login and gives the appearance of
+    // being signed out post-OAuth (Login.tsx popup reloads to `/` after
+    // success). Skip the marketing detour for installed PWA users.
+    if (currentPath === "/" && !isStandalonePwa()) {
       return <Home />;
     }
     return <Login />;
