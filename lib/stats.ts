@@ -24,19 +24,28 @@ export interface SiteStats {
 }
 
 async function fetchStats(): Promise<SiteStats> {
-  // Union across every DID-keyed table the appview maintains.
-  // user_settings + tracked_dids only catch users who reached the
-  // post-login data hydration path; many users sign in via /save
-  // (bookmarklet, share target) and never hit /api/initial-data, so
-  // their DIDs only show up in bookmarks/tags/annotations/preferences.
+  // Union across every DID-keyed source the appview maintains.
+  //
+  // - iron_session_storage stores OAuth sessions under keys shaped
+  //   `session:did:plc:xxx`, so every successful sign-in shows up
+  //   here even if the user never persisted anything else. This is
+  //   the broadest signal of "tried kipclip" and the only one that
+  //   captures users who sign in via /save (bookmarklet, share
+  //   target) without ever reaching /api/initial-data.
+  // - user_settings + tracked_dids capture users who hit the
+  //   post-login hydration path.
+  // - bookmarks/tags/annotations/preferences capture anyone who has
+  //   actually persisted records (mirror tables).
+  //
   // SELECT-UNION-without-ALL deduplicates, so the outer COUNT(*) is
-  // the distinct-DID count across the union. Runs at most once per
-  // 24h thanks to the cached fetcher; the per-table SELECT did scans
-  // are small even on a large mirror because they only project one
-  // column and feed a hash-based UNION.
+  // the distinct-DID count across all sources. Runs at most once
+  // per 24h thanks to the cached fetcher.
   const result = await db.execute({
     sql: `
       SELECT COUNT(*) FROM (
+        SELECT substr(key, 9) AS did FROM iron_session_storage
+          WHERE key LIKE 'session:did:%'
+        UNION
         SELECT did FROM user_settings
         UNION
         SELECT did FROM tracked_dids

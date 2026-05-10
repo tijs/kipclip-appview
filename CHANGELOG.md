@@ -4,18 +4,26 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.22.2] - 2026-05-10
+
+### Fixed
+
+- `/api/stats` now also unions `iron_session_storage` (parsed
+  `session:did:plc:...` keys), which captures every successful OAuth flow
+  including users who signed in once via /save and never persisted records.
+  Previous queries missed those.
+
 ## [0.22.1] - 2026-05-10
 
 ### Fixed
 
-- `/api/stats` was massively undercounting users — the marketing
-  "Join N people" line showed only ~15 against ~140 actual sign-ins.
-  user_settings and tracked_dids only get rows when a session reaches
-  `/api/initial-data`, but many users sign in via `/save` (bookmarklet,
-  share target) and never hit that path. The query now unions DIDs
-  across user_settings, tracked_dids, bookmarks, tags, annotations,
-  and preferences — every DID-keyed table the appview maintains — so
-  any user who has ever persisted anything is counted.
+- `/api/stats` was massively undercounting users — the marketing "Join N people"
+  line showed only ~15 against ~140 actual sign-ins. user_settings and
+  tracked_dids only get rows when a session reaches `/api/initial-data`, but
+  many users sign in via `/save` (bookmarklet, share target) and never hit that
+  path. The query now unions DIDs across user_settings, tracked_dids, bookmarks,
+  tags, annotations, and preferences — every DID-keyed table the appview
+  maintains — so any user who has ever persisted anything is counted.
 
 ## [0.22.0] - 2026-05-10
 
