@@ -18,9 +18,10 @@
     <meta name="author" content="Tijs Teulings">
     <link rel="canonical" href="https://kipclip.com/">
 
-    <!-- Open Graph / Facebook -->
+    <!-- Open Graph / Facebook / Bluesky / Mastodon / LinkedIn -->
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="kipclip">
+    <meta property="og:locale" content="en_US">
     <meta property="og:url" content="https://kipclip.com/">
     <meta
       property="og:title"
@@ -30,15 +31,22 @@
       property="og:description"
       content="Free, open bookmark manager built on AT Protocol. Save, tag, and share links. Your bookmarks live in your own Bluesky account — portable, EU-hosted, open source."
     >
+    <!-- Landscape 1200x630 share card. og:image:secure_url duplicate is for
+         older crawlers that still expect it. -->
     <meta
       property="og:image"
-      content="https://cdn.kipclip.com/images/kip-satchel.png"
+      content="https://kipclip.com/static/images/og-card.png"
     >
-    <meta property="og:image:width" content="1024">
-    <meta property="og:image:height" content="1024">
+    <meta
+      property="og:image:secure_url"
+      content="https://kipclip.com/static/images/og-card.png"
+    >
+    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
     <meta
       property="og:image:alt"
-      content="Kip the chicken with a satchel - kipclip mascot"
+      content="Kip the chicken mascot next to the kipclip wordmark and the tagline 'Bookmarks you actually own.'"
     >
 
     <!-- Twitter -->
@@ -54,11 +62,11 @@
     >
     <meta
       name="twitter:image"
-      content="https://cdn.kipclip.com/images/kip-satchel.png"
+      content="https://kipclip.com/static/images/og-card.png"
     >
     <meta
       name="twitter:image:alt"
-      content="Kip the chicken with a satchel - kipclip mascot"
+      content="Kip the chicken mascot next to the kipclip wordmark and the tagline 'Bookmarks you actually own.'"
     >
 
     <!-- Structured data: SoftwareApplication. Helps search engines render
@@ -73,7 +81,7 @@
       "applicationCategory": "BookmarksApplication",
       "operatingSystem": "Web",
       "url": "https://kipclip.com/",
-      "image": "https://cdn.kipclip.com/images/kip-satchel.png",
+      "image": "https://kipclip.com/static/images/og-card.png",
       "description": "Free, open bookmark manager built on AT Protocol. Save, tag, and share links. Your bookmarks live in your own Bluesky account — portable, EU-hosted, open source. A modern alternative to Pinboard, Pocket, and Raindrop.",
       "inLanguage": "en",
       "isAccessibleForFree": true,

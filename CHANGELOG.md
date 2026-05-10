@@ -4,6 +4,18 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.23.1] - 2026-05-10
+
+### Changed
+
+- Social sharing card replaced with a proper 1200×630 landscape image at
+  `/static/images/og-card.png` — kip mascot + wordmark + tagline + "Free · Open
+  source · Hosted in the EU" microline. Fixes the awkward center-crop the old
+  square 1024×1024 image got on X, Facebook, and LinkedIn feeds. Bluesky and
+  Mastodon also benefit from the wider aspect ratio.
+- `og:locale`, `og:image:secure_url`, and `og:image:type` added. JSON-LD `image`
+  now points at the new card.
+
 ## [0.23.0] - 2026-05-10
 
 ### Added
