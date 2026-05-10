@@ -45,12 +45,22 @@ function ContinueAsChip({ identity }: { identity: SavedIdentity }) {
     <button
       type="button"
       onClick={onClick}
-      className="group inline-flex items-center gap-3 pl-2 pr-5 py-2 rounded-full bg-white shadow-sm ring-1 ring-gray-200 hover:shadow-md hover:-translate-y-px hover:ring-gray-300 active:scale-[0.96]"
+      className="group inline-flex items-center gap-3 pl-2 pr-5 py-2 rounded-full bg-white ring-1 ring-gray-200/80 hover:-translate-y-px hover:ring-gray-300 active:scale-[0.96]"
       style={{
         transitionProperty: "transform, box-shadow, border-color",
         transitionDuration: "150ms",
         transitionTimingFunction: "ease-out",
-        minHeight: "40px",
+        minHeight: "44px",
+        boxShadow:
+          "0 1px 2px rgba(20,30,40,0.04), 0 8px 20px -6px rgba(20,30,40,0.10)",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.boxShadow =
+          "0 1px 2px rgba(20,30,40,0.04), 0 14px 28px -8px rgba(20,30,40,0.16)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.boxShadow =
+          "0 1px 2px rgba(20,30,40,0.04), 0 8px 20px -6px rgba(20,30,40,0.10)";
       }}
       aria-label={`Continue as ${identity.handle}`}
     >
@@ -122,48 +132,57 @@ export function Home() {
           "linear-gradient(135deg, var(--cream) 0%, #faf6ec 50%, #f0e9d6 100%)",
       }}
     >
-      <header className="px-4 sm:px-6 py-4 flex items-center justify-between max-w-6xl mx-auto w-full">
-        <a href="/" className="flex items-center gap-2 group">
-          <img
-            src="https://cdn.kipclip.com/images/kip-vignette.png"
-            alt=""
-            className="w-8 h-8"
-          />
-          <span
-            className="text-xl font-bold"
-            style={{ color: "var(--coral)" }}
-          >
-            kipclip
-          </span>
-        </a>
-        <nav className="flex items-center gap-2">
-          <Button
-            href="/signin"
-            variant="link"
-            size="sm"
-            className="min-h-10"
-          >
-            Sign in
-          </Button>
-          <Button
-            href="/signin"
-            variant="primary"
-            size="sm"
-            className="min-h-10"
-          >
-            Get started
-          </Button>
-        </nav>
-      </header>
+      <div
+        style={{
+          background:
+            "linear-gradient(180deg, #e9efee 0%, #eef0e8 70%, var(--cream) 100%)",
+        }}
+      >
+        <header className="px-4 sm:px-6 py-4 flex items-center justify-between max-w-6xl mx-auto w-full">
+          <a href="/" className="flex items-center gap-2 group">
+            <img
+              src="https://cdn.kipclip.com/images/kip-vignette.png"
+              alt=""
+              className="w-8 h-8"
+            />
+            <span
+              className="text-xl font-bold"
+              style={{ color: "var(--coral)" }}
+            >
+              kipclip
+            </span>
+          </a>
+          <nav className="flex items-center gap-2">
+            <Button
+              href="/signin"
+              variant="link"
+              size="sm"
+              className="min-h-10"
+            >
+              Sign in
+            </Button>
+            <Button
+              href="/signin"
+              variant="primary"
+              size="sm"
+              className="min-h-10"
+            >
+              Get started
+            </Button>
+          </nav>
+        </header>
 
-      <main className="flex-1">
-        <section className="flex items-center justify-center px-4 sm:px-6 py-16 sm:py-24">
+        <section className="flex items-center justify-center px-4 sm:px-6 pt-8 pb-16 sm:pt-12 sm:pb-24">
           <div className="max-w-3xl w-full text-center">
             <img
               src={HERO_IMG}
               alt="Kip the chicken with a bookmark satchel"
               className="w-44 h-44 sm:w-56 sm:h-56 mx-auto mb-8 object-contain fade-in"
-              style={stagger(0)}
+              style={{
+                ...stagger(0),
+                filter:
+                  "drop-shadow(0 1px 1px rgba(20,30,40,0.08)) drop-shadow(0 16px 28px rgba(20,30,40,0.12))",
+              }}
             />
             <h1
               className="text-4xl sm:text-5xl md:text-6xl font-bold text-gray-900 mb-5 fade-in"
@@ -257,7 +276,9 @@ export function Home() {
             </p>
           </div>
         </section>
+      </div>
 
+      <main className="flex-1">
         <Positioning />
         <AtprotoExplainer />
         <Tools />
