@@ -95,7 +95,7 @@ export function About() {
             style={{ backgroundColor: "var(--coral)" }}
           >
             <img
-              src="/static/images/tangled.svg"
+              src="https://cdn.kipclip.com/images/tangled.svg"
               alt=""
               width={20}
               height={20}

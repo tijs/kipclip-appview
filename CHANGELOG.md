@@ -4,6 +4,19 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-05-10
+
+### Changed
+
+- All static brand assets consolidated on Bunny CDN (`cdn.kipclip.com/images/`).
+  Cloudinary references for `kip-vignette` and `kip-satchel-transparent`
+  retired. The `static/images/` directory in the repo (og-card.png,
+  kipclip-color.svg, kipclip-bw.svg, tangled.svg, kip-vignette.png,
+  kip-satchel-transparent.png) was removed — all six files now live on the CDN.
+  Single source of truth for image assets.
+- og:image, twitter:image, and JSON-LD `image` switched to the CDN URL so social
+  crawlers fetch from the edge instead of the box.
+
 ## [0.23.2] - 2026-05-10
 
 ### Fixed

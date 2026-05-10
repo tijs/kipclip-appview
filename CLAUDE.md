@@ -45,7 +45,15 @@ webhook on the box.
 - **Storage layer**: writes always go to the user's PDS via AT Protocol; reads
   serve from the local mirror when available, fall through to PDS otherwise (see
   Storage layout below)
-- **Static assets**: Bunny CDN (`cdn.kipclip.com`)
+- **Static assets**: Bunny CDN (`cdn.kipclip.com`). Single source of truth for
+  every brand image, OG card, mascot, and logomark used by the appview. Uploads
+  land in the `kipclip` Storage Zone under `images/` and serve from
+  `https://cdn.kipclip.com/images/<filename>`. Don't add new images to
+  `static/images/` in the repo — that path was retired in v0.24.0; reference CDN
+  URLs from components and `frontend/index.html` directly. New asset workflow:
+  generate locally → upload via the Bunny dashboard (Storage → kipclip → File
+  manager → `images/`) → reference the CDN URL in code. Favicons live next to
+  images at `cdn.kipclip.com/favicons/`.
 
 ### Storage layout
 

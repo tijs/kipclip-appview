@@ -31,7 +31,7 @@ export function PageShell({
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
           <a href="/" className="flex items-center gap-2">
             <img
-              src="https://res.cloudinary.com/dru3aznlk/image/upload/v1760692589/kip-vignette_h2jwct.png"
+              src="https://cdn.kipclip.com/images/kip-vignette.png"
               alt="Kip logo"
               className="w-8 h-8"
             />

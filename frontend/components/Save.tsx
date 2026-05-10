@@ -201,7 +201,7 @@ export function Save() {
         <div className="bg-white rounded-lg max-w-md w-full p-8 shadow-lg text-center">
           <div className="mb-6">
             <img
-              src="https://res.cloudinary.com/dru3aznlk/image/upload/v1760692589/kip-vignette_h2jwct.png"
+              src="https://cdn.kipclip.com/images/kip-vignette.png"
               alt="Kip logo"
               className="w-16 h-16 mx-auto mb-4"
             />
@@ -283,7 +283,7 @@ export function Save() {
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
             <img
-              src="https://res.cloudinary.com/dru3aznlk/image/upload/v1760692589/kip-vignette_h2jwct.png"
+              src="https://cdn.kipclip.com/images/kip-vignette.png"
               alt="Kip logo"
               className="w-8 h-8"
             />

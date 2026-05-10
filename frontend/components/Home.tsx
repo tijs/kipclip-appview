@@ -16,8 +16,7 @@ import { HomeMentions } from "./HomeMentions.tsx";
 import { HomeReviews } from "./HomeReviews.tsx";
 import { HomeSupporters } from "./HomeSupporters.tsx";
 
-const HERO_IMG =
-  "https://res.cloudinary.com/dru3aznlk/image/upload/v1760376452/kip-satchel-transparent_ewnh0j.png";
+const HERO_IMG = "https://cdn.kipclip.com/images/kip-satchel-transparent.png";
 
 function stagger(ms: number): CSSProperties {
   return { animationDelay: `${ms}ms`, animationFillMode: "both" };
@@ -126,7 +125,7 @@ export function Home() {
       <header className="px-4 sm:px-6 py-4 flex items-center justify-between max-w-6xl mx-auto w-full">
         <a href="/" className="flex items-center gap-2 group">
           <img
-            src="https://res.cloudinary.com/dru3aznlk/image/upload/v1760692589/kip-vignette_h2jwct.png"
+            src="https://cdn.kipclip.com/images/kip-vignette.png"
             alt=""
             className="w-8 h-8"
           />
@@ -240,7 +239,7 @@ export function Home() {
                 title="Source on Tangled"
               >
                 <img
-                  src="/static/images/tangled.svg"
+                  src="https://cdn.kipclip.com/images/tangled.svg"
                   alt=""
                   width={14}
                   height={14}

@@ -232,7 +232,7 @@ export function Login() {
       <div className="max-w-md w-full">
         <div className="text-center mb-8 fade-in">
           <img
-            src="https://res.cloudinary.com/dru3aznlk/image/upload/v1760376452/kip-satchel-transparent_ewnh0j.png"
+            src="https://cdn.kipclip.com/images/kip-satchel-transparent.png"
             alt="kipclip mascot - a friendly chicken with a bookmark bag"
             className="w-48 h-48 mx-auto mb-6 object-contain"
           />

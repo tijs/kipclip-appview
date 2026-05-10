@@ -224,7 +224,7 @@ export function App() {
         <div className="px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <img
-              src="https://res.cloudinary.com/dru3aznlk/image/upload/v1760692589/kip-vignette_h2jwct.png"
+              src="https://cdn.kipclip.com/images/kip-vignette.png"
               alt="Kip logo"
               className="w-8 h-8"
             />

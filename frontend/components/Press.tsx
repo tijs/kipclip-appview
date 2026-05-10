@@ -36,14 +36,14 @@ const assets: Asset[] = [
   {
     name: "Logomark (SVG, color)",
     filename: "kipclip-color.svg",
-    url: "/static/images/kipclip-color.svg",
+    url: "https://cdn.kipclip.com/images/kipclip-color.svg",
     description:
       "Kipclip logomark in color, from the cozylittle.house atmologos set",
   },
   {
     name: "Logomark (SVG, B&W)",
     filename: "kipclip-bw.svg",
-    url: "/static/images/kipclip-bw.svg",
+    url: "https://cdn.kipclip.com/images/kipclip-bw.svg",
     description:
       "Kipclip logomark in black and white, from the cozylittle.house atmologos set",
   },
