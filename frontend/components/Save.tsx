@@ -345,6 +345,13 @@ export function Save() {
                   disabled={saving}
                   compact
                 />
+                <p className="text-xs text-gray-500 mt-1.5">
+                  Press{" "}
+                  <kbd className="px-1.5 py-0.5 bg-gray-100 rounded font-mono">
+                    Enter
+                  </kbd>{" "}
+                  to add a new tag
+                </p>
               </div>
 
               {error && (
@@ -364,10 +371,6 @@ export function Save() {
               </Button>
             </form>
           )}
-
-        <p className="text-xs text-gray-500 mt-4 text-center">
-          The page title and description will be automatically fetched
-        </p>
       </div>
     </div>
   );
