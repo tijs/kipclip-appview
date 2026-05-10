@@ -54,6 +54,15 @@ webhook on the box.
   generate locally → upload via the Bunny dashboard (Storage → kipclip → File
   manager → `images/`) → reference the CDN URL in code. Favicons live next to
   images at `cdn.kipclip.com/favicons/`.
+  - **Social/OG card regeneration**: `scripts/og-card.html` is the source for
+    `cdn.kipclip.com/images/og-card.png` (1200×630). Edit copy/design in the
+    HTML, open it in Chrome at a 1200×630 viewport, screenshot the page (it
+    renders at 2× DPR → 2400×1260), then
+    `sips -z 630 1200 input.png --out
+    og-card.png` to scale back down.
+    Upload to Bunny over the existing `images/og-card.png`, purge the CDN URL,
+    and re-validate via the LinkedIn / Facebook / X share-card debuggers. The
+    `<meta>` URLs in `frontend/index.html` don't change.
 
 ### Storage layout
 
