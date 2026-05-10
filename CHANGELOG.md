@@ -4,6 +4,56 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-05-10
+
+### Added
+
+- **Marketing landing page** at `/` for logged-out visitors. Hero, positioning
+  ("Like Pinboard, Pocket, or Raindrop — but portable"), AT Protocol explainer
+  with compatible apps (Margin, Disperse), tools sentence, reviews from
+  atstore.fyi (with star ratings), Bluesky mentions via Microcosm Constellation,
+  current supporters, EU-hosted block, and a final CTA. Logged-in visitors are
+  unaffected — they still land on the bookmark list.
+- **Frontend route `/signin`** renders the existing Login UI. Header CTAs and
+  bookmarklet/share-target 401 redirects all point here.
+- **Reusable backend libs** with shared 24h cached-fetch helper:
+  - `lib/reviews.ts` + `/api/reviews` — formal atstore.fyi review records.
+  - `lib/mentions.ts` + `/api/mentions` — Bluesky posts linking to kipclip.com,
+    via Microcosm Constellation + bsky appview.
+  - `lib/supporters.ts` + `/api/supporters` — atprotofans supporters hydrated
+    through bsky `getProfiles`.
+  - `lib/stats.ts` + `/api/stats` — total user count for "join N people" social
+    proof.
+  - `lib/cached-fetch.ts` — generic TTL cache with request coalescing, fail-open
+    behaviour, and stale-cache fallback when upstream is down.
+- **FAQ page CTA** — sign-up section appears at the bottom for logged-out
+  visitors so they can convert without backtracking.
+- **Support page extras**: "Current supporters" tile grid (mirrors the
+  homepage section) and a "Short on cash? Leave a review." card linking to the
+  kipclip listing on atstore.fyi.
+- **Press page assets** updated to use the cleaned-up kipclip color and B&W
+  logomarks from cozylittle.house/atmologos, served locally from
+  `/static/images/`.
+- **SEO and structured data** in `frontend/index.html`: revised title and
+  description anchored on Pinboard/Pocket/Raindrop, keywords meta, canonical,
+  `robots` directive, and a JSON-LD `SoftwareApplication` block.
+
+### Changed
+
+- Homepage `/` now serves the marketing landing for logged-out visitors;
+  logged-in visitors continue to see the bookmark list as before.
+- Header CTAs (`Get started`, `Sign in`) and the final-CTA pair both link to
+  `/signin` so anyone with an existing Atmosphere account isn't bounced through
+  the create-account flow.
+- All site-facing GitHub links now point at Tangled
+  (`https://tangled.org/tijs.org/kipclip-appview`). README CI badge unchanged.
+- `Cache-Control` on the public marketing endpoints lowered to
+  `public, max-age=60, stale-while-revalidate=600` so updates surface in
+  browsers within a minute. Server-side 24h cache still authoritative for
+  upstream load.
+- `PageShell` back-link adapts to session: "Back to Bookmarks" when logged in,
+  "Back to Home" otherwise.
+
 ## [0.21.0] - 2026-05-09
 
 ### Added
