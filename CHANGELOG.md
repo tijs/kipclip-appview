@@ -4,6 +4,19 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.22.1] - 2026-05-10
+
+### Fixed
+
+- `/api/stats` was massively undercounting users — the marketing
+  "Join N people" line showed only ~15 against ~140 actual sign-ins.
+  user_settings and tracked_dids only get rows when a session reaches
+  `/api/initial-data`, but many users sign in via `/save` (bookmarklet,
+  share target) and never hit that path. The query now unions DIDs
+  across user_settings, tracked_dids, bookmarks, tags, annotations,
+  and preferences — every DID-keyed table the appview maintains — so
+  any user who has ever persisted anything is counted.
+
 ## [0.22.0] - 2026-05-10
 
 ### Added
@@ -28,9 +41,9 @@ All notable changes to kipclip are documented in this file.
     behaviour, and stale-cache fallback when upstream is down.
 - **FAQ page CTA** — sign-up section appears at the bottom for logged-out
   visitors so they can convert without backtracking.
-- **Support page extras**: "Current supporters" tile grid (mirrors the
-  homepage section) and a "Short on cash? Leave a review." card linking to the
-  kipclip listing on atstore.fyi.
+- **Support page extras**: "Current supporters" tile grid (mirrors the homepage
+  section) and a "Short on cash? Leave a review." card linking to the kipclip
+  listing on atstore.fyi.
 - **Press page assets** updated to use the cleaned-up kipclip color and B&W
   logomarks from cozylittle.house/atmologos, served locally from
   `/static/images/`.
