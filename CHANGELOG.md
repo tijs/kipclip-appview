@@ -4,14 +4,24 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.2] - 2026-05-10
+
+### Fixed
+
+- Bookmarklet/share popup: "Sign in" button on the unauthenticated state now
+  routes to `/signin` instead of `/`. The homepage redesign moved the login form
+  off `/`, so the old redirect dropped users on the marketing page with no way
+  back to the save flow. The redirect query is preserved so users land back on
+  `/save?url=...` after authenticating.
+
 ## [0.24.1] - 2026-05-10
 
 ### Fixed
 
-- Bookmarklet save popup: clarified that pressing Enter in the tag field
-  creates a new tag. The compact `TagInput` previously hid this hint, so users
-  thought only existing tags could be added. Replaced the unrelated footer note
-  with an inline hint directly under the tag input.
+- Bookmarklet save popup: clarified that pressing Enter in the tag field creates
+  a new tag. The compact `TagInput` previously hid this hint, so users thought
+  only existing tags could be added. Replaced the unrelated footer note with an
+  inline hint directly under the tag input.
 
 ## [0.24.0] - 2026-05-10
 

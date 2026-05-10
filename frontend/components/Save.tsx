@@ -186,7 +186,7 @@ export function Save() {
   }
 
   if (!session) {
-    const loginUrl = `/?redirect=${
+    const loginUrl = `/signin?redirect=${
       encodeURIComponent(
         globalThis.location.pathname + globalThis.location.search,
       )
