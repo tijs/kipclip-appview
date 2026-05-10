@@ -4,6 +4,16 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.3] - 2026-05-10
+
+### Changed
+
+- Homepage hero now uses a pale cool gradient (`#e9efee` → cream) shared across
+  the page header and hero section, so Kip's white feathers contrast against the
+  background instead of dissolving into the cream palette. Downstream sections
+  keep the original cream + alternating tint scheme. ContinueAsChip picks up a
+  softer layered shadow with hover-lift in place of the flat `shadow-sm`.
+
 ## [0.24.2] - 2026-05-10
 
 ### Fixed
