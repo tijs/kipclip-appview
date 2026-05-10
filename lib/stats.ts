@@ -21,6 +21,33 @@ const TTL_MS = 24 * 60 * 60 * 1000;
 export interface SiteStats {
   /** Total distinct DIDs that have ever logged in. */
   userCount: number;
+  /** Per-source DID counts (debug). Each is COUNT(DISTINCT did) on its
+   *  table. Useful for spotting drift between data sources, e.g. if
+   *  tracked_dids has fewer DIDs than iron_session_storage we know
+   *  auto-enrollment is lagging. */
+  bySource: {
+    sessions: number;
+    user_settings: number;
+    tracked_dids: number;
+    bookmarks: number;
+    tags: number;
+    annotations: number;
+    preferences: number;
+  };
+}
+
+function toNumber(raw: unknown): number {
+  const n = typeof raw === "number"
+    ? raw
+    : typeof raw === "bigint"
+    ? Number(raw)
+    : Number(raw ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+async function countDistinct(sql: string): Promise<number> {
+  const result = await db.execute({ sql, args: [] });
+  return toNumber(result.rows?.[0]?.[0]);
 }
 
 async function fetchStats(): Promise<SiteStats> {
@@ -40,42 +67,78 @@ async function fetchStats(): Promise<SiteStats> {
   // SELECT-UNION-without-ALL deduplicates, so the outer COUNT(*) is
   // the distinct-DID count across all sources. Runs at most once
   // per 24h thanks to the cached fetcher.
-  const result = await db.execute({
-    sql: `
-      SELECT COUNT(*) FROM (
-        SELECT substr(key, 9) AS did FROM iron_session_storage
-          WHERE key LIKE 'session:did:%'
-        UNION
-        SELECT did FROM user_settings
-        UNION
-        SELECT did FROM tracked_dids
-        UNION
-        SELECT did FROM bookmarks
-        UNION
-        SELECT did FROM tags
-        UNION
-        SELECT did FROM annotations
-        UNION
-        SELECT did FROM preferences
-      )
-    `,
-    args: [],
-  });
-  // db.execute returns rows as unknown[][] — first column of first row
-  // is our COUNT(*) value.
-  const raw = result.rows?.[0]?.[0];
-  const userCount = typeof raw === "number"
-    ? raw
-    : typeof raw === "bigint"
-    ? Number(raw)
-    : Number(raw ?? 0);
-  return { userCount: Number.isFinite(userCount) ? userCount : 0 };
+  const unionSql = `
+    SELECT COUNT(*) FROM (
+      SELECT substr(key, 9) AS did FROM iron_session_storage
+        WHERE key LIKE 'session:did:%'
+      UNION
+      SELECT did FROM user_settings
+      UNION
+      SELECT did FROM tracked_dids
+      UNION
+      SELECT did FROM bookmarks
+      UNION
+      SELECT did FROM tags
+      UNION
+      SELECT did FROM annotations
+      UNION
+      SELECT did FROM preferences
+    )
+  `;
+
+  const [
+    userCount,
+    sessions,
+    userSettings,
+    trackedDids,
+    bookmarks,
+    tags,
+    annotations,
+    preferences,
+  ] = await Promise.all([
+    countDistinct(unionSql),
+    countDistinct(
+      `SELECT COUNT(*) FROM iron_session_storage WHERE key LIKE 'session:did:%'`,
+    ),
+    countDistinct("SELECT COUNT(DISTINCT did) FROM user_settings"),
+    countDistinct("SELECT COUNT(DISTINCT did) FROM tracked_dids"),
+    countDistinct("SELECT COUNT(DISTINCT did) FROM bookmarks"),
+    countDistinct("SELECT COUNT(DISTINCT did) FROM tags"),
+    countDistinct("SELECT COUNT(DISTINCT did) FROM annotations"),
+    countDistinct("SELECT COUNT(DISTINCT did) FROM preferences"),
+  ]);
+
+  return {
+    userCount,
+    bySource: {
+      sessions,
+      user_settings: userSettings,
+      tracked_dids: trackedDids,
+      bookmarks,
+      tags,
+      annotations,
+      preferences,
+    },
+  };
 }
+
+const EMPTY_STATS: SiteStats = {
+  userCount: 0,
+  bySource: {
+    sessions: 0,
+    user_settings: 0,
+    tracked_dids: 0,
+    bookmarks: 0,
+    tags: 0,
+    annotations: 0,
+    preferences: 0,
+  },
+};
 
 const fetcher: CachedFetcher<SiteStats> = createCachedFetcher({
   ttlMs: TTL_MS,
   fetch: fetchStats,
-  fallback: { userCount: 0 },
+  fallback: EMPTY_STATS,
   label: "stats",
 });
 

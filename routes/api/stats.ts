@@ -18,7 +18,11 @@ export function registerStatsRoutes(app: App<unknown>): App<unknown> {
       "public, max-age=60, stale-while-revalidate=600",
     );
     return new Response(
-      JSON.stringify({ userCount: data.userCount, stale }),
+      JSON.stringify({
+        userCount: data.userCount,
+        bySource: data.bySource,
+        stale,
+      }),
       { headers },
     );
   });

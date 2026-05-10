@@ -4,6 +4,15 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.22.3] - 2026-05-10
+
+### Added
+
+- `/api/stats` now also returns a `bySource` breakdown: distinct DID counts per
+  backing table (sessions, user_settings, tracked_dids, bookmarks, tags,
+  annotations, preferences). Helpful for spotting drift between data sources
+  without shelling onto the box.
+
 ## [0.22.2] - 2026-05-10
 
 ### Fixed
