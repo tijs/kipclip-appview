@@ -20,10 +20,14 @@ import { registerLiveRoutes } from "./routes/api/live.ts";
 import { registerSettingsRoutes } from "./routes/api/settings.ts";
 import { registerBulkRoutes } from "./routes/api/bulk.ts";
 import { registerImportRoutes } from "./routes/api/import.ts";
+import { registerMentionsRoutes } from "./routes/api/mentions.ts";
 import { registerMetricsRoutes } from "./routes/api/metrics.ts";
 import { registerMigrateHexRkeysRoute } from "./routes/api/migrate-hex-rkeys.ts";
 import { registerPreferencesRoutes } from "./routes/api/preferences.ts";
+import { registerReviewsRoutes } from "./routes/api/reviews.ts";
 import { registerShareApiRoutes } from "./routes/api/share.ts";
+import { registerStatsRoutes } from "./routes/api/stats.ts";
+import { registerSupportersRoutes } from "./routes/api/supporters.ts";
 import { registerSyncRoutes } from "./routes/api/sync.ts";
 import { initWebhook } from "./worker/webhook.ts";
 import { registerSystemRoutes } from "./routes/api/system.ts";
@@ -166,6 +170,19 @@ app = registerLiveRoutes(app);
 
 // System API routes (/api/version, /api/health) -- release observability
 app = registerSystemRoutes(app);
+
+// Public reviews proxy (formal review records on atstore.fyi).
+app = registerReviewsRoutes(app);
+
+// Public mentions proxy (Bluesky posts linking to kipclip.com via
+// Microcosm Constellation + bsky appview).
+app = registerMentionsRoutes(app);
+
+// Public supporters proxy backed by atprotofans.com + bsky appview.
+app = registerSupportersRoutes(app);
+
+// Public marketing stats (total user count, cached 24h).
+app = registerStatsRoutes(app);
 
 // Frontend perf beacon endpoint (logs structured perf JSON line)
 app = registerMetricsRoutes(app);

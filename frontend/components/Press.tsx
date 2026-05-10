@@ -3,7 +3,16 @@ import { PageShell } from "./PageShell.tsx";
 
 const CDN = "https://cdn.kipclip.com";
 
-const assets = [
+interface Asset {
+  name: string;
+  filename: string;
+  description: string;
+  /** Optional override path. Used for SVG logomarks served from /static
+   *  rather than the CDN. */
+  url?: string;
+}
+
+const assets: Asset[] = [
   {
     name: "Mascot (with background)",
     filename: "kip-satchel.png",
@@ -25,26 +34,31 @@ const assets = [
     description: "Black and white Kip mascot portrait",
   },
   {
-    name: "Kip B&W (SVG)",
-    filename: "kip-vignette-bw.svg",
-    description: "Black and white Kip mascot portrait in vector format",
+    name: "Logomark (SVG, color)",
+    filename: "kipclip-color.svg",
+    url: "/static/images/kipclip-color.svg",
+    description:
+      "Kipclip logomark in color, from the cozylittle.house atmologos set",
   },
   {
-    name: "Logo (SVG)",
-    filename: "kipclip.svg",
-    description: "kipclip logo in vector format",
+    name: "Logomark (SVG, B&W)",
+    filename: "kipclip-bw.svg",
+    url: "/static/images/kipclip-bw.svg",
+    description:
+      "Kipclip logomark in black and white, from the cozylittle.house atmologos set",
   },
 ];
 
 function DownloadCard(
-  { name, filename, description }: {
+  { name, filename, description, url: urlOverride }: {
     key?: Key | null;
     name: string;
     filename: string;
     description: string;
+    url?: string;
   },
 ) {
-  const url = `${CDN}/images/${filename}`;
+  const url = urlOverride ?? `${CDN}/images/${filename}`;
   const isSvg = filename.endsWith(".svg");
 
   return (
@@ -158,12 +172,12 @@ export function Press() {
           <li>
             <strong>Source:</strong>{" "}
             <a
-              href="https://github.com/tijs/kipclip-appview"
+              href="https://tangled.org/tijs.org/kipclip-appview"
               target="_blank"
               rel="noopener noreferrer"
               className="underline hover:text-gray-800"
             >
-              Open source on GitHub
+              Open source on Tangled
             </a>
           </li>
           <li>

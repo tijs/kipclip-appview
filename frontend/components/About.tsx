@@ -88,21 +88,20 @@ export function About() {
         <h3 className="text-xl font-bold text-gray-800 mb-4">Links</h3>
         <div className="flex flex-col sm:flex-row gap-3">
           <a
-            href="https://github.com/tijs/kipclip-appview"
+            href="https://tangled.org/tijs.org/kipclip-appview"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-white hover:opacity-95"
             style={{ backgroundColor: "var(--coral)" }}
           >
-            <svg
-              className="w-5 h-5"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              aria-hidden
-            >
-              <path d="M12 .5C5.73.5.94 5.29.94 11.56c0 4.86 3.15 8.98 7.52 10.43.55.1.75-.24.75-.53 0-.26-.01-1.12-.02-2.03-3.06.67-3.71-1.3-3.71-1.3-.5-1.28-1.23-1.63-1.23-1.63-1.01-.69.08-.68.08-.68 1.12.08 1.71 1.15 1.71 1.15.99 1.7 2.6 1.21 3.23.93.1-.72.39-1.21.71-1.49-2.44-.28-5-1.22-5-5.43 0-1.2.43-2.18 1.14-2.95-.11-.28-.5-1.43.11-2.98 0 0 .94-.3 3.07 1.13.89-.25 1.85-.37 2.81-.37.95 0 1.92.12 2.81.37 2.12-1.43 3.06-1.13 3.06-1.13.62 1.55.23 2.7.12 2.98.71.77 1.14 1.75 1.14 2.95 0 4.22-2.57 5.15-5.01 5.42.4.35.76 1.04.76 2.1 0 1.52-.01 2.74-.01 3.12 0 .29.2.64.76.53 4.36-1.45 7.51-5.57 7.51-10.43C23.06 5.29 18.27.5 12 .5z" />
-            </svg>
-            GitHub Repository
+            <img
+              src="/static/images/tangled.svg"
+              alt=""
+              width={20}
+              height={20}
+              style={{ filter: "brightness(0) invert(1)" }}
+            />
+            Source on Tangled
           </a>
           <a
             href="https://bsky.app/profile/tijs.org"

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Home } from "./Home.tsx";
 import { Login } from "./Login.tsx";
 import { BookmarkList } from "./BookmarkList.tsx";
 import { UserMenu } from "./UserMenu.tsx";
@@ -149,6 +150,10 @@ export function App() {
     return null;
   }
 
+  if (currentPath === "/signin") {
+    return <Login />;
+  }
+
   if (currentPath === "/save") {
     return <Save />;
   }
@@ -179,6 +184,9 @@ export function App() {
   }
 
   if (!session) {
+    if (currentPath === "/") {
+      return <Home />;
+    }
     return <Login />;
   }
 

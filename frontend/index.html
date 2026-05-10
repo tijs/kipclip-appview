@@ -3,22 +3,32 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>kipclip - Find it, Kip it</title>
+    <title>
+      kipclip — Own your bookmarks. A Pinboard alternative on AT Protocol.
+    </title>
     <meta
       name="description"
-      content="Save and organize your bookmarks. Free, open, and your data stays yours."
+      content="Free, open bookmark manager built on AT Protocol. Save, tag, and share links. Your bookmarks live in your own Bluesky account — portable, EU-hosted, open source. A modern alternative to Pinboard, Pocket, and Raindrop."
     >
+    <meta
+      name="keywords"
+      content="bookmark manager, pinboard alternative, pocket alternative, raindrop alternative, instapaper alternative, delicious alternative, atproto, at protocol, bluesky, decentralized bookmarks, open source bookmarks, EU hosted, GDPR, self-hosted"
+    >
+    <meta name="robots" content="index,follow,max-image-preview:large">
+    <meta name="author" content="Tijs Teulings">
+    <link rel="canonical" href="https://kipclip.com/">
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
+    <meta property="og:site_name" content="kipclip">
     <meta property="og:url" content="https://kipclip.com/">
     <meta
       property="og:title"
-      content="kipclip - Find it, Kip it"
+      content="kipclip — Own your bookmarks. A Pinboard alternative on AT Protocol."
     >
     <meta
       property="og:description"
-      content="Save and organize your bookmarks. Free, open, and your data stays yours. Save from anywhere with our bookmarklet, iOS shortcut, or mobile app."
+      content="Free, open bookmark manager built on AT Protocol. Save, tag, and share links. Your bookmarks live in your own Bluesky account — portable, EU-hosted, open source."
     >
     <meta
       property="og:image"
@@ -36,11 +46,11 @@
     <meta name="twitter:url" content="https://kipclip.com/">
     <meta
       name="twitter:title"
-      content="kipclip - Find it, Kip it"
+      content="kipclip — Own your bookmarks. A Pinboard alternative on AT Protocol."
     >
     <meta
       name="twitter:description"
-      content="Save and organize your bookmarks. Free, open, and your data stays yours. Save from anywhere with our bookmarklet, iOS shortcut, or mobile app."
+      content="Free, open bookmark manager built on AT Protocol. Save, tag, and share links. Portable, EU-hosted, open source."
     >
     <meta
       name="twitter:image"
@@ -50,6 +60,40 @@
       name="twitter:image:alt"
       content="Kip the chicken with a satchel - kipclip mascot"
     >
+
+    <!-- Structured data: SoftwareApplication. Helps search engines render
+         a rich result for the homepage. operatingSystem=Web because
+         kipclip is a web app + PWA; offers.price=0 reflects the free tier. -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "kipclip",
+      "alternateName": "kipclip — bookmark manager on AT Protocol",
+      "applicationCategory": "BookmarksApplication",
+      "operatingSystem": "Web",
+      "url": "https://kipclip.com/",
+      "image": "https://cdn.kipclip.com/images/kip-satchel.png",
+      "description": "Free, open bookmark manager built on AT Protocol. Save, tag, and share links. Your bookmarks live in your own Bluesky account — portable, EU-hosted, open source. A modern alternative to Pinboard, Pocket, and Raindrop.",
+      "inLanguage": "en",
+      "isAccessibleForFree": true,
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "EUR"
+      },
+      "author": {
+        "@type": "Person",
+        "name": "Tijs Teulings",
+        "url": "https://bsky.app/profile/tijs.org"
+      },
+      "sameAs": [
+        "https://tangled.org/tijs.org/kipclip-appview",
+        "https://atstore.fyi/products/kipclip",
+        "https://bsky.app/profile/kipclip.com"
+      ]
+    }
+    </script>
 
     <!-- Favicons -->
     <link

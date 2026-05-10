@@ -40,11 +40,11 @@ export function useVersion(): VersionInfo | null {
 }
 
 /**
- * Build a deep-link to the GitHub release page for a tag, or null when
- * the version is "dev"/"unknown" (no release page exists).
+ * Build a deep-link to the Tangled tag page for a version, or null
+ * when the version is "dev"/"unknown" (no tag exists).
  */
 export function releaseUrl(version: string | undefined): string | null {
   if (!version) return null;
   if (!/^v\d+\.\d+\.\d+/.test(version)) return null;
-  return `https://github.com/tijs/kipclip-appview/releases/tag/${version}`;
+  return `https://tangled.org/tijs.org/kipclip-appview/tags/${version}`;
 }

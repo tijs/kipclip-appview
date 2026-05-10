@@ -1,7 +1,10 @@
 import { useEffect } from "react";
 import { PageShell } from "./PageShell.tsx";
+import { Button } from "./Button.tsx";
+import { useApp } from "../context/AppContext.tsx";
 
 export function FAQ() {
+  const { session } = useApp();
   useEffect(() => {
     const hash = globalThis.location.hash;
     if (hash) {
@@ -360,6 +363,38 @@ export function FAQ() {
           .
         </p>
       </section>
+
+      {!session && (
+        <section
+          className="rounded-lg shadow-md p-8 text-center"
+          style={{
+            background:
+              "linear-gradient(135deg, #ffffff 0%, rgba(230,100,86,0.06) 100%)",
+          }}
+        >
+          <h3
+            className="text-2xl font-bold text-gray-900 mb-3"
+            style={{ textWrap: "balance" }}
+          >
+            Ready to try kipclip?
+          </h3>
+          <p
+            className="text-gray-700 mb-6 max-w-md mx-auto"
+            style={{ textWrap: "pretty" }}
+          >
+            Free, open source, hosted in the EU. Use any AT Protocol account —
+            takes a minute.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
+            <Button href="/signin" variant="primary">
+              Get started — it's free
+            </Button>
+            <Button href="/signin" variant="secondary">
+              Sign in
+            </Button>
+          </div>
+        </section>
+      )}
     </PageShell>
   );
 }

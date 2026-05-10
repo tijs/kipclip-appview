@@ -28,6 +28,7 @@
     "jsr:@std/uuid@^1.0.9": "1.1.1",
     "jsr:@tijs/atproto-oauth@2.10.2": "2.10.2",
     "jsr:@tijs/atproto-sessions@2.1.0": "2.1.0",
+    "jsr:@tijs/atproto-storage@*": "1.2.0",
     "jsr:@tijs/atproto-storage@1.2.0": "1.2.0",
     "jsr:@tijs/oauth-client-deno@5.1.0": "5.1.0",
     "npm:@atproto/syntax@0.3.0": "0.3.0",
@@ -161,7 +162,7 @@
       "integrity": "7ebcb0ab33896d1eb056672726714dc9c210e2483bcff9fe38314083575547e2",
       "dependencies": [
         "jsr:@tijs/atproto-sessions",
-        "jsr:@tijs/atproto-storage",
+        "jsr:@tijs/atproto-storage@1.2.0",
         "jsr:@tijs/oauth-client-deno",
         "npm:@atproto/syntax@0.3.0"
       ]

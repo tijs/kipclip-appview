@@ -88,12 +88,12 @@ export function TermsOfUse() {
         <p className="text-gray-700">
           kipclip is open-source software. The source code is available on{" "}
           <a
-            href="https://github.com/tijs/kipclip-appview"
+            href="https://tangled.org/tijs.org/kipclip-appview"
             target="_blank"
             rel="noopener noreferrer"
             className="underline hover:text-gray-800"
           >
-            GitHub
+            Tangled
           </a>
           . You are free to run your own instance.
         </p>

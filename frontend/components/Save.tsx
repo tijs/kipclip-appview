@@ -121,7 +121,7 @@ export function Save() {
           // Ignore JSON parse errors
         }
 
-        const loginUrl = `/login?redirect=${
+        const loginUrl = `/signin?redirect=${
           encodeURIComponent(
             globalThis.location.pathname + globalThis.location.search,
           )

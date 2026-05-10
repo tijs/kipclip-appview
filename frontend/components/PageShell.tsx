@@ -1,17 +1,25 @@
 import type { ReactNode } from "react";
 import { Footer } from "./Footer.tsx";
+import { useApp } from "../context/AppContext.tsx";
 
 interface PageShellProps {
   children: ReactNode;
+  /** Override the back-link label. When omitted, the label adapts to
+   *  session state ("Back to Bookmarks" if logged in, "Back to Home"
+   *  otherwise) so logged-out visitors don't see a misleading link to
+   *  a bookmark list they can't reach. */
   backLabel?: string;
   backHref?: string;
 }
 
 export function PageShell({
   children,
-  backLabel = "Back to Bookmarks",
+  backLabel,
   backHref = "/",
 }: PageShellProps) {
+  const { session } = useApp();
+  const label = backLabel ??
+    (session ? "Back to Bookmarks" : "Back to Home");
   return (
     <div
       className="min-h-screen"
@@ -38,7 +46,7 @@ export function PageShell({
             href={backHref}
             className="text-gray-600 hover:text-gray-800 text-sm font-medium"
           >
-            {backLabel}
+            {label}
           </a>
         </div>
       </header>
