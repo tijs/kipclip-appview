@@ -128,4 +128,44 @@ export const MIRROR_MIGRATIONS: MigrationEntry[] = [
         AND last_event_at > backfill_started_at
     `,
   },
+  {
+    // Persistent record of every DID we've ever seen. Decouples the
+    // marketing user count from iron_session_storage (which prunes
+    // expired sessions) and the mirror tables (which only carry data
+    // for tracked users). Backfilled from every existing DID-keyed
+    // source on first run; subsequent inserts come from markSeenDid()
+    // on the auth/session hot path. Lives in the mirror migration set
+    // so it runs after bookmarks/tags/annotations/preferences exist.
+    version: "010",
+    description: "Create seen_dids and backfill from existing DID-keyed tables",
+    sql: `
+      CREATE TABLE IF NOT EXISTS seen_dids (
+        did TEXT PRIMARY KEY,
+        first_seen_at INTEGER NOT NULL,
+        last_seen_at INTEGER NOT NULL
+      );
+      INSERT OR IGNORE INTO seen_dids (did, first_seen_at, last_seen_at)
+        SELECT substr(key, 9), strftime('%s','now')*1000, strftime('%s','now')*1000
+        FROM iron_session_storage
+        WHERE key LIKE 'session:did:%';
+      INSERT OR IGNORE INTO seen_dids (did, first_seen_at, last_seen_at)
+        SELECT did, strftime('%s','now')*1000, strftime('%s','now')*1000
+        FROM user_settings;
+      INSERT OR IGNORE INTO seen_dids (did, first_seen_at, last_seen_at)
+        SELECT did, strftime('%s','now')*1000, strftime('%s','now')*1000
+        FROM tracked_dids;
+      INSERT OR IGNORE INTO seen_dids (did, first_seen_at, last_seen_at)
+        SELECT DISTINCT did, strftime('%s','now')*1000, strftime('%s','now')*1000
+        FROM bookmarks;
+      INSERT OR IGNORE INTO seen_dids (did, first_seen_at, last_seen_at)
+        SELECT DISTINCT did, strftime('%s','now')*1000, strftime('%s','now')*1000
+        FROM tags;
+      INSERT OR IGNORE INTO seen_dids (did, first_seen_at, last_seen_at)
+        SELECT DISTINCT did, strftime('%s','now')*1000, strftime('%s','now')*1000
+        FROM annotations;
+      INSERT OR IGNORE INTO seen_dids (did, first_seen_at, last_seen_at)
+        SELECT did, strftime('%s','now')*1000, strftime('%s','now')*1000
+        FROM preferences
+    `,
+  },
 ];

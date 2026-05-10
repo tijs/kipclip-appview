@@ -1,13 +1,11 @@
 /**
  * Public marketing metrics — total user count for "join N others" copy.
  *
- * Source: distinct DIDs across user_settings ∪ tracked_dids. user_settings
- * gets a row the first time getUserSettings() runs (initial data load
- * post-login). tracked_dids gets a row when auto-enrollment kicks in on
- * first sign-in. Either is usually enough on its own, but the union
- * catches edge cases (e.g. users who sign in but bail before
- * /api/initial-data hydrates) so the marketing count never undercounts
- * "people who have ever tried it".
+ * Primary source: seen_dids ledger (lib/seen-dids.ts), upserted on
+ * every authenticated /api/auth/session call. Persistent across
+ * session expiry, so the count never drifts down. The bySource
+ * breakdown is kept for diagnostics — useful for spotting drift
+ * between data sources without shelling onto the box.
  *
  * Cached for 24h via the shared cached-fetch helper so the count is
  * reusable elsewhere on the site without per-request DB pressure.
@@ -26,6 +24,7 @@ export interface SiteStats {
    *  tracked_dids has fewer DIDs than iron_session_storage we know
    *  auto-enrollment is lagging. */
   bySource: {
+    seen_dids: number;
     sessions: number;
     user_settings: number;
     tracked_dids: number;
@@ -51,43 +50,8 @@ async function countDistinct(sql: string): Promise<number> {
 }
 
 async function fetchStats(): Promise<SiteStats> {
-  // Union across every DID-keyed source the appview maintains.
-  //
-  // - iron_session_storage stores OAuth sessions under keys shaped
-  //   `session:did:plc:xxx`, so every successful sign-in shows up
-  //   here even if the user never persisted anything else. This is
-  //   the broadest signal of "tried kipclip" and the only one that
-  //   captures users who sign in via /save (bookmarklet, share
-  //   target) without ever reaching /api/initial-data.
-  // - user_settings + tracked_dids capture users who hit the
-  //   post-login hydration path.
-  // - bookmarks/tags/annotations/preferences capture anyone who has
-  //   actually persisted records (mirror tables).
-  //
-  // SELECT-UNION-without-ALL deduplicates, so the outer COUNT(*) is
-  // the distinct-DID count across all sources. Runs at most once
-  // per 24h thanks to the cached fetcher.
-  const unionSql = `
-    SELECT COUNT(*) FROM (
-      SELECT substr(key, 9) AS did FROM iron_session_storage
-        WHERE key LIKE 'session:did:%'
-      UNION
-      SELECT did FROM user_settings
-      UNION
-      SELECT did FROM tracked_dids
-      UNION
-      SELECT did FROM bookmarks
-      UNION
-      SELECT did FROM tags
-      UNION
-      SELECT did FROM annotations
-      UNION
-      SELECT did FROM preferences
-    )
-  `;
-
   const [
-    userCount,
+    seenDids,
     sessions,
     userSettings,
     trackedDids,
@@ -96,7 +60,7 @@ async function fetchStats(): Promise<SiteStats> {
     annotations,
     preferences,
   ] = await Promise.all([
-    countDistinct(unionSql),
+    countDistinct("SELECT COUNT(*) FROM seen_dids"),
     countDistinct(
       `SELECT COUNT(*) FROM iron_session_storage WHERE key LIKE 'session:did:%'`,
     ),
@@ -109,8 +73,9 @@ async function fetchStats(): Promise<SiteStats> {
   ]);
 
   return {
-    userCount,
+    userCount: seenDids,
     bySource: {
+      seen_dids: seenDids,
       sessions,
       user_settings: userSettings,
       tracked_dids: trackedDids,
@@ -125,6 +90,7 @@ async function fetchStats(): Promise<SiteStats> {
 const EMPTY_STATS: SiteStats = {
   userCount: 0,
   bySource: {
+    seen_dids: 0,
     sessions: 0,
     user_settings: 0,
     tracked_dids: 0,

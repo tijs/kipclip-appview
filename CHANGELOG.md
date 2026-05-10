@@ -4,6 +4,23 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-05-10
+
+### Added
+
+- **`seen_dids` ledger** — persistent record of every DID that has ever signed
+  in. Migration 010 creates the table and backfills it from every existing
+  DID-keyed source (iron_session_storage, user_settings, tracked_dids,
+  bookmarks, tags, annotations, preferences). `markSeenDid()` upserts on every
+  authenticated `/api/auth/session` call (fire-and-forget). The marketing user
+  count now reads from this ledger so it never drifts down when
+  iron_session_storage prunes expired sessions.
+- `lib/seen-dids.ts` exposes `markSeenDid()`, `countSeenDids()`, and
+  `countActiveSeenDids(windowMs)` so the active-user metric (DIDs seen within a
+  trailing window) is one query away when we need it.
+- `seen_dids` is included in the `/api/stats` `bySource` breakdown and is the
+  new primary value for `userCount`.
+
 ## [0.22.3] - 2026-05-10
 
 ### Added
