@@ -4,6 +4,26 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.23.2] - 2026-05-10
+
+### Fixed
+
+- Static `serveFile` now reads files as raw bytes via `Deno.readFile` instead of
+  `Deno.readTextFile`. The previous text-mode read mangled binary assets through
+  UTF-8 replacement (412KB PNG → 755KB blob of U+FFFD), which broke external OG
+  scrapers — opengraph.xyz reported the og:image as "invalid or unreachable"
+  because the served bytes didn't form a valid PNG. Affects every binary path
+  served through `/static/*`, `/lexicons/*`, etc; SVGs round-trip cleanly now
+  too.
+- Added `Content-Length` header to served files so progress-aware clients can
+  pipeline reliably.
+
+### Added
+
+- "You find it, you kip it." slogan placed above the final-CTA "Ready to kip?"
+  heading in italic coral. Light, on-brand wink at the close without competing
+  with the hero H1.
+
 ## [0.23.1] - 2026-05-10
 
 ### Changed

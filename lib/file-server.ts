@@ -82,6 +82,13 @@ export async function readFile(path: string, baseUrl: string): Promise<string> {
 /**
  * Serve a file from the project with appropriate content-type and cache headers.
  *
+ * Reads the file as raw bytes (Uint8Array) so binary assets — PNGs,
+ * SVGs with multi-byte UTF-8, sourcemaps with embedded encodings —
+ * round-trip without UTF-8 mangling. Previously this used
+ * Deno.readTextFile, which inflated PNG sizes (411KB → 754KB) by
+ * replacing every invalid byte with U+FFFD and broke external OG
+ * scrapers (opengraph.xyz, social card validators).
+ *
  * @param path - Path to file (e.g., "/frontend/style.css")
  * @param baseUrl - import.meta.url of the calling module
  * @returns Response with file contents and caching headers
@@ -91,8 +98,9 @@ export async function serveFile(
   baseUrl: string,
 ): Promise<Response> {
   try {
+    const filePath = resolveProjectPath(path, baseUrl);
     const ext = path.split(".").pop() || "";
-    const content = await readFile(path, baseUrl);
+    const content = await Deno.readFile(filePath);
     const mimeType = contentType(ext) || "application/octet-stream";
     const cacheControl = getCacheControl(path);
 
@@ -100,6 +108,7 @@ export async function serveFile(
       headers: {
         "Content-Type": mimeType,
         "Cache-Control": cacheControl,
+        "Content-Length": String(content.byteLength),
       },
     });
   } catch {

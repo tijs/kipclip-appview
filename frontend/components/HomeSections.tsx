@@ -303,11 +303,17 @@ export function FinalCta({ hasIdentity }: { hasIdentity: boolean }) {
   return (
     <section className="px-4 sm:px-6 py-20 sm:py-28">
       <div className="max-w-2xl mx-auto text-center">
+        <p
+          className="italic text-base mb-3"
+          style={{ color: "var(--coral)" }}
+        >
+          You find it, you kip it.
+        </p>
         <h2
           className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4"
           style={{ textWrap: "balance", letterSpacing: "-0.01em" }}
         >
-          Ready to clip?
+          Ready to kip?
         </h2>
         <p
           className="text-lg text-gray-600 mb-8"
