@@ -8,6 +8,7 @@ import type {
 import { DuplicateWarning } from "./DuplicateWarning.tsx";
 import { TagInput } from "./TagInput.tsx";
 import { Button } from "./Button.tsx";
+import { buildLoginRedirectUrl } from "../../shared/login-redirect.ts";
 
 export function Save() {
   const [session, setSession] = useState<
@@ -121,11 +122,10 @@ export function Save() {
           // Ignore JSON parse errors
         }
 
-        const loginUrl = `/signin?redirect=${
-          encodeURIComponent(
-            globalThis.location.pathname + globalThis.location.search,
-          )
-        }`;
+        const loginUrl = buildLoginRedirectUrl(
+          globalThis.location.pathname,
+          globalThis.location.search,
+        );
         globalThis.location.href = loginUrl;
         return;
       }
@@ -186,11 +186,10 @@ export function Save() {
   }
 
   if (!session) {
-    const loginUrl = `/signin?redirect=${
-      encodeURIComponent(
-        globalThis.location.pathname + globalThis.location.search,
-      )
-    }`;
+    const loginUrl = buildLoginRedirectUrl(
+      globalThis.location.pathname,
+      globalThis.location.search,
+    );
     return (
       <div
         className="flex items-center justify-center min-h-screen p-4"
