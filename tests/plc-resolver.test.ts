@@ -56,6 +56,68 @@ Deno.test("resolveDid - returns null for non-DID input", async () => {
   assertEquals(result, null);
 });
 
+Deno.test("resolveDid - resolves did:web via well-known did.json", async () => {
+  const doc = JSON.stringify({
+    id: "did:web:example.com",
+    alsoKnownAs: ["at://alice.example.com"],
+    service: [
+      {
+        id: "#atproto_pds",
+        type: "AtprotoPersonalDataServer",
+        serviceEndpoint: "https://pds.example.com",
+      },
+    ],
+  });
+  const mockFetcher = createMockFetcher(
+    new Map([
+      [
+        "example.com/.well-known/did.json",
+        new Response(doc, {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ],
+    ]),
+  );
+
+  const result = await resolveDidWithFetcher(
+    "did:web:example.com",
+    mockFetcher,
+  );
+
+  assertEquals(result?.did, "did:web:example.com");
+  assertEquals(result?.pdsUrl, "https://pds.example.com");
+  assertEquals(result?.handle, "alice.example.com");
+});
+
+Deno.test("resolveDid - resolves did:web with path segments", async () => {
+  const doc = JSON.stringify({
+    id: "did:web:example.com:users:alice",
+    alsoKnownAs: ["at://alice.example.com"],
+    service: [
+      {
+        id: "#atproto_pds",
+        serviceEndpoint: "https://pds.example.com",
+      },
+    ],
+  });
+  const mockFetcher = createMockFetcher(
+    new Map([
+      [
+        "example.com/users/alice/did.json",
+        new Response(doc, { status: 200 }),
+      ],
+    ]),
+  );
+
+  const result = await resolveDidWithFetcher(
+    "did:web:example.com:users:alice",
+    mockFetcher,
+  );
+
+  assertEquals(result?.pdsUrl, "https://pds.example.com");
+});
+
 Deno.test("resolveDid - returns null for DID without PDS service", async () => {
   const mockFetcher = createMockFetcher(
     new Map([

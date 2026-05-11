@@ -4,6 +4,27 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.7] - 2026-05-11
+
+### Fixed
+
+- `lib/plc-resolver.ts` now resolves `did:web:*` identifiers via the canonical
+  `did.json` endpoint at the DID's domain (per the did:web spec) instead of
+  blanket-querying plc.directory. Affects every caller of `resolveDid` —
+  including `routes/api/share.ts` and `routes/share/rss.ts` (public share
+  endpoints and RSS feeds for did:web users previously returned 404 because PLC
+  has no entry for them) and the mirror admin scripts. did:plc resolution is
+  unchanged.
+
+### Added
+
+- `scripts/audit-mirror.ts` — compares mirror-vs-PDS counts for every row in
+  `tracked_dids` and flags divergent users for recovery.
+- `scripts/audit-untracked.ts` — same shape but for DIDs in `seen_dids` that
+  were never enrolled (the pre-auto-enroll cohort). Handles did:plc and did:web.
+  Used to surface the 72 untracked users with PDS data that this release
+  backfilled via TAP `/repos/add`.
+
 ## [0.24.6] - 2026-05-11
 
 ### Fixed
