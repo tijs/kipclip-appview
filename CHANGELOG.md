@@ -4,6 +4,48 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.6] - 2026-05-11
+
+### Fixed
+
+- Auto-enrollment hardening — review follow-ups to v0.24.5. `tapEnroll` and the
+  PDS `listRecords` calls now run with `AbortSignal.timeout` (10s for TAP, 20s
+  per page for PDS) so a hung TAP or slow-loris PDS can no longer wedge
+  enrollment indefinitely with the DID stuck in the `enrollingDids` set.
+- Per-DID 30s cooldown on enrollment failure prevents Sentry storm + retry storm
+  during a sustained TAP/PDS outage: each DID retries at most every 30s rather
+  than once per page-load.
+- Sentry payload now tags the failing stage (`tapEnroll` / `backfill` /
+  `trackedDids`) so operators can target recovery — TAP-enrolled-but-backfill-
+  failed is recoverable via the next request after cooldown (tapEnroll is
+  idempotent and listRecords re-upserts any orphan rows the webhook may have
+  written in the meantime).
+- `enrollingDids` set now cleared in `finally` instead of only on the error
+  path, so a manual `tracked_dids` delete (e.g. forced re-enrollment) doesn't
+  silently no-op the next request for that DID.
+- `scripts/recover-mirror.ts` count log was printing `undefined` for every count
+  because `lib/db.ts` strips column names via `Object.values(row)`. Destructure
+  positionally so the operator actually sees what was recovered.
+- `scripts/recover-mirror.ts` now resolves the DID's PDS via `plc.directory`
+  before backfill and refuses to run on a mismatch (override with `--force`).
+  Catches the operator-typo case where the wrong PDS silently returns
+  `{records: []}` and the script reports `bookmarks=0` against an unrelated
+  host.
+
+### Changed
+
+- `lib/auto-enroll.ts` reads `TAP_WEBHOOK_SECRET` at call time rather than
+  module load so tests can toggle the value without re-importing. Local constant
+  renamed from misleading `TAP_ADMIN_PASSWORD` to a `tapWebhookSecret()` helper.
+
+### Added
+
+- `tests/auto-enroll.test.ts` — regression coverage for the silent-401 bug fixed
+  in v0.24.5. Pins: outbound Basic auth derives from `TAP_WEBHOOK_SECRET`;
+  non-2xx from TAP prevents the `tracked_dids` write; happy path enrolls +
+  backfills + stamps complete; TAP-success-then-PDS-fail leaves `tracked_dids`
+  empty so the next request retries from the top.
+
 ## [0.24.5] - 2026-05-11
 
 ### Fixed

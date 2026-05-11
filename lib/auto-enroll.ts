@@ -19,18 +19,41 @@ import { captureMessage } from "./sentry.ts";
 
 const TAP_CONTROL_URL = Deno.env.get("TAP_CONTROL_URL") ??
   "http://127.0.0.1:2480";
-// TAP reuses its admin password as the outbound webhook auth secret, so
-// kipclip and TAP share a single secret. kipclip exposes it under
-// TAP_WEBHOOK_SECRET (see worker/webhook.ts) — use the same name for
-// outbound /repos/add calls instead of reading a separate, never-set
-// TAP_ADMIN_PASSWORD env that silently produced 401s and dropped users
-// from TAP's tracked set.
-const TAP_ADMIN_PASSWORD = Deno.env.get("TAP_WEBHOOK_SECRET");
+// kipclip and TAP share a single secret. kipclip exposes it as
+// TAP_WEBHOOK_SECRET (see worker/webhook.ts). Read the same env var for
+// outbound /repos/add — reading a separate, never-set TAP_ADMIN_PASSWORD
+// silently produced 401s and dropped users from TAP's tracked set.
+// Read at call time, not module load, so tests can toggle the value
+// without re-importing.
+function tapWebhookSecret(): string | undefined {
+  return Deno.env.get("TAP_WEBHOOK_SECRET");
+}
+
+// Per-fetch timeouts. TAP /repos/add is a single in-process call to a local
+// process on the box (low ms in practice). listRecords hits the user's PDS,
+// which can be anywhere on the internet — give it a more generous budget but
+// still bounded so a slow-loris PDS can't wedge enrollment indefinitely.
+const TAP_FETCH_TIMEOUT_MS = 10_000;
+const PDS_FETCH_TIMEOUT_MS = 20_000;
+
+// Per-DID cooldown so a sustained TAP/PDS outage doesn't produce one Sentry
+// event per page-load per user. After a failure, skip silently for the
+// cooldown window — the user's next request beyond the window retries.
+const RETRY_COOLDOWN_MS = 30_000;
+const lastFailureAt = new Map<string, number>();
 
 // Prevents concurrent enrollment attempts for the same DID within one
 // server process lifetime. A second request during the background run is a
 // no-op; the DID gets tracked before the next login cycle completes.
 const enrollingDids = new Set<string>();
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  return await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+}
 
 async function listAll(
   pdsUrl: string,
@@ -45,7 +68,11 @@ async function listAll(
     url.searchParams.set("collection", collection);
     url.searchParams.set("limit", "100");
     if (cursor) url.searchParams.set("cursor", cursor);
-    const res = await fetch(url.toString());
+    const res = await fetchWithTimeout(
+      url.toString(),
+      { method: "GET" },
+      PDS_FETCH_TIMEOUT_MS,
+    );
     if (!res.ok) {
       throw new Error(`listRecords ${collection}: ${res.status}`);
     }
@@ -70,18 +97,25 @@ function arr(val: unknown): string[] {
   return val.filter((x): x is string => typeof x === "string");
 }
 
-async function tapEnroll(did: string): Promise<void> {
+// TAP /repos/add is verified idempotent (200 on duplicate). Retrying after
+// a successful enroll but failed downstream step is safe.
+export async function tapEnroll(did: string): Promise<void> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
-  if (TAP_ADMIN_PASSWORD) {
-    headers.Authorization = "Basic " + btoa(`admin:${TAP_ADMIN_PASSWORD}`);
+  const secret = tapWebhookSecret();
+  if (secret) {
+    headers.Authorization = "Basic " + btoa(`admin:${secret}`);
   }
-  const r = await fetch(`${TAP_CONTROL_URL}/repos/add`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ dids: [did] }),
-  });
+  const r = await fetchWithTimeout(
+    `${TAP_CONTROL_URL}/repos/add`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ dids: [did] }),
+    },
+    TAP_FETCH_TIMEOUT_MS,
+  );
   if (!r.ok) throw new Error(`TAP /repos/add returned ${r.status}`);
 }
 
@@ -156,49 +190,97 @@ export async function runBackfill(did: string, pdsUrl: string): Promise<void> {
 }
 
 /**
+ * Run a single enrollment cycle: TAP enroll → backfill → mark tracked.
+ * `stage` tags the captured error so operators can tell which step failed.
+ * TAP-enrolled-but-backfill-failed is a recoverable state — TAP relays
+ * live events for the DID; the next call beyond the cooldown retries from
+ * tapEnroll (idempotent) and listRecords re-upserts any orphan rows the
+ * webhook wrote in the meantime (upserts are ON CONFLICT idempotent too).
+ */
+async function runEnrollment(did: string, pdsUrl: string): Promise<void> {
+  let stage: "tapEnroll" | "backfill" | "trackedDids" = "tapEnroll";
+  try {
+    console.log(`[auto-enroll] starting for ${did}`);
+    await tapEnroll(did);
+    stage = "backfill";
+    await runBackfill(did, pdsUrl);
+    stage = "trackedDids";
+    const now = Date.now();
+    await db.execute({
+      sql: `
+        INSERT INTO tracked_dids
+          (did, pds_url, added_at, backfill_started_at, backfill_complete_at, last_seq, last_event_at)
+        VALUES (?, ?, ?, ?, ?, NULL, NULL)
+        ON CONFLICT(did) DO UPDATE SET
+          pds_url = COALESCE(tracked_dids.pds_url, excluded.pds_url),
+          backfill_started_at = COALESCE(tracked_dids.backfill_started_at, excluded.backfill_started_at),
+          backfill_complete_at = COALESCE(tracked_dids.backfill_complete_at, excluded.backfill_complete_at)
+      `,
+      args: [did, pdsUrl, now, now, now],
+    });
+    lastFailureAt.delete(did);
+    console.log(`[auto-enroll] complete for ${did}`);
+  } catch (err) {
+    lastFailureAt.set(did, Date.now());
+    captureMessage("auto-enroll failed", "error", {
+      did,
+      stage,
+      error: String(err),
+    });
+    console.error(`[auto-enroll] failed for ${did} at ${stage}:`, err);
+    throw err;
+  }
+}
+
+/**
+ * Internal: kick off enrollment and clean up Set state. Returns the
+ * enrollment promise so tests can await stable state. Production callers
+ * use `autoEnrollIfNeeded` which discards the promise.
+ */
+function startEnrollment(did: string, pdsUrl: string): Promise<void> {
+  enrollingDids.add(did);
+  return runEnrollment(did, pdsUrl)
+    .catch(() => {/* already captured in runEnrollment */})
+    .finally(() => {
+      enrollingDids.delete(did);
+    });
+}
+
+/**
  * Fire-and-forget. Call from request handlers with no await.
- * Safe to call multiple times — the enrollingDids Set prevents duplicates.
+ * Safe to call multiple times — the enrollingDids Set prevents duplicates
+ * and a short per-DID cooldown prevents retry storms under TAP/PDS outage.
  */
 export function autoEnrollIfNeeded(did: string, pdsUrl: string): void {
   if (getMirrorMode() !== "read") return;
   if (enrollingDids.has(did)) return;
-  enrollingDids.add(did);
+  const lastFail = lastFailureAt.get(did);
+  if (lastFail && Date.now() - lastFail < RETRY_COOLDOWN_MS) return;
+  void startEnrollment(did, pdsUrl);
+}
 
-  (async () => {
-    try {
-      console.log(`[auto-enroll] starting for ${did}`);
+/** Test-only — await the in-flight enrollment for a DID, if any. */
+export function _runEnrollmentForTest(
+  did: string,
+  pdsUrl: string,
+): Promise<void> {
+  if (enrollingDids.has(did)) {
+    // Already started by a prior autoEnrollIfNeeded — no easy hook, just
+    // poll until the Set clears. Tests use this only when they call
+    // autoEnrollIfNeeded immediately before; a short poll is acceptable.
+    return new Promise((resolve) => {
+      const tick = () => {
+        if (!enrollingDids.has(did)) resolve();
+        else setTimeout(tick, 5);
+      };
+      tick();
+    });
+  }
+  return startEnrollment(did, pdsUrl);
+}
 
-      // TAP enrollment must succeed before backfill so live firehose
-      // events flow once historical records are in the mirror. A silent
-      // 401 here previously caused tracked_dids rows to be written with
-      // backfill_complete_at set while TAP never actually relayed the
-      // user's commits — the mirror then diverged from PDS forever.
-      await tapEnroll(did);
-
-      await runBackfill(did, pdsUrl);
-
-      const now = Date.now();
-      await db.execute({
-        sql: `
-          INSERT INTO tracked_dids
-            (did, pds_url, added_at, backfill_started_at, backfill_complete_at, last_seq, last_event_at)
-          VALUES (?, ?, ?, ?, ?, NULL, NULL)
-          ON CONFLICT(did) DO UPDATE SET
-            pds_url = COALESCE(tracked_dids.pds_url, excluded.pds_url),
-            backfill_started_at = COALESCE(tracked_dids.backfill_started_at, excluded.backfill_started_at),
-            backfill_complete_at = COALESCE(tracked_dids.backfill_complete_at, excluded.backfill_complete_at)
-        `,
-        args: [did, pdsUrl, now, now, now],
-      });
-
-      console.log(`[auto-enroll] complete for ${did}`);
-    } catch (err) {
-      enrollingDids.delete(did);
-      captureMessage("auto-enroll failed", "error", {
-        did,
-        error: String(err),
-      });
-      console.error(`[auto-enroll] failed for ${did}:`, err);
-    }
-  })();
+/** Test-only — clear in-process state between test cases. */
+export function _resetAutoEnrollState(): void {
+  enrollingDids.clear();
+  lastFailureAt.clear();
 }

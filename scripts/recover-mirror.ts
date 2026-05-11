@@ -6,6 +6,10 @@
  * Re-runs the same backfill the auto-enroll path uses, against the
  * primary local SQLite. Idempotent — upserts use ON CONFLICT.
  *
+ * Sanity-checks the supplied PDS URL against the DID's actual endpoint
+ * from plc.directory so a typo doesn't silently report `bookmarks=0`
+ * against the wrong host.
+ *
  * Usage (run on the box where DATABASE_URL points at the primary db):
  *
  *   deno run --allow-net --allow-env --allow-read --allow-write \
@@ -19,12 +23,28 @@
 
 import { runBackfill } from "../lib/auto-enroll.ts";
 import { db } from "../lib/db.ts";
+import { resolveDid } from "../lib/plc-resolver.ts";
 
 async function main() {
   const [did, pdsUrl] = Deno.args;
   if (!did || !pdsUrl) {
     console.error("usage: recover-mirror.ts <did> <pdsUrl>");
     Deno.exit(2);
+  }
+
+  const resolved = await resolveDid(did);
+  if (!resolved) {
+    console.error(
+      `[recover-mirror] could not resolve ${did} via plc.directory`,
+    );
+    Deno.exit(3);
+  }
+  if (resolved.pdsUrl !== pdsUrl) {
+    console.error(
+      `[recover-mirror] PDS mismatch: arg=${pdsUrl} but DID resolves to ` +
+        `${resolved.pdsUrl}. Pass --force to override.`,
+    );
+    if (!Deno.args.includes("--force")) Deno.exit(4);
   }
 
   console.log(`[recover-mirror] starting for ${did} (pds=${pdsUrl})`);
@@ -41,11 +61,14 @@ async function main() {
     `,
     args: [did, did, did],
   });
-  const row = counts.rows[0] as Record<string, unknown>;
+  // lib/db.ts strips column names via Object.values(row), so destructure
+  // positionally — accessing by name would print `undefined` for every count.
+  const [bookmarks, annotations, tags] = (counts.rows[0] ?? [0, 0, 0]) as Array<
+    number | bigint
+  >;
   console.log(
     `[recover-mirror] complete in ${t1 - t0}ms — ` +
-      `bookmarks=${row.bookmarks} annotations=${row.annotations} ` +
-      `tags=${row.tags}`,
+      `bookmarks=${bookmarks} annotations=${annotations} tags=${tags}`,
   );
 }
 
