@@ -4,16 +4,40 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.5] - 2026-05-11
+
+### Fixed
+
+- Auto-enrollment now sends the TAP admin secret on `POST /repos/add` so new
+  users actually get added to TAP's tracked set. `lib/auto-enroll.ts` previously
+  read `TAP_ADMIN_PASSWORD`, which the kipclip service never exports — the
+  outbound call went unauthenticated, TAP returned 401, and the error was
+  swallowed as "non-fatal." `tracked_dids` got marked backfill-complete while
+  TAP silently dropped the user's live firehose events. Any PDS write made after
+  a user's first login (imports from external tools, direct PDS writes) never
+  reached the mirror, so the appview only ever served the first page from PDS
+  fallback (capped at 100 records). Fix: read `TAP_WEBHOOK_SECRET` (the same
+  secret kipclip already uses for inbound webhook auth, by design shared with
+  TAP) and treat a failed enroll as fatal so the next request retries instead of
+  locking the user into a half-tracked state.
+
+### Added
+
+- `scripts/recover-mirror.ts` — one-shot admin recovery: re-runs the PDS-to-
+  mirror backfill for a given DID. Run on the box when an existing tracked DID's
+  mirror diverged from PDS (e.g. records imported after first login while the
+  TAP enrollment bug was live).
+
 ## [0.24.4] - 2026-05-10
 
 ### Fixed
 
 - iOS standalone PWA login: OAuth round trip now uses top-level navigation
   instead of `window.open()`. iOS escapes popups to Safari, which has its own
-  cookie jar — the `sid` cookie set by the OAuth callback never reached the
-  PWA, so users landed back at the homepage signed out. Top-level nav keeps
-  the round trip inside the PWA webview. Android Chrome PWA still uses the
-  popup flow (Chrome shares its cookie jar with the browser).
+  cookie jar — the `sid` cookie set by the OAuth callback never reached the PWA,
+  so users landed back at the homepage signed out. Top-level nav keeps the round
+  trip inside the PWA webview. Android Chrome PWA still uses the popup flow
+  (Chrome shares its cookie jar with the browser).
 - Standalone PWA users at `/` now see the login form instead of the marketing
   homepage when no session is present. Previously a failed/missing session
   rendered `<Home />`, making post-OAuth reload look like "logged out on the

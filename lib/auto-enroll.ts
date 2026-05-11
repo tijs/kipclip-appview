@@ -19,7 +19,13 @@ import { captureMessage } from "./sentry.ts";
 
 const TAP_CONTROL_URL = Deno.env.get("TAP_CONTROL_URL") ??
   "http://127.0.0.1:2480";
-const TAP_ADMIN_PASSWORD = Deno.env.get("TAP_ADMIN_PASSWORD");
+// TAP reuses its admin password as the outbound webhook auth secret, so
+// kipclip and TAP share a single secret. kipclip exposes it under
+// TAP_WEBHOOK_SECRET (see worker/webhook.ts) — use the same name for
+// outbound /repos/add calls instead of reading a separate, never-set
+// TAP_ADMIN_PASSWORD env that silently produced 401s and dropped users
+// from TAP's tracked set.
+const TAP_ADMIN_PASSWORD = Deno.env.get("TAP_WEBHOOK_SECRET");
 
 // Prevents concurrent enrollment attempts for the same DID within one
 // server process lifetime. A second request during the background run is a
@@ -79,7 +85,7 @@ async function tapEnroll(did: string): Promise<void> {
   if (!r.ok) throw new Error(`TAP /repos/add returned ${r.status}`);
 }
 
-async function runBackfill(did: string, pdsUrl: string): Promise<void> {
+export async function runBackfill(did: string, pdsUrl: string): Promise<void> {
   const [bookmarks, kipclipAnnotations, legacyAnnotations, tags, prefs] =
     await Promise.all([
       listAll(pdsUrl, did, "community.lexicon.bookmarks.bookmark"),
@@ -162,9 +168,12 @@ export function autoEnrollIfNeeded(did: string, pdsUrl: string): void {
     try {
       console.log(`[auto-enroll] starting for ${did}`);
 
-      await tapEnroll(did).catch((err) =>
-        console.warn(`[auto-enroll] TAP enroll failed (non-fatal): ${err}`)
-      );
+      // TAP enrollment must succeed before backfill so live firehose
+      // events flow once historical records are in the mirror. A silent
+      // 401 here previously caused tracked_dids rows to be written with
+      // backfill_complete_at set while TAP never actually relayed the
+      // user's commits — the mirror then diverged from PDS forever.
+      await tapEnroll(did);
 
       await runBackfill(did, pdsUrl);
 
