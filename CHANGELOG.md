@@ -4,6 +4,16 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.10] - 2026-05-16
+
+### Fixed
+
+- `kipclip-drift-alert.service` now runs with `--allow-sys --allow-ffi` so
+  libsql's native loader (which calls `os.cpus()` to detect glibc) doesn't abort
+  with `NotCapable: Requires sys access to "cpus"`. Caught by the smoke-test on
+  first install; v0.24.9's timer wouldn't have produced any alerts until this
+  was fixed.
+
 ## [0.24.9] - 2026-05-16
 
 ### Added
