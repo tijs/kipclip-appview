@@ -15,6 +15,7 @@
  */
 
 import { db } from "./db.ts";
+import { resolveDid } from "./plc-resolver.ts";
 
 export interface DriftRow {
   did: string;
@@ -22,6 +23,11 @@ export interface DriftRow {
   mirror: number;
   pds: number | null;
   pdsError: string | null;
+  /** Set when the stored pds_url was stale and the audit re-resolved
+   * the current PDS via PLC. The new URL is persisted to
+   * `tracked_dids.pds_url` so subsequent audits + backfills hit the
+   * right host. */
+  pdsMigrated?: { from: string; to: string };
 }
 
 export interface DriftAuditResult {
@@ -84,17 +90,49 @@ export async function auditTrackedDrift(
 
     let pds: number | null = null;
     let pdsError: string | null = null;
+    let resolvedPdsUrl: string | null = pdsUrl;
+    let migrated: { from: string; to: string } | undefined;
+
     if (pdsUrl) {
       try {
         pds = await countPdsBookmarks(pdsUrl, did);
-      } catch (err) {
-        pdsError = String(err);
+      } catch (firstErr) {
+        // PDS unreachable or rejected the request. The most common
+        // recoverable cause is that the user migrated their PDS after
+        // first enrollment, leaving a stale URL in tracked_dids. Try
+        // resolving the current PDS via PLC and retry once. If the
+        // resolved URL differs, persist it so subsequent audits +
+        // backfills hit the right host.
+        try {
+          const resolved = await resolveDid(did);
+          if (resolved && resolved.pdsUrl !== pdsUrl) {
+            pds = await countPdsBookmarks(resolved.pdsUrl, did);
+            migrated = { from: pdsUrl, to: resolved.pdsUrl };
+            resolvedPdsUrl = resolved.pdsUrl;
+            await db.execute({
+              sql: "UPDATE tracked_dids SET pds_url = ? WHERE did = ?",
+              args: [resolved.pdsUrl, did],
+            });
+          } else {
+            // No migration detected — surface the original error.
+            pdsError = String(firstErr);
+          }
+        } catch (retryErr) {
+          pdsError = `${firstErr}; retry: ${retryErr}`;
+        }
       }
     } else {
       pdsError = "no pds_url";
     }
 
-    const row: DriftRow = { did, pdsUrl, mirror, pds, pdsError };
+    const row: DriftRow = {
+      did,
+      pdsUrl: resolvedPdsUrl,
+      mirror,
+      pds,
+      pdsError,
+      pdsMigrated: migrated,
+    };
     rows.push(row);
     i++;
     onProgress?.(row, i, total);

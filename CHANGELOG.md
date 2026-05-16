@@ -4,6 +4,28 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.11] - 2026-05-16
+
+### Fixed
+
+- `tracked_dids.pds_url` now refreshes automatically when AT Protocol users
+  migrate their repo between PDSes. Previously the column was set at enrollment
+  time and never updated; stale rows broke drift audits and any recovery path
+  that hit the PDS by URL. Now patched in three layers so active users self-heal
+  and inactive-user drift is caught on the daily audit:
+  - `lib/session.ts` + `lib/tracked-pds-refresh.ts` — every authenticated
+    request opportunistically reconciles `tracked_dids.pds_url` with
+    `oauthSession.pdsUrl`. Fire-and-forget UPDATE keyed by DID, cached so only
+    the first request per (process, DID) issues a write.
+  - `lib/auto-enroll.ts` — re-enrollment upsert now writes
+    `pds_url = excluded.pds_url` unconditionally instead of preserving the
+    stored value with COALESCE, so a re-enrolled user always lands on the
+    current PDS.
+  - `lib/drift-audit.ts` — on a PDS fetch error, the audit re-resolves the DID
+    via PLC and retries once. When the resolved URL differs, the audit persists
+    it to `tracked_dids.pds_url` and reports the migration in
+    `scripts/drift-alert.ts` output.
+
 ## [0.24.10] - 2026-05-16
 
 ### Fixed

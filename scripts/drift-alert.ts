@@ -59,11 +59,23 @@ async function main() {
   }
 
   const { rows, recoverable, ahead, errors } = result;
+  const migrated = rows.filter((r) => r.pdsMigrated);
 
   console.log(
     `[drift-alert] tracked=${rows.length} recoverable=${recoverable.length} ` +
-      `ahead=${ahead.length} errors=${errors.length}`,
+      `ahead=${ahead.length} errors=${errors.length} migrated=${migrated.length}`,
   );
+
+  if (migrated.length > 0) {
+    console.log(
+      `[drift-alert] PDS migrations detected (tracked_dids updated):`,
+    );
+    for (const r of migrated) {
+      console.log(
+        `  ${r.did}  ${r.pdsMigrated!.from} -> ${r.pdsMigrated!.to}`,
+      );
+    }
+  }
 
   if (recoverable.length > 0) {
     const sample = summarize(recoverable);

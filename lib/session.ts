@@ -7,6 +7,7 @@ import type { SessionInterface } from "@tijs/atproto-oauth";
 import { SessionManager } from "@tijs/atproto-sessions";
 import { captureError } from "./sentry.ts";
 import { getOAuth } from "./oauth-config.ts";
+import { refreshTrackedPdsUrl } from "./tracked-pds-refresh.ts";
 
 // Test session provider override (set via setTestSessionProvider)
 let testSessionProvider:
@@ -173,6 +174,15 @@ export async function getSessionFromRequest(
           message: "Your session has expired, please sign in again",
         },
       };
+    }
+
+    // Opportunistic PDS-migration refresh. If the user moved repos
+    // since enrollment, tracked_dids.pds_url will be stale; this keeps
+    // it in sync so audit + backfill paths hit the right host.
+    // Fire-and-forget, cached to one DB write per migrated DID per
+    // process lifetime.
+    if (oauthSession.pdsUrl) {
+      refreshTrackedPdsUrl(oauthSession.did, oauthSession.pdsUrl);
     }
 
     return {

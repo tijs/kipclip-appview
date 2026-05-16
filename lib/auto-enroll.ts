@@ -212,7 +212,7 @@ async function runEnrollment(did: string, pdsUrl: string): Promise<void> {
           (did, pds_url, added_at, backfill_started_at, backfill_complete_at, last_seq, last_event_at)
         VALUES (?, ?, ?, ?, ?, NULL, NULL)
         ON CONFLICT(did) DO UPDATE SET
-          pds_url = COALESCE(tracked_dids.pds_url, excluded.pds_url),
+          pds_url = excluded.pds_url,
           backfill_started_at = COALESCE(tracked_dids.backfill_started_at, excluded.backfill_started_at),
           backfill_complete_at = COALESCE(tracked_dids.backfill_complete_at, excluded.backfill_complete_at)
       `,
