@@ -24,10 +24,12 @@ if (SENTRY_DSN) {
     tracesSampleRate: 0,
     beforeSend(event, hint) {
       const error = hint?.originalException;
-      // Skip expected HTTP errors (404, 405) — mostly bots/scanners
+      // Skip client-side HTTP errors (4xx). Fresh's HttpError has an empty
+      // message string, so filter on the numeric `.status` instead. These are
+      // overwhelmingly bots/scanners hitting bogus paths.
       if (error instanceof Error && error.name === "HttpError") {
-        const msg = error.message;
-        if (msg === "Not Found" || msg === "Method Not Allowed") {
+        const status = (error as { status?: number }).status;
+        if (typeof status === "number" && status >= 400 && status < 500) {
           return null;
         }
       }

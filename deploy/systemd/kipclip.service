@@ -8,7 +8,7 @@ User=kipclip
 Group=kipclip
 WorkingDirectory=/var/lib/kipclip/current
 EnvironmentFile=/etc/kipclip/env
-ExecStart=/opt/deno/bin/deno serve -A --port 8000 _fresh/server.js
+ExecStart=/opt/deno/bin/deno serve -A --host 127.0.0.1 --port 8000 _fresh/server.js
 Restart=always
 RestartSec=2s
 
