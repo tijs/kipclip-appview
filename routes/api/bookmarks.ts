@@ -35,7 +35,12 @@ import { getUserPreferences } from "../../lib/preferences.ts";
 import { sendToInstapaperAsync } from "../../lib/instapaper.ts";
 import { shouldReadFromMirror } from "../../lib/mirror-config.ts";
 import { listAllBookmarks } from "../../mirror/queries.ts";
-import { upsertTag } from "../../mirror/upserts.ts";
+import {
+  upsertAnnotation,
+  upsertBookmark,
+  upsertTag,
+} from "../../mirror/upserts.ts";
+import { autoEnrollIfNeeded } from "../../lib/auto-enroll.ts";
 import { captureMessage } from "../../lib/sentry.ts";
 import { invalidateCachedTags } from "../../lib/tag-cache.ts";
 import type {
@@ -165,6 +170,13 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         return createAuthErrorResponse(error);
       }
 
+      // Auto-enroll on write so users who land via /save (skipping
+      // /api/initial-data) still get tracked in TAP + mirrored. Without
+      // this, bookmarks created by an untracked DID live on the PDS but
+      // never reach the mirror, and disappear from the list on refresh
+      // once the mirror gate opens. See: tangled.org/tijs.org/kipclip-appview/issues/1
+      autoEnrollIfNeeded(oauthSession.did, oauthSession.pdsUrl ?? "");
+
       const body: AddBookmarkRequest = await ctx.req.json();
       if (!body.url) {
         return Response.json({ error: "URL is required" }, { status: 400 });
@@ -233,7 +245,33 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
       const data = await response.json();
       const rkey = extractRkey(data.uri);
 
-      // Write annotation sidecar with same rkey (fire-and-forget on failure)
+      // Mirror-write bookmark immediately so the new row is visible on
+      // refresh even if TAP isn't yet tracking this DID (race between
+      // auto-enroll and the user's next request). Idempotent — TAP will
+      // re-upsert the same row when its webhook fires.
+      if (rkey) {
+        upsertBookmark({
+          uri: data.uri,
+          did: oauthSession.did,
+          rkey,
+          cid: data.cid,
+          subject: body.url,
+          createdAt,
+          tags: validatedTags,
+          enrichedTitle: metadata.title ?? null,
+          enrichedDescription: metadata.description ?? null,
+          enrichedFavicon: metadata.favicon ?? null,
+          enrichedImage: metadata.image ?? null,
+        }).catch((err) =>
+          captureMessage("bookmark mirror-write failed", "warning", {
+            op: "POST /api/bookmarks",
+            did: oauthSession.did,
+            error: String(err),
+          })
+        );
+      }
+
+      // Write annotation sidecar with same rkey, then mirror-upsert it.
       if (rkey) {
         const annotation: AnnotationRecord = {
           subject: data.uri,
@@ -243,9 +281,30 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
           image: metadata.image,
           createdAt,
         };
-        writeAnnotation(oauthSession, rkey, annotation).catch((err) =>
-          console.error("Failed to create annotation:", err)
-        );
+        writeAnnotation(oauthSession, rkey, annotation)
+          .then((result) => {
+            if (result.ok && result.uri && result.cid) {
+              return upsertAnnotation({
+                uri: result.uri,
+                did: oauthSession.did,
+                rkey,
+                cid: result.cid,
+                subject: data.uri,
+                title: annotation.title ?? null,
+                description: annotation.description ?? null,
+                favicon: annotation.favicon ?? null,
+                image: annotation.image ?? null,
+                note: annotation.note ?? null,
+              }).catch((err) =>
+                captureMessage("annotation mirror-write failed", "warning", {
+                  op: "POST /api/bookmarks",
+                  did: oauthSession.did,
+                  error: String(err),
+                })
+              );
+            }
+          })
+          .catch((err) => console.error("Failed to create annotation:", err));
       }
 
       const bookmark: EnrichedBookmark = {
@@ -424,8 +483,53 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
 
       const data = await putResult.json();
 
+      // Mirror-write bookmark + annotation so the edit is visible
+      // immediately on refresh without waiting for the TAP webhook
+      // round-trip. Idempotent — TAP will re-upsert the same row.
+      upsertBookmark({
+        uri: data.uri,
+        did: oauthSession.did,
+        rkey,
+        cid: data.cid,
+        subject,
+        createdAt: record.createdAt,
+        tags: record.tags,
+        enrichedTitle: title ?? null,
+        enrichedDescription: description ?? null,
+        enrichedFavicon: existing.favicon ?? null,
+        enrichedImage: existing.image ?? null,
+      }).catch((err) =>
+        captureMessage("bookmark mirror-write failed", "warning", {
+          op: "PATCH /api/bookmarks/:rkey",
+          did: oauthSession.did,
+          error: String(err),
+        })
+      );
+      if (
+        annotationWritten.ok && annotationWritten.uri && annotationWritten.cid
+      ) {
+        upsertAnnotation({
+          uri: annotationWritten.uri,
+          did: oauthSession.did,
+          rkey,
+          cid: annotationWritten.cid,
+          subject: bookmarkUri,
+          title: annotation.title ?? null,
+          description: annotation.description ?? null,
+          favicon: annotation.favicon ?? null,
+          image: annotation.image ?? null,
+          note: annotation.note ?? null,
+        }).catch((err) =>
+          captureMessage("annotation mirror-write failed", "warning", {
+            op: "PATCH /api/bookmarks/:rkey",
+            did: oauthSession.did,
+            error: String(err),
+          })
+        );
+      }
+
       // If annotation write failed (old scope), fall back to $enriched
-      if (!annotationWritten) {
+      if (!annotationWritten.ok) {
         console.warn("Annotation write failed, falling back to $enriched");
         const fallback = {
           ...record,
@@ -523,10 +627,34 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         createdAt: currentRecord.value.createdAt,
       };
 
-      const ok = await writeAnnotation(oauthSession, rkey, annotation);
+      const { ok: annotationOk, uri: annotationUri, cid: annotationCid } =
+        await writeAnnotation(oauthSession, rkey, annotation);
+
+      // Mirror-write annotation so re-enrich is visible immediately
+      // without waiting for the TAP webhook to round-trip.
+      if (annotationOk && annotationUri && annotationCid) {
+        upsertAnnotation({
+          uri: annotationUri,
+          did: oauthSession.did,
+          rkey,
+          cid: annotationCid,
+          subject: currentRecord.uri,
+          title: annotation.title ?? null,
+          description: annotation.description ?? null,
+          favicon: annotation.favicon ?? null,
+          image: annotation.image ?? null,
+          note: annotation.note ?? null,
+        }).catch((err) =>
+          captureMessage("annotation mirror-write failed", "warning", {
+            op: "POST /api/bookmarks/:rkey/enrich",
+            did: oauthSession.did,
+            error: String(err),
+          })
+        );
+      }
 
       // Fallback to $enriched on bookmark
-      if (!ok) {
+      if (!annotationOk) {
         const record = {
           ...currentRecord.value,
           $enriched: {

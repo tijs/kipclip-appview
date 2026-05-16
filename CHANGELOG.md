@@ -4,6 +4,26 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.8] - 2026-05-16
+
+### Fixed
+
+- New bookmarks no longer disappear from the list after refresh for users whose
+  DID was never tracked in TAP (the pre-auto-enroll cohort, or any user whose
+  initial `/repos/add` hit the silent-401 bug fixed in v0.24.5).
+  `POST /api/bookmarks` now upserts the new bookmark + annotation rows to the
+  local mirror immediately after the PDS write, so the read-from-mirror path
+  sees the record on the next refresh regardless of TAP state.
+  `PATCH /api/bookmarks/:rkey` and `POST /api/bookmarks/:rkey/enrich` got the
+  same mirror-write treatment so edits and re-enrichment land in the mirror
+  without waiting for the webhook round-trip. TAP webhook re-upserts remain
+  idempotent. Reported in
+  [tangled.org/tijs.org/kipclip-appview#1](https://tangled.org/tijs.org/kipclip-appview/issues/1).
+- `POST /api/bookmarks` also calls `autoEnrollIfNeeded` at the top of the
+  handler, so users who land via `/save` (and never hit `/api/initial-data`)
+  still get tracked in TAP + backfilled. Previously, only the initial-data
+  endpoint triggered auto-enrollment.
+
 ## [0.24.7] - 2026-05-11
 
 ### Fixed

@@ -59,15 +59,22 @@ export async function fetchAnnotationMap(
   }
 }
 
+export interface WriteAnnotationResult {
+  ok: boolean;
+  uri?: string;
+  cid?: string;
+}
+
 /**
  * Write an annotation sidecar record via putRecord (upsert).
- * Returns true on success, false on failure (e.g. missing scope).
+ * Returns ok=false on failure (e.g. missing scope). On success, returns
+ * uri+cid so callers can mirror-upsert without a follow-up getRecord.
  */
 export async function writeAnnotation(
   oauthSession: any,
   rkey: string,
   annotation: AnnotationRecord,
-): Promise<boolean> {
+): Promise<WriteAnnotationResult> {
   try {
     const response = await oauthSession.makeRequest(
       "POST",
@@ -82,8 +89,14 @@ export async function writeAnnotation(
         }),
       },
     );
-    return response.ok;
+    if (!response.ok) return { ok: false };
+    try {
+      const data = await response.json();
+      return { ok: true, uri: data.uri, cid: data.cid };
+    } catch {
+      return { ok: true };
+    }
   } catch {
-    return false;
+    return { ok: false };
   }
 }
