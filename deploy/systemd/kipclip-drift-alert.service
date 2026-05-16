@@ -9,7 +9,7 @@ User=kipclip
 Group=kipclip
 WorkingDirectory=/var/lib/kipclip/current
 EnvironmentFile=/etc/kipclip/env
-ExecStart=/opt/deno/bin/deno run --allow-net --allow-env --allow-read --allow-write scripts/drift-alert.ts --quiet
+ExecStart=/opt/deno/bin/deno run --allow-net --allow-env --allow-read --allow-write --allow-sys --allow-ffi scripts/drift-alert.ts --quiet
 
 # Hardening — script only reads tracked_dids + bookmarks and POSTs to PDS+Sentry.
 NoNewPrivileges=true
