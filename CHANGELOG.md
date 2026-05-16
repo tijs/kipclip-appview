@@ -4,6 +4,22 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.14] - 2026-05-16
+
+### Fixed
+
+- INP (Interaction to Next Paint) measurement in `frontend/perf.ts` was
+  reporting fake 20–40s outliers. The PerformanceObserver was collecting every
+  `event` entry above 16ms — including non-interactions (scrolls, pointermove)
+  and stale events recorded while the tab was backgrounded (paused-time
+  inflated `duration`). The collector now follows the spec algorithm: drop
+  entries with `interactionId === 0`, group remaining entries by
+  interactionId, take the max duration per interaction, and report the worst
+  interaction. Threshold raised from 16ms to 40ms to match the web-vitals
+  default. The first week of perf data showed an INP p95 of 1840ms — those
+  numbers were measurement artifact; expect the real INP p95 to drop sharply
+  after this ships.
+
 ## [0.24.13] - 2026-05-16
 
 ### Fixed
@@ -11,20 +27,20 @@ All notable changes to kipclip are documented in this file.
 - Sentry `beforeSend` filter now drops Fresh `HttpError` events by `.status`
   rather than `.message`. Fresh's `HttpError(status)` constructs with an empty
   message string, so the prior `msg === "Method Not Allowed"` check never
-  matched and 404/405 scanner hits were reaching Sentry as `error`-level
-  events. Now any 4xx HttpError is suppressed; 5xx still surface.
+  matched and 404/405 scanner hits were reaching Sentry as `error`-level events.
+  Now any 4xx HttpError is suppressed; 5xx still surface.
 
 ### Security
 
-- `deploy/systemd/kipclip.service` now binds the Deno server to
-  `127.0.0.1:8000` via `--host 127.0.0.1`. Previously it listened on
-  `0.0.0.0:8000`, which let anyone hitting the box's public IP bypass Caddy's
-  TLS, security headers, and CSP. Caddy already reverse-proxies to
-  `127.0.0.1:8000`, so no proxy config change is required. Operators must
-  `sudo cp` the updated unit into `/etc/systemd/system/`,
-  `sudo systemctl daemon-reload`, and `sudo systemctl restart kipclip` to
-  pick up the bind change (the release auto-update flow only manages the
-  `SENTRY_RELEASE` drop-in, not the main unit).
+- `deploy/systemd/kipclip.service` now binds the Deno server to `127.0.0.1:8000`
+  via `--host 127.0.0.1`. Previously it listened on `0.0.0.0:8000`, which let
+  anyone hitting the box's public IP bypass Caddy's TLS, security headers, and
+  CSP. Caddy already reverse-proxies to `127.0.0.1:8000`, so no proxy config
+  change is required. Operators must `sudo cp` the updated unit into
+  `/etc/systemd/system/`, `sudo systemctl daemon-reload`, and
+  `sudo systemctl restart kipclip` to pick up the bind change (the release
+  auto-update flow only manages the `SENTRY_RELEASE` drop-in, not the main
+  unit).
 
 ## [0.24.12] - 2026-05-16
 

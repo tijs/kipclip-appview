@@ -178,14 +178,35 @@ function initVitals(): void {
     }).observe({ type: "layout-shift", buffered: true });
   } catch { /* not supported */ }
 
-  // INP via event timing — track the worst event.
+  // INP via event timing. Spec algorithm:
+  //   1. Drop entries with interactionId === 0 (non-interactions like scroll,
+  //      pointermove, timer-fired events). The prior implementation included
+  //      these, which mixed in arbitrary main-thread stalls — including stale
+  //      events recorded while the tab was backgrounded (paused-time inflates
+  //      duration, producing fake 20–40s outliers).
+  //   2. Group entries by interactionId; an interaction's duration is the max
+  //      duration of its entries (a click can fire pointerdown + pointerup +
+  //      click, all sharing one interactionId).
+  //   3. Report the worst interaction. (web-vitals lib reports the 98th
+  //      percentile when ≥50 interactions have fired; max is a close-enough
+  //      approximation for our volume and avoids a dependency.)
+  const interactionMax = new Map<number, number>();
   try {
     new PerformanceObserver((list) => {
       for (const entry of list.getEntries()) {
-        const dur = (entry as any).duration ?? 0;
-        if (dur > (vitals.inp ?? 0)) vitals.inp = Math.round(dur);
+        const e = entry as PerformanceEventTiming & { interactionId?: number };
+        const id = e.interactionId ?? 0;
+        if (id === 0) continue;
+        const dur = e.duration ?? 0;
+        const prev = interactionMax.get(id) ?? 0;
+        if (dur > prev) interactionMax.set(id, dur);
       }
-    }).observe({ type: "event", buffered: true, durationThreshold: 16 } as any);
+      let worst = 0;
+      for (const d of interactionMax.values()) {
+        if (d > worst) worst = d;
+      }
+      vitals.inp = Math.round(worst);
+    }).observe({ type: "event", buffered: true, durationThreshold: 40 } as any);
   } catch { /* not supported */ }
 }
 
