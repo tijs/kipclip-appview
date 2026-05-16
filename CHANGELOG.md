@@ -4,6 +4,21 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.9] - 2026-05-16
+
+### Added
+
+- `scripts/drift-alert.ts` +
+  `deploy/systemd/kipclip-drift-alert.{service,timer}` — daily 05:00 UTC drift
+  detector. Audits every tracked DID's mirror vs PDS bookmark count; emits a
+  Sentry warning when any DID has PDS > mirror (recoverable drift — the
+  silent-401 / TAP-not-tracking pattern). Exit codes: 0 clean, 1 drift detected,
+  2 audit failed. `SuccessExitStatus=0 1` so drift signals via Sentry without
+  marking the systemd unit failed; audit failure (exit 2) is the only condition
+  that flags the unit.
+- `lib/drift-audit.ts` — shared audit core consumed by both `audit-mirror.ts`
+  (operator CLI) and `drift-alert.ts` (timer).
+
 ## [0.24.8] - 2026-05-16
 
 ### Fixed

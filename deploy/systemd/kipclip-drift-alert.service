@@ -1,0 +1,27 @@
+[Unit]
+Description=kipclip mirror-drift alert (audit tracked DIDs vs PDS, Sentry on diff)
+After=network-online.target kipclip.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=kipclip
+Group=kipclip
+WorkingDirectory=/var/lib/kipclip/current
+EnvironmentFile=/etc/kipclip/env
+ExecStart=/opt/deno/bin/deno run --allow-net --allow-env --allow-read --allow-write scripts/drift-alert.ts --quiet
+
+# Hardening — script only reads tracked_dids + bookmarks and POSTs to PDS+Sentry.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/kipclip
+
+# Drift-detected exit (1) is the expected signal path, not a service failure.
+# Audit-failed exit (2) is the only condition that should mark the unit failed
+# and trigger journald-level attention.
+SuccessExitStatus=0 1
+
+[Install]
+WantedBy=multi-user.target
