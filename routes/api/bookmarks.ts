@@ -85,15 +85,20 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
           const result: ListBookmarksResponse = { bookmarks };
           return setSessionCookie(Response.json(result), setCookieHeader);
         } catch (mirrorErr) {
-          captureMessage(
-            "mirror read fallback to PDS",
-            "warning",
-            {
-              did: oauthSession.did,
-              op: "GET /api/bookmarks",
-              error: String(mirrorErr),
-            },
-          );
+          if (
+            !(mirrorErr instanceof Error &&
+              mirrorErr.message === "mirror_empty_fallthrough")
+          ) {
+            captureMessage(
+              "mirror read fallback to PDS",
+              "warning",
+              {
+                did: oauthSession.did,
+                op: "GET /api/bookmarks",
+                error: String(mirrorErr),
+              },
+            );
+          }
           // Fall through to the PDS path below.
         }
       }

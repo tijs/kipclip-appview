@@ -187,17 +187,22 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
             ),
           );
         } catch (mirrorErr) {
-          captureMessage(
-            "mirror read fallback to PDS",
-            "warning",
-            {
-              did: oauthSession.did,
-              op: isFirstPage
-                ? "initial-data first-page"
-                : "initial-data next-page",
-              error: String(mirrorErr),
-            },
-          );
+          if (
+            !(mirrorErr instanceof Error &&
+              mirrorErr.message === "mirror_empty_fallthrough")
+          ) {
+            captureMessage(
+              "mirror read fallback to PDS",
+              "warning",
+              {
+                did: oauthSession.did,
+                op: isFirstPage
+                  ? "initial-data first-page"
+                  : "initial-data next-page",
+                error: String(mirrorErr),
+              },
+            );
+          }
           // Fall through to the PDS path below.
         }
       }

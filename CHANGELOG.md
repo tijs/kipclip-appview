@@ -4,6 +4,17 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.12] - 2026-05-16
+
+### Fixed
+
+- Silence noisy Sentry warnings on `mirror read fallback to PDS` for users with
+  legitimately empty libraries. `routes/api/initial-data.ts` and
+  `routes/api/bookmarks.ts` now match the existing `routes/api/tags.ts` guard:
+  when the mirror branch throws `mirror_empty_fallthrough` (an expected
+  control-flow exception used by the 0-rows safeguard), skip the `warning`
+  capture. Real DB errors still warn.
+
 ## [0.24.11] - 2026-05-16
 
 ### Fixed
