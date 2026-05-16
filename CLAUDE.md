@@ -148,8 +148,9 @@ Three weekly systemd timers keep the box current without manual intervention:
 - `unattended-upgrades` — Debian security packages only (default scope). Runs
   daily.
 
-Plus journald is capped at 1G (`SystemMaxUse=1G`, `MaxFileSec=1week`) so a
-runaway log loop cannot fill `/var/log`.
+Plus journald is capped at 1G (`SystemMaxUse=1G`, `MaxFileSec=1week`,
+`MaxRetentionSec=30day`) so a runaway log loop cannot fill `/var/log` and old
+entries are time-purged on top of the size cap.
 
 ### Environment variables
 

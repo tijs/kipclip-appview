@@ -125,7 +125,8 @@ documented in `deploy/release/README.md`.
 
 Everything goes to systemd journal — there are no separate log files to rotate.
 Journal is capped at 1G via `/etc/systemd/journald.conf.d/kipclip.conf`
-(`SystemMaxUse=1G`, `SystemKeepFree=2G`, `MaxFileSec=1week`).
+(`SystemMaxUse=1G`, `SystemKeepFree=2G`, `MaxFileSec=1week`,
+`MaxRetentionSec=30day`).
 
 ```bash
 sudo journalctl -u kipclip -f          # app logs
