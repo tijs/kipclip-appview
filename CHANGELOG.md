@@ -4,6 +4,31 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.15] - 2026-05-17
+
+### Changed
+
+- Drop dead exports and break a real import cycle, surfaced by a fallow audit:
+  removed unused `setUser`/`clearUser` (`lib/sentry.ts`), `requireAuth`
+  (`lib/route-utils.ts`), `_clearTagCache` (`lib/tag-cache.ts` +
+  `routes/api/tags.ts` re-export), a dead `getClearSessionCookie` re-export, a
+  second batch of unused test-only cache reset helpers
+  (`_resetTestAutoSupporters`, `_resetMentionsCache`, `_resetReviewsCache`,
+  `_resetStatsCache`, `_resetSupportersCache`, `_resetTrackedPdsCache`),
+  `getMigrationStatus`, `countSeenDids`, `countActiveSeenDids`, dangling
+  `setMockSessionProvider`/`getMockSessionProvider` test helpers, and unused
+  `PreferencesRecord` + `UpdatePreferencesResponse` types. `TAG_CACHE_TTL_MS`
+  demoted from `export` to local `const`.
+- Extracted `OAUTH_SCOPES` into `lib/oauth-scopes.ts` to break the
+  `oauth-config.ts → route-utils.ts → session.ts → oauth-config.ts` cycle.
+
+### Added
+
+- `.fallowrc.json` declaring the Deno/Fresh entry points fallow can't
+  auto-detect (`dev.ts`, `frontend/index.tsx`, `scripts/**`, `tests/**`) so
+  future static-analysis runs report real signal instead of treating the entire
+  frontend, scripts, and test suite as unreachable.
+
 ## [0.24.14] - 2026-05-16
 
 ### Fixed
@@ -11,14 +36,13 @@ All notable changes to kipclip are documented in this file.
 - INP (Interaction to Next Paint) measurement in `frontend/perf.ts` was
   reporting fake 20–40s outliers. The PerformanceObserver was collecting every
   `event` entry above 16ms — including non-interactions (scrolls, pointermove)
-  and stale events recorded while the tab was backgrounded (paused-time
-  inflated `duration`). The collector now follows the spec algorithm: drop
-  entries with `interactionId === 0`, group remaining entries by
-  interactionId, take the max duration per interaction, and report the worst
-  interaction. Threshold raised from 16ms to 40ms to match the web-vitals
-  default. The first week of perf data showed an INP p95 of 1840ms — those
-  numbers were measurement artifact; expect the real INP p95 to drop sharply
-  after this ships.
+  and stale events recorded while the tab was backgrounded (paused-time inflated
+  `duration`). The collector now follows the spec algorithm: drop entries with
+  `interactionId === 0`, group remaining entries by interactionId, take the max
+  duration per interaction, and report the worst interaction. Threshold raised
+  from 16ms to 40ms to match the web-vitals default. The first week of perf data
+  showed an INP p95 of 1840ms — those numbers were measurement artifact; expect
+  the real INP p95 to drop sharply after this ships.
 
 ## [0.24.13] - 2026-05-16
 
