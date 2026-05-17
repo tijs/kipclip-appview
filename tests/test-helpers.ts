@@ -205,30 +205,6 @@ export function createPlcResponse(
   );
 }
 
-// Session override for testing
-let mockSessionProvider:
-  | ((request: Request) => Promise<SessionResult>)
-  | null = null;
-
-/**
- * Set a mock session provider for testing.
- * Call with null to restore default behavior.
- */
-export function setMockSessionProvider(
-  provider: ((request: Request) => Promise<SessionResult>) | null,
-): void {
-  mockSessionProvider = provider;
-}
-
-/**
- * Get the current mock session provider, if set.
- */
-export function getMockSessionProvider():
-  | ((request: Request) => Promise<SessionResult>)
-  | null {
-  return mockSessionProvider;
-}
-
 export interface MockWebSocket {
   readyState: number;
   sent: string[];

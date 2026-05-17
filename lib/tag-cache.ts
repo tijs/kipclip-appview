@@ -16,7 +16,7 @@ interface TagCacheEntry {
   fetchedAt: number;
 }
 
-export const TAG_CACHE_TTL_MS = 60_000;
+const TAG_CACHE_TTL_MS = 60_000;
 
 const tagCache = new Map<string, TagCacheEntry>();
 

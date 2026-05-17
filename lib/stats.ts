@@ -111,8 +111,3 @@ const fetcher: CachedFetcher<SiteStats> = createCachedFetcher({
 export function getStats(): Promise<{ data: SiteStats; stale: boolean }> {
   return fetcher.get();
 }
-
-/** Test-only: drop cache. */
-export function _resetStatsCache(): void {
-  fetcher.reset();
-}

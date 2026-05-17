@@ -37,11 +37,6 @@ export function _addTestAutoSupporter(did: string): void {
   TEST_AUTO_SUPPORTERS.add(did);
 }
 
-/** Test-only: drop all test-added auto-supporters. */
-export function _resetTestAutoSupporters(): void {
-  TEST_AUTO_SUPPORTERS.clear();
-}
-
 function isAutoSupporter(
   did: string,
   override?: ReadonlySet<string>,

@@ -114,8 +114,3 @@ export function getSupporters(): Promise<
 > {
   return fetcher.get();
 }
-
-/** Test-only: drop cache. */
-export function _resetSupportersCache(): void {
-  fetcher.reset();
-}

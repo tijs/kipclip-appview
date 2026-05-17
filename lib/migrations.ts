@@ -214,21 +214,3 @@ export async function runMigrations() {
     throw error;
   }
 }
-
-export async function getMigrationStatus() {
-  try {
-    await db.execute({
-      sql: MIGRATIONS_TABLE,
-      args: [],
-    });
-    const result = await db.execute({
-      sql:
-        "SELECT version, description, executed_at FROM migrations ORDER BY id",
-      args: [],
-    });
-    return result.rows || [];
-  } catch (error) {
-    console.error("Failed to get migration status:", error);
-    return [];
-  }
-}

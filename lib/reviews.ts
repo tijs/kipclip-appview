@@ -123,8 +123,3 @@ const fetcher: CachedFetcher<Review[]> = createCachedFetcher({
 export function getReviews(): Promise<{ data: Review[]; stale: boolean }> {
   return fetcher.get();
 }
-
-/** Test-only: drop cache. */
-export function _resetReviewsCache(): void {
-  fetcher.reset();
-}

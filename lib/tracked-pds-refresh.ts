@@ -50,8 +50,3 @@ export function refreshTrackedPdsUrl(did: string, pdsUrl: string): void {
     }
   })();
 }
-
-/** Test-only — clear the in-sync cache between cases. */
-export function _resetTrackedPdsCache(): void {
-  inSyncCache.clear();
-}

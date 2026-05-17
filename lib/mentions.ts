@@ -143,8 +143,3 @@ const fetcher: CachedFetcher<Mention[]> = createCachedFetcher({
 export function getMentions(): Promise<{ data: Mention[]; stale: boolean }> {
   return fetcher.get();
 }
-
-/** Test-only: drop cache. */
-export function _resetMentionsCache(): void {
-  fetcher.reset();
-}
