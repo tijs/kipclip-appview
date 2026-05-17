@@ -5,7 +5,7 @@
 
 import type { App } from "@fresh/core";
 import { getBaseUrl, getOAuth } from "../lib/oauth-config.ts";
-import { OAUTH_SCOPES } from "../lib/route-utils.ts";
+import { OAUTH_SCOPES } from "../lib/oauth-scopes.ts";
 
 export function registerOAuthRoutes(app: App<any>): App<any> {
   // Login redirect

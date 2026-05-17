@@ -33,13 +33,10 @@ import { deleteTag, upsertTag } from "../../mirror/upserts.ts";
 import { captureMessage } from "../../lib/sentry.ts";
 import { createTimer } from "../../lib/server-timing.ts";
 import {
-  _clearTagCache,
   getCachedTags,
   invalidateCachedTags,
   setCachedTags,
 } from "../../lib/tag-cache.ts";
-
-export { _clearTagCache };
 
 export function registerTagRoutes(app: App<any>): App<any> {
   // List tags. Reads from mirror when MIRROR_MODE=read and the DID is tracked

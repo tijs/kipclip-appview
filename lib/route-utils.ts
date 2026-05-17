@@ -20,24 +20,6 @@ export const TAG_COLLECTION = "com.kipclip.tag";
 export const ANNOTATION_COLLECTION = "com.kipclip.annotation";
 export const PREFERENCES_COLLECTION = "com.kipclip.preferences";
 
-/** OAuth scopes - granular permissions for only the collections kipclip uses */
-export const OAUTH_SCOPES = "atproto " +
-  "repo:community.lexicon.bookmarks.bookmark?action=create " +
-  "repo:community.lexicon.bookmarks.bookmark?action=read " +
-  "repo:community.lexicon.bookmarks.bookmark?action=update " +
-  "repo:community.lexicon.bookmarks.bookmark?action=delete " +
-  "repo:com.kipclip.tag?action=create " +
-  "repo:com.kipclip.tag?action=read " +
-  "repo:com.kipclip.tag?action=update " +
-  "repo:com.kipclip.tag?action=delete " +
-  "repo:com.kipclip.annotation?action=create " +
-  "repo:com.kipclip.annotation?action=read " +
-  "repo:com.kipclip.annotation?action=update " +
-  "repo:com.kipclip.annotation?action=delete " +
-  "repo:com.kipclip.preferences?action=create " +
-  "repo:com.kipclip.preferences?action=read " +
-  "repo:com.kipclip.preferences?action=update";
-
 /**
  * Set the session cookie header on a response if provided.
  */
@@ -68,26 +50,6 @@ export function createAuthErrorResponse(error?: {
   );
   response.headers.set("Set-Cookie", getClearSessionCookie());
   return response;
-}
-
-/**
- * Helper to get session and return auth error if not authenticated.
- * Returns null if not authenticated (response already sent).
- */
-export async function requireAuth(request: Request): Promise<
-  {
-    session: Awaited<ReturnType<typeof getSessionFromRequest>>["session"];
-    setCookieHeader: string | undefined;
-  } | null
-> {
-  const result = await getSessionFromRequest(request);
-  if (!result.session) {
-    return null;
-  }
-  return {
-    session: result.session,
-    setCookieHeader: result.setCookieHeader,
-  };
 }
 
 /**
@@ -478,4 +440,4 @@ export async function fetchOwnerAnnotationRecord(
 }
 
 /** Re-export for convenience */
-export { getClearSessionCookie, getSessionFromRequest };
+export { getSessionFromRequest };

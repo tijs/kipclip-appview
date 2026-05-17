@@ -91,26 +91,4 @@ export function captureMessage(
   });
 }
 
-/**
- * Set user context for error tracking.
- * Call this when a user is authenticated.
- */
-export function setUser(did: string, handle?: string): void {
-  if (!SENTRY_DSN) return;
-
-  Sentry.setUser({
-    id: did,
-    username: handle,
-  });
-}
-
-/**
- * Clear user context (on logout).
- */
-export function clearUser(): void {
-  if (!SENTRY_DSN) return;
-
-  Sentry.setUser(null);
-}
-
 export { Sentry };

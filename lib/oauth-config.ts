@@ -7,7 +7,7 @@
 import { createATProtoOAuth } from "@tijs/atproto-oauth";
 import { sqliteAdapter, SQLiteStorage } from "@tijs/atproto-storage";
 import { db } from "./db.ts";
-import { OAUTH_SCOPES } from "./route-utils.ts";
+import { OAUTH_SCOPES } from "./oauth-scopes.ts";
 
 let oauth: ReturnType<typeof createATProtoOAuth> | null = null;
 let baseUrl: string | null = null;

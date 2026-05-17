@@ -37,8 +37,3 @@ export function setCachedTags(did: string, tags: EnrichedTag[]): void {
 export function invalidateCachedTags(did: string): void {
   tagCache.delete(did);
 }
-
-/** @internal Test cleanup only */
-export function _clearTagCache(): void {
-  tagCache.clear();
-}
