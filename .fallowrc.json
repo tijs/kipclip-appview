@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+  "entry": [
+    "main.ts",
+    "dev.ts",
+    "frontend/index.tsx",
+    "scripts/**/*.ts",
+    "tests/**/*.{ts,tsx}"
+  ],
+  "ignorePatterns": [
+    "build/**",
+    "static/**",
+    ".local/**",
+    "deploy/**",
+    "frontend/index.html",
+    "**/*.css"
+  ],
+  "ignoreExportsUsedInFile": true,
+  "duplicates": {
+    "minOccurrences": 3
+  },
+  "rules": {}
+}

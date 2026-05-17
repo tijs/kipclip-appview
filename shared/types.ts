@@ -170,13 +170,6 @@ export interface CheckDuplicatesResponse {
   duplicates: EnrichedBookmark[];
 }
 
-// User preferences (stored on PDS as com.kipclip.preferences)
-export interface PreferencesRecord {
-  dateFormat: string;
-  readingListTag?: string;
-  createdAt: string;
-}
-
 export interface UserPreferences {
   dateFormat: string;
   readingListTag: string;
@@ -185,12 +178,6 @@ export interface UserPreferences {
 export interface UpdatePreferencesRequest {
   dateFormat?: string;
   readingListTag?: string;
-}
-
-export interface UpdatePreferencesResponse {
-  success: boolean;
-  preferences?: UserPreferences;
-  error?: string;
 }
 
 // Combined initial data response (for optimized page load).
