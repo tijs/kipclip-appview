@@ -10,6 +10,7 @@ import {
   EuPrivacy,
   FinalCta,
   Positioning,
+  Preview,
   Tools,
 } from "./HomeSections.tsx";
 import { HomeMentions } from "./HomeMentions.tsx";
@@ -198,9 +199,9 @@ export function Home() {
               className="text-lg sm:text-xl text-gray-600 mb-9 max-w-xl mx-auto fade-in"
               style={{ ...stagger(160), textWrap: "pretty" }}
             >
-              A fast, friendly bookmark manager built on AT Protocol. Save
-              links, tag them, share collections — your data lives in your
-              account, not ours.
+              Save, tag, and share links from any device. Your bookmarks live in
+              your own account, not ours — so they're yours to keep, move, or
+              delete.
             </p>
 
             <div
@@ -280,6 +281,7 @@ export function Home() {
 
       <main className="flex-1">
         <Positioning />
+        <Preview />
         <AtprotoExplainer />
         <Tools />
         <HomeReviews />

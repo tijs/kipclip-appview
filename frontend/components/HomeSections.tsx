@@ -160,6 +160,69 @@ export function Positioning() {
   );
 }
 
+export function Preview() {
+  const shots: Array<
+    { src: string; src2x: string; alt: string; caption: string }
+  > = [
+    {
+      src: "https://cdn.kipclip.com/images/landing-preview-1.png",
+      src2x: "https://cdn.kipclip.com/images/landing-preview-1@2x.png",
+      alt: "Your bookmarks list with tags",
+      caption: "Your bookmarks, with tags instead of folders.",
+    },
+    {
+      src: "https://cdn.kipclip.com/images/landing-preview-2.png",
+      src2x: "https://cdn.kipclip.com/images/landing-preview-2@2x.png",
+      alt: "Reading list view with article cards",
+      caption: "A reading list for the stuff you'll actually read later.",
+    },
+    {
+      src: "https://cdn.kipclip.com/images/landing-preview-3.png",
+      src2x: "https://cdn.kipclip.com/images/landing-preview-3@2x.png",
+      alt: "Bookmark detail with notes, tags, and archived snapshot",
+      caption: "Notes, tags, and archived snapshots on every bookmark.",
+    },
+  ];
+  return (
+    <section className="px-4 sm:px-6 py-16 sm:py-24">
+      <div className="max-w-5xl mx-auto">
+        <SectionHeading
+          eyebrow="See it in action"
+          title="A bookmark manager that gets out of the way."
+          subtitle="Quick to save, easy to find, calm to look at."
+        />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 sm:gap-6">
+          {shots.map((s) => (
+            <figure key={s.src} className="flex flex-col items-center">
+              <div
+                className="w-full max-w-[260px] rounded-[2.25rem] bg-white p-2 ring-1 ring-gray-200"
+                style={{ boxShadow: CARD_SHADOW }}
+              >
+                <img
+                  src={s.src}
+                  srcSet={`${s.src} 1x, ${s.src2x} 2x`}
+                  alt={s.alt}
+                  loading="lazy"
+                  decoding="async"
+                  width={590}
+                  height={1278}
+                  className="block w-full h-auto rounded-[1.75rem]"
+                />
+              </div>
+              <figcaption
+                className="mt-5 text-center text-gray-600 text-sm max-w-[260px] leading-relaxed"
+                style={{ textWrap: "pretty" }}
+              >
+                {s.caption}
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function AtprotoExplainer() {
   return (
     <section className="px-4 sm:px-6 py-16 sm:py-24">

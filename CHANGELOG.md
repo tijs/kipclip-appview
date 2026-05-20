@@ -4,6 +4,24 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.16] - 2026-05-20
+
+### Changed
+
+- Landing page hero: rewrote the subhead to lead with what kipclip does ("Save,
+  tag, and share links from any device") and dropped the AT Protocol name-drop
+  from above the fold — the protocol pitch still lives in the `AtprotoExplainer`
+  section below. Acts on community feedback that the hero leaned on atproto too
+  hard for non-technical visitors.
+
+### Added
+
+- New "See it in action" product-preview section on the logged-out landing page,
+  between Positioning and AtprotoExplainer. Three mobile screenshots in white
+  matte device frames with benefit-flavoured captions so visitors can decide
+  whether kipclip is for them before going through OAuth. Images served from
+  `cdn.kipclip.com/images/landing-preview-{1,2,3}.png`.
+
 ## [0.24.15] - 2026-05-17
 
 ### Changed
