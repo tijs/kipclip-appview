@@ -267,12 +267,14 @@ Guidelines:
 
 ## Documented Solutions
 
-`docs/solutions/` — documented solutions to past problems (bugs, best practices,
-workflow patterns), organized by category subdirectory (e.g.
-`performance-issues/`, `integration-issues/`) with YAML frontmatter fields like
-`module`, `tags`, `problem_type`, `component`. Relevant when implementing or
-debugging in documented areas — grep frontmatter to find applicable prior
-learnings before re-investigating.
+`../kipclip-appview-notes/docs/solutions/` (sibling directory, not in this repo)
+— documented solutions to past problems (bugs, best practices, workflow
+patterns), organized by category subdirectory (e.g. `performance-issues/`,
+`integration-issues/`) with YAML frontmatter fields like `module`, `tags`,
+`problem_type`, `component`. Relevant when implementing or debugging in
+documented areas — grep frontmatter to find applicable prior learnings before
+re-investigating. Internal plans, brainstorms, and todos live alongside under
+`../kipclip-appview-notes/`.
 
 ## Design Context
 
