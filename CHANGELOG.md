@@ -6,10 +6,10 @@ All notable changes to kipclip are documented in this file.
 
 ### Added
 
-- New public `GET /api/stats/monthly?months=N` endpoint returning per-month
-  MAU and signups for the last N calendar months (default 12, capped at 24).
-  Companion to `/api/stats`; powers the monthly bar charts on the
-  side-business dashboard after its migration off the Turso mirror.
+- New public `GET /api/stats/monthly?months=N` endpoint returning per-month MAU
+  and signups for the last N calendar months (default 12, capped at 24).
+  Companion to `/api/stats`; powers the monthly bar charts on the side-business
+  dashboard after its migration off the Turso mirror.
 
 ## [0.24.16] - 2026-05-20
 
