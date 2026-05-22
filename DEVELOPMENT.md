@@ -71,6 +71,13 @@ so OAuth redirects work correctly.
    http://localhost:8000
    ```
 
+5. **Enable the repo's git hooks (one-time per clone)**
+   ```bash
+   git config core.hooksPath .githooks
+   ```
+   Runs `deno fmt --check` on every `git push` so a missed format never reaches
+   CI. Skips silently if `deno` isn't on `PATH`.
+
 ## Development Setup
 
 ### Environment Configuration
