@@ -4,6 +4,8 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.17] - 2026-05-22
+
 ### Added
 
 - New public `GET /api/stats/monthly?months=N` endpoint returning per-month MAU
