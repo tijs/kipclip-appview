@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Block pushes whose tree fails `deno fmt --check`. CI runs the same check
+# and fails the PR otherwise — catching it locally saves a CI round-trip.
+#
+# One-time setup per clone:
+#   git config core.hooksPath .githooks
+
+set -euo pipefail
+
+if ! command -v deno >/dev/null 2>&1; then
+  echo "pre-push: deno not on PATH — skipping fmt check" >&2
+  exit 0
+fi
+
+if ! deno fmt --check; then
+  echo "" >&2
+  echo "pre-push: deno fmt --check failed. Run \`deno fmt\` and amend/commit." >&2
+  exit 1
+fi
