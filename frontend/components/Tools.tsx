@@ -292,6 +292,75 @@ export function Tools() {
         </div>
       </div>
 
+      {/* Third-party Tools */}
+      <div className="bg-white rounded-lg shadow-md p-8 mt-8">
+        <div className="flex items-start gap-3 mb-6">
+          <div className="w-10 h-10 bg-coral/10 rounded-lg flex items-center justify-center flex-shrink-0">
+            <svg
+              className="w-6 h-6"
+              style={{ color: "var(--coral)" }}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"
+              />
+            </svg>
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-gray-800 mb-2">
+              Community Tools
+            </h3>
+            <p className="text-gray-600">
+              Third-party tools that work with kipclip
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="bg-gray-50 rounded-lg p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h4 className="font-semibold text-gray-800 mb-2">
+                  Airglow
+                </h4>
+                <p className="text-sm text-gray-700">
+                  Automatically bookmark links from posts you like on Bluesky.
+                  When you like a post that contains a link, Airglow saves that
+                  link to kipclip for you.
+                </p>
+              </div>
+            </div>
+            <a
+              href="https://airglow.run/u/kipclip.com/3mlxzkcr4rs22"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 mt-3 text-sm font-medium hover:underline"
+              style={{ color: "var(--coral)" }}
+            >
+              Learn more on airglow.run
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                />
+              </svg>
+            </a>
+          </div>
+        </div>
+      </div>
+
       {/* Help Section */}
       <div className="mt-8 text-center text-sm text-gray-600">
         <p>
