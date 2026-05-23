@@ -176,17 +176,27 @@ dropping `kipclip` group access. Fix:
 The box also runs three weekly auto-update timers, independent of the kipclip
 release flow above:
 
-| Timer                       | When           | Updates                                 | Rollback path                                      |
-| --------------------------- | -------------- | --------------------------------------- | -------------------------------------------------- |
-| `tap-update.timer`          | Sun 04:00 UTC  | TAP binary (rebuild from indigo `main`) | `/opt/tap/tap.prev` if health fails                |
-| `deno-update.timer`         | Sun 04:30 UTC  | Deno runtime at `/opt/deno/bin/deno`    | `/opt/deno/bin/deno.prev` on `/api/health` failure |
-| `unattended-upgrades.timer` | Daily (Debian) | Debian security packages                | `apt-get install <pkg>=<oldver>`                   |
+| Timer                       | When           | Updates                                           | Rollback path                                      |
+| --------------------------- | -------------- | ------------------------------------------------- | -------------------------------------------------- |
+| `tap-update.timer`          | Sun 04:00 UTC  | TAP binary (rebuild from indigo `main`)           | `/opt/tap/tap.prev` if health fails                |
+| `deno-update.timer`         | Sun 04:30 UTC  | Deno runtime at `/opt/deno/bin/deno` (patch only) | `/opt/deno/bin/deno.prev` on `/api/health` failure |
+| `unattended-upgrades.timer` | Daily (Debian) | Debian security packages                          | `apt-get install <pkg>=<oldver>`                   |
+
+`deno-update.timer` only auto-applies **patch** releases (e.g.
+`v2.8.0 → v2.8.1`). Cross-minor and cross-major jumps refuse to run without a
+pin file. Minor bumps can carry behavior changes (e.g. the `v2.7 → v2.8`
+`setTimeout` return-type and test-sanitizer-default shifts), so they're treated
+as controlled, plan-driven rollouts: bump locally, validate
+`deno task quality && deno task test`, then pin the box and trigger the service
+manually.
 
 Both kipclip-managed timers (`tap-update`, `deno-update`) honour pin files for
 operator override:
 
 - TAP pin: `echo <commit-sha> | sudo tee /etc/tap/tap-version`
-- Deno pin: `echo v2.7.14 | sudo tee /etc/kipclip/deno-version`
+- Deno pin: `echo v2.8.0 | sudo tee /etc/kipclip/deno-version` (required for any
+  minor or major bump; clear the file once the box is stable on the new line to
+  resume patch-tick auto-updates)
 
 Trigger manually (e.g. to upgrade ahead of schedule):
 
@@ -205,6 +215,23 @@ sudo systemctl disable --now tap-update.timer deno-update.timer
 Logs go to the journal (`journalctl -u tap-update.service -f`,
 `-u deno-update.service -f`). On failure, both scripts auto-rollback before
 exiting non-zero — re-running after the rollback succeeds is safe.
+
+## Third-party advisories
+
+When `deno audit` (run by `deno task quality` locally and in CI) flags a
+transitive vulnerability, the fastest path is:
+
+```bash
+deno task audit:fix       # upgrades affected packages to nearest patched version
+                          # that still satisfies the version constraints
+deno task quality         # confirm clean
+deno task test            # confirm no regressions
+```
+
+If `audit:fix` can't resolve it (the patched version is outside the declared
+constraint, or there's no patched release yet), surface the entry in
+`deno outdated --latest`, decide whether to bump the direct dependency, and fall
+back to manual `deno.lock` surgery only as a last resort.
 
 ## CHANGELOG hygiene
 

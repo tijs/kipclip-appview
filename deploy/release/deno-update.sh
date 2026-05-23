@@ -9,8 +9,11 @@
 #   1. Acquire the install lock.
 #   2. Resolve desired version. Pin file overrides "release-latest".
 #   3. If desired matches /opt/deno/bin/deno --version, exit 0.
-#   4. Refuse cross-major jumps unless pin file is set (defense against
-#      Deno 2 -> Deno 3 surprises that need ack).
+#   4. Refuse any cross-minor (or cross-major) jump unless pin file is set.
+#      Minor bumps can carry behavior changes (e.g. 2.7 -> 2.8 changed
+#      setTimeout return type and test-sanitizer defaults), so they need
+#      operator ack and a controlled rollout. Only patch updates ride the
+#      timer.
 #   5. Download zip + sha256, verify, unzip to /opt/deno/bin/deno.new.
 #   6. Save current as /opt/deno/bin/deno.prev for rollback.
 #   7. Atomic rename, restart kipclip.
@@ -49,10 +52,15 @@ require_tool() {
   fi
 }
 
-# Major version compare. Returns 0 if same major, 1 if different.
-same_major() {
+# Minor-version compare. Returns 0 if same major and same minor (so only
+# patch differs), 1 otherwise. Used to gate the timer to patch-only
+# auto-updates.
+same_minor() {
   local a="${1#v}" b="${2#v}"
-  [[ "${a%%.*}" == "${b%%.*}" ]]
+  local a_major="${a%%.*}" b_major="${b%%.*}"
+  local a_rest="${a#*.}" b_rest="${b#*.}"
+  local a_minor="${a_rest%%.*}" b_minor="${b_rest%%.*}"
+  [[ "$a_major" == "$b_major" && "$a_minor" == "$b_minor" ]]
 }
 
 main() {
@@ -101,9 +109,10 @@ main() {
 
   log "Update available: $CURRENT_VERSION -> $DESIRED"
 
-  # Major-version safety. Pin file (operator ack) bypasses the gate.
-  if [[ -z "$PIN" ]] && ! same_major "$CURRENT_VERSION" "$DESIRED"; then
-    err "refusing major-version jump $CURRENT_VERSION -> $DESIRED without pin file"
+  # Minor- and major-version safety. The timer only auto-applies patch
+  # releases; anything else needs operator ack via the pin file.
+  if [[ -z "$PIN" ]] && ! same_minor "$CURRENT_VERSION" "$DESIRED"; then
+    err "refusing minor-version jump $CURRENT_VERSION -> $DESIRED without pin file"
     err "to allow: echo '$DESIRED' | sudo tee $PIN_FILE"
     exit 1
   fi

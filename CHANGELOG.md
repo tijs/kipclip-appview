@@ -4,6 +4,33 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Bump runtime to Deno 2.8.0 (TypeScript compiler 6.0.3). Brings `node:crypto`
+  scrypt 2.12× / `node:buffer` base64 3.07× / `node:http` 2.21× perf wins along
+  the OAuth, iron-session, and PDS-fetch paths, plus a 3.66× faster cold npm
+  install in CI. No app code changes required — `setTimeout` return type and
+  `Deno.test()` sanitizer-default shifts didn't touch our callers.
+- Bump `@libsql/client` 0.17.0 → 0.17.3 and pin `ws@8.21.0` in `deno.lock` to
+  clear the `ws` advisory (GHSA-58qx-3vcg-4xpx) flagged by `deno audit`.
+
+### Added
+
+- `deno task audit:fix` runs `deno audit --fix` for one-shot resolution of
+  third-party advisories. Documented alongside the auto-update timers in
+  `deploy/release/README.md`.
+- CI workflow runs `deno ci` ahead of fmt/lint/test, so any drift between
+  `deno.json` and `deno.lock` fails the PR explicitly instead of slipping
+  through on a stale cache.
+
+### Ops
+
+- `deno-update.timer` on the Hetzner box now restricts auto-updates to patch
+  releases only. Minor and major bumps require an operator pin
+  (`echo vX.Y.Z | sudo tee /etc/kipclip/deno-version`) so behavior-change
+  releases (like 2.7 → 2.8) go through a controlled rollout rather than the
+  weekly tick.
+
 ## [0.24.17] - 2026-05-22
 
 ### Added
