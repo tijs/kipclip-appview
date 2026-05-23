@@ -117,21 +117,25 @@ main() {
     exit 1
   fi
 
-  ZIP_URL="${ZIP_URL_BASE}/${DESIRED}/deno-${ARCH}.zip"
+  ZIP_NAME="deno-${ARCH}.zip"
+  ZIP_URL="${ZIP_URL_BASE}/${DESIRED}/${ZIP_NAME}"
   SHA_URL="${ZIP_URL}.sha256sum"
 
   TMP_DIR="$(mktemp -d)"
   trap 'rm -rf "$TMP_DIR"' EXIT
 
   log "Downloading $ZIP_URL"
-  curl -fsSL --max-time 120 -o "$TMP_DIR/deno.zip" "$ZIP_URL"
-  curl -fsSL --max-time 30 -o "$TMP_DIR/deno.zip.sha256" "$SHA_URL"
+  # Save the zip under its upstream name so the checksum line from
+  # ${ZIP_NAME}.sha256sum (which references that filename) resolves
+  # correctly when we run sha256sum -c.
+  curl -fsSL --max-time 120 -o "$TMP_DIR/$ZIP_NAME" "$ZIP_URL"
+  curl -fsSL --max-time 30 -o "$TMP_DIR/${ZIP_NAME}.sha256sum" "$SHA_URL"
 
   log "Verifying sha256"
-  (cd "$TMP_DIR" && sha256sum -c deno.zip.sha256) >/dev/null
+  (cd "$TMP_DIR" && sha256sum -c "${ZIP_NAME}.sha256sum") >/dev/null
 
   log "Unpacking"
-  unzip -q -o "$TMP_DIR/deno.zip" -d "$TMP_DIR"
+  unzip -q -o "$TMP_DIR/$ZIP_NAME" -d "$TMP_DIR"
   [[ -x "$TMP_DIR/deno" ]] || {
     err "zip did not contain executable deno binary"
     exit 1

@@ -30,6 +30,10 @@ All notable changes to kipclip are documented in this file.
   (`echo vX.Y.Z | sudo tee /etc/kipclip/deno-version`) so behavior-change
   releases (like 2.7 → 2.8) go through a controlled rollout rather than the
   weekly tick.
+- Fix latent bug in `deno-update.sh`: the script now saves the Deno zip under
+  its upstream filename (`deno-${ARCH}.zip`) so `sha256sum -c` against the
+  upstream `.sha256sum` file actually resolves. The bug never fired before
+  because every prior tick was a no-op (`Already on v2.7.14; nothing to do`).
 
 ## [0.24.17] - 2026-05-22
 
