@@ -35,6 +35,12 @@ All notable changes to kipclip are documented in this file.
   upstream `.sha256sum` file actually resolves. The bug never fired before
   because every prior tick was a no-op (`Already on v2.7.14; nothing to do`).
 
+## [0.24.18] - 2026-05-23
+
+### Added
+
+- Community Tools section on the Tools page with a link to Airglow — automatically bookmarks links from posts you like on Bluesky.
+
 ## [0.24.17] - 2026-05-22
 
 ### Added
