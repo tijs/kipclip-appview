@@ -94,6 +94,12 @@ main() {
   fi
 
   log "Fetching $REPO_URL"
+  # Unshallow if needed — shallow clones silently skip remote-tracking ref
+  # updates on `git fetch origin <branch>`, leaving origin/main stale.
+  if sudo -u "$TAP_USER" git -C "$BUILD_DIR" rev-parse --is-shallow-repository 2>/dev/null | grep -q true; then
+    log "Unshallowing clone"
+    sudo -u "$TAP_USER" git -C "$BUILD_DIR" fetch --unshallow origin "$BRANCH" >/dev/null 2>&1 || true
+  fi
   sudo -u "$TAP_USER" git -C "$BUILD_DIR" fetch --prune origin "$BRANCH" >/dev/null
 
   if [[ -n "$PIN" ]]; then
