@@ -2,21 +2,23 @@
  * One-shot PDS → mirror backfill for a single DID.
  *
  * Run on the box:
- *   DID=did:plc:... deno run --allow-net --allow-env --allow-read scripts/backfill-mirror.ts
+ *   DID=did:plc:... deno run -A scripts/backfill-mirror.ts
  *
  * DATABASE_URL defaults to file:.local/kipclip.db (dev); set it to the
  * production path before running:
- *   DATABASE_URL=file:/var/lib/kipclip/kipclip.db DID=did:plc:... deno run ...
+ *   DATABASE_URL=file:/var/lib/kipclip/kipclip.db DID=did:plc:... deno run -A ...
  *
  * The script:
  *  1. Resolves the DID document to find the PDS endpoint.
- *  2. Inserts a tracked_dids row (INSERT OR IGNORE) with backfill_started_at.
- *  3. Paginates all bookmark / annotation / tag / preference records from PDS.
- *  4. Upserts each into the local mirror DB.
- *  5. Stamps backfill_complete_at on the tracked_dids row.
+ *  2. Enrolls the DID in TAP via /repos/add (idempotent).
+ *  3. Inserts a tracked_dids row (INSERT OR IGNORE) with backfill_started_at.
+ *  4. Paginates all bookmark / annotation / tag / preference records from PDS.
+ *  5. Upserts each into the local mirror DB.
+ *  6. Stamps backfill_complete_at on the tracked_dids row.
  */
 
 import { createClient } from "@libsql/client";
+import { tapEnroll } from "../lib/auto-enroll.ts";
 
 const DID = Deno.env.get("DID");
 if (!DID) {
@@ -90,7 +92,13 @@ if (!pdsService) throw new Error("No atproto PDS service in DID document");
 const PDS_URL: string = pdsService.serviceEndpoint;
 console.log(`PDS: ${PDS_URL}`);
 
-// --- step 1: ensure tracked_dids row -----------------------------------
+// --- step 1: enroll in TAP ---------------------------------------------
+
+console.log("Enrolling in TAP…");
+await tapEnroll(DID);
+console.log("TAP enrollment OK (idempotent)");
+
+// --- step 2: ensure tracked_dids row -----------------------------------
 
 const now = Date.now();
 await db.execute({
@@ -101,7 +109,7 @@ await db.execute({
 });
 console.log("tracked_dids row ensured (INSERT OR IGNORE)");
 
-// --- step 2: backfill bookmarks ----------------------------------------
+// --- step 3: backfill bookmarks ----------------------------------------
 
 console.log("Fetching bookmarks…");
 const bookmarks = await listAll(
@@ -139,7 +147,7 @@ for (const r of bookmarks) {
 }
 console.log(`Upserted ${bookmarks.length} bookmarks`);
 
-// --- step 3: backfill annotations (both collections) -------------------
+// --- step 4: backfill annotations (both collections) -------------------
 
 console.log("Fetching annotations…");
 const [kipclipAnnotations, legacyAnnotations] = await Promise.all([
@@ -175,7 +183,7 @@ for (const r of allAnnotations) {
 }
 console.log(`Upserted ${allAnnotations.length} annotations`);
 
-// --- step 4: backfill tags ---------------------------------------------
+// --- step 5: backfill tags ---------------------------------------------
 
 console.log("Fetching tags…");
 const tags = await listAll(PDS_URL, DID, "com.kipclip.tag");
@@ -201,7 +209,7 @@ for (const r of tags) {
 }
 console.log(`Upserted ${tags.length} tags`);
 
-// --- step 5: backfill preferences --------------------------------------
+// --- step 6: backfill preferences --------------------------------------
 
 console.log("Fetching preferences…");
 const prefs = await listAll(PDS_URL, DID, "com.kipclip.preferences");
@@ -224,7 +232,7 @@ for (const r of prefs) {
 }
 console.log(`Upserted ${prefs.length} preferences`);
 
-// --- step 6: stamp backfill_complete_at --------------------------------
+// --- step 7: stamp backfill_complete_at --------------------------------
 
 await db.execute({
   sql: `UPDATE tracked_dids SET backfill_complete_at = ? WHERE did = ?`,
