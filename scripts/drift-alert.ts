@@ -33,7 +33,7 @@ const TAP_CONTROL_URL = Deno.env.get("TAP_CONTROL_URL") ??
   "http://127.0.0.1:2480";
 
 function tapAuth(): Record<string, string> {
-  const secret = Deno.env.get("TAP_WEBHOOK_SECRET");
+  const secret = Deno.env.get("TAP_ADMIN_PASSWORD");
   if (!secret) return {};
   return { Authorization: "Basic " + btoa(`admin:${secret}`) };
 }

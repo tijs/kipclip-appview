@@ -478,9 +478,9 @@ Deno.test("POST /api/sync/hook - preferences delete removes row", async () => {
   assertEquals(await getMirrorPreferences(SESSION_DID), null);
 });
 
-Deno.test("POST /api/sync/hook - TAP_WEBHOOK_SECRET unset → no auth required", async () => {
+Deno.test("POST /api/sync/hook - TAP_ADMIN_PASSWORD unset → no auth required", async () => {
   await clearMirrorTables();
-  Deno.env.delete("TAP_WEBHOOK_SECRET");
+  Deno.env.delete("TAP_ADMIN_PASSWORD");
   const evt = recordEvent(
     "community.lexicon.bookmarks.bookmark",
     "noauth",
@@ -503,7 +503,7 @@ Deno.test("POST /api/sync/hook - TAP_WEBHOOK_SECRET unset → no auth required",
 });
 
 Deno.test("POST /api/sync/hook - secret set + missing header → 401", async () => {
-  Deno.env.set("TAP_WEBHOOK_SECRET", "test-secret-abc");
+  Deno.env.set("TAP_ADMIN_PASSWORD", "test-secret-abc");
   try {
     const evt = recordEvent(
       "community.lexicon.bookmarks.bookmark",
@@ -524,12 +524,12 @@ Deno.test("POST /api/sync/hook - secret set + missing header → 401", async () 
     );
     assertEquals(r.status, 401);
   } finally {
-    Deno.env.delete("TAP_WEBHOOK_SECRET");
+    Deno.env.delete("TAP_ADMIN_PASSWORD");
   }
 });
 
 Deno.test("POST /api/sync/hook - secret set + wrong bearer → 401", async () => {
-  Deno.env.set("TAP_WEBHOOK_SECRET", "test-secret-abc");
+  Deno.env.set("TAP_ADMIN_PASSWORD", "test-secret-abc");
   try {
     const evt = recordEvent(
       "community.lexicon.bookmarks.bookmark",
@@ -553,13 +553,13 @@ Deno.test("POST /api/sync/hook - secret set + wrong bearer → 401", async () =>
     );
     assertEquals(r.status, 401);
   } finally {
-    Deno.env.delete("TAP_WEBHOOK_SECRET");
+    Deno.env.delete("TAP_ADMIN_PASSWORD");
   }
 });
 
 Deno.test("POST /api/sync/hook - secret set + correct bearer → 200", async () => {
   await clearMirrorTables();
-  Deno.env.set("TAP_WEBHOOK_SECRET", "test-secret-abc");
+  Deno.env.set("TAP_ADMIN_PASSWORD", "test-secret-abc");
   try {
     const evt = recordEvent(
       "community.lexicon.bookmarks.bookmark",
@@ -584,16 +584,15 @@ Deno.test("POST /api/sync/hook - secret set + correct bearer → 200", async () 
     assertEquals(r.status, 200);
     assertEquals((await r.json()).applied, true);
   } finally {
-    Deno.env.delete("TAP_WEBHOOK_SECRET");
+    Deno.env.delete("TAP_ADMIN_PASSWORD");
   }
 });
 
 Deno.test("POST /api/sync/hook - secret set + correct Basic admin auth → 200 (TAP shape)", async () => {
   // TAP's webhook_client.go sends Authorization: Basic admin:<password>
-  // when TAP_ADMIN_PASSWORD is set. kipclip's TAP_WEBHOOK_SECRET must
-  // equal that password for the check to pass.
+  // when TAP_ADMIN_PASSWORD is set.
   await clearMirrorTables();
-  Deno.env.set("TAP_WEBHOOK_SECRET", "tap-admin-pw");
+  Deno.env.set("TAP_ADMIN_PASSWORD", "tap-admin-pw");
   try {
     const evt = recordEvent(
       "community.lexicon.bookmarks.bookmark",
@@ -619,14 +618,14 @@ Deno.test("POST /api/sync/hook - secret set + correct Basic admin auth → 200 (
     assertEquals(r.status, 200);
     assertEquals((await r.json()).applied, true);
   } finally {
-    Deno.env.delete("TAP_WEBHOOK_SECRET");
+    Deno.env.delete("TAP_ADMIN_PASSWORD");
   }
 });
 
 Deno.test("POST /api/sync/hook - Basic auth with wrong username → 401", async () => {
   // Defense against a leaked Basic-auth header from an unrelated
   // service. Only username "admin" is accepted (matches TAP's shape).
-  Deno.env.set("TAP_WEBHOOK_SECRET", "tap-admin-pw");
+  Deno.env.set("TAP_ADMIN_PASSWORD", "tap-admin-pw");
   try {
     const evt = recordEvent(
       "community.lexicon.bookmarks.bookmark",
@@ -651,12 +650,12 @@ Deno.test("POST /api/sync/hook - Basic auth with wrong username → 401", async 
     );
     assertEquals(r.status, 401);
   } finally {
-    Deno.env.delete("TAP_WEBHOOK_SECRET");
+    Deno.env.delete("TAP_ADMIN_PASSWORD");
   }
 });
 
 Deno.test("POST /api/sync/hook - Basic auth with wrong password → 401", async () => {
-  Deno.env.set("TAP_WEBHOOK_SECRET", "tap-admin-pw");
+  Deno.env.set("TAP_ADMIN_PASSWORD", "tap-admin-pw");
   try {
     const evt = recordEvent(
       "community.lexicon.bookmarks.bookmark",
@@ -681,7 +680,7 @@ Deno.test("POST /api/sync/hook - Basic auth with wrong password → 401", async 
     );
     assertEquals(r.status, 401);
   } finally {
-    Deno.env.delete("TAP_WEBHOOK_SECRET");
+    Deno.env.delete("TAP_ADMIN_PASSWORD");
   }
 });
 

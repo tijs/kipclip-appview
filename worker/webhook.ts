@@ -82,34 +82,21 @@ function ackAsync(): boolean {
 // `respond @hook 403` rule is the primary barrier; this check catches
 // drift (e.g., a new vhost block forgetting `import common`).
 //
-// Auth shape: by design, TAP reuses `TAP_ADMIN_PASSWORD` for outbound
-// webhook auth (cmd/tap/webhook_client.go calls `req.SetBasicAuth(
-// "admin", adminPassword)`). This is documented in indigo's
-// cmd/tap/README.md "Authentication" section. So `TAP_WEBHOOK_SECRET`
-// on this side MUST be set to the same value as TAP's
-// `TAP_ADMIN_PASSWORD` env var.
+// TAP uses Basic auth with username "admin" on all endpoints including
+// outbound webhook delivery (cmd/tap/webhook_client.go calls
+// `req.SetBasicAuth("admin", adminPassword)`). We also accept
+// `Authorization: Bearer <secret>` for forward-compat.
 //
-// We also accept `Authorization: Bearer <secret>` for forward-compat
-// in case a future TAP version (or another webhook source) ships with
-// a separate outbound-webhook auth header.
-//
-// Rollout policy: env var unset = check disabled (current behavior
-// preserved). Set the secret on both kipclip and TAP simultaneously in
-// one maintenance window. Once production has the secret, leave it
-// set — the unset path is a phased-rollout convenience, not a
-// permanent escape hatch.
-//
-// Read fresh on every request (not cached at module load) so tests
-// can toggle behavior between cases. The env-read cost is sub-µs and
-// the webhook path is already DB-bound.
-function tapWebhookSecret(): string {
-  return Deno.env.get("TAP_WEBHOOK_SECRET")?.trim() ?? "";
+// Env var unset = check disabled. Read fresh on every request (not
+// cached at module load) so tests can toggle behavior between cases.
+function tapAdminPassword(): string {
+  return Deno.env.get("TAP_ADMIN_PASSWORD")?.trim() ?? "";
 }
 
 // Single startup warning so an operator notices a misconfigured prod.
-if (tapWebhookSecret().length === 0) {
+if (tapAdminPassword().length === 0) {
   console.warn(
-    "[webhook] TAP_WEBHOOK_SECRET not set — Authorization-header check disabled. " +
+    "[webhook] TAP_ADMIN_PASSWORD not set — Authorization-header check disabled. " +
       "Set this env var on production once TAP is sending the matching header.",
   );
 }
@@ -176,18 +163,9 @@ export function initWebhook(): void {
 }
 
 export async function handleWebhookRequest(req: Request): Promise<Response> {
-  // Auth gate. When TAP_WEBHOOK_SECRET is set, require a matching
-  // Authorization header. Two shapes accepted:
-  //   - `Basic <base64(admin:<secret>)>` — what TAP sends today
-  //     (cmd/tap/webhook_client.go calls req.SetBasicAuth("admin",
-  //     adminPassword)).
-  //   - `Bearer <secret>` — forward-compat for a future TAP that
-  //     decouples outbound webhook auth from admin auth.
-  // Empty body on 401 to avoid leaking implementation details to a
-  // probing attacker. The body is NOT parsed before this check so an
-  // unauthenticated request never touches the JSON parser or the
-  // mirror DB.
-  const secret = tapWebhookSecret();
+  // Auth gate. When TAP_ADMIN_PASSWORD is set, require a matching
+  // Authorization header (Basic admin:<pw> or Bearer <pw>).
+  const secret = tapAdminPassword();
   if (secret.length > 0) {
     const authz = req.headers.get("Authorization") ?? "";
     const provided = extractWebhookSecret(authz);

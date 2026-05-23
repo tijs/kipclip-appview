@@ -19,14 +19,12 @@ import { captureMessage } from "./sentry.ts";
 
 const TAP_CONTROL_URL = Deno.env.get("TAP_CONTROL_URL") ??
   "http://127.0.0.1:2480";
-// kipclip and TAP share a single secret. kipclip exposes it as
-// TAP_WEBHOOK_SECRET (see worker/webhook.ts). Read the same env var for
-// outbound /repos/add — reading a separate, never-set TAP_ADMIN_PASSWORD
-// silently produced 401s and dropped users from TAP's tracked set.
+// TAP requires Basic auth (admin:<password>) on all endpoints including
+// outbound webhook delivery. Read from the same env var TAP uses.
 // Read at call time, not module load, so tests can toggle the value
 // without re-importing.
-function tapWebhookSecret(): string | undefined {
-  return Deno.env.get("TAP_WEBHOOK_SECRET");
+function tapAdminPassword(): string | undefined {
+  return Deno.env.get("TAP_ADMIN_PASSWORD");
 }
 
 // Per-fetch timeouts. TAP /repos/add is a single in-process call to a local
@@ -103,7 +101,7 @@ export async function tapEnroll(did: string): Promise<void> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
-  const secret = tapWebhookSecret();
+  const secret = tapAdminPassword();
   if (secret) {
     headers.Authorization = "Basic " + btoa(`admin:${secret}`);
   }

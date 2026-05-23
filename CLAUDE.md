@@ -164,9 +164,8 @@ unset, which works for local dev but should be set explicitly on the box).
 Box-only mirror variable: `MIRROR_MODE=read` (serves mirror reads from primary
 local SQLite for tracked DIDs).
 
-Box-only TAP variables: `TAP_WEBHOOK_SECRET` (matches TAP's `TAP_ADMIN_PASSWORD`
-— TAP reuses admin auth as outbound webhook auth, sent as
-`Authorization: Basic admin:<password>` per `cmd/tap/README.md`).
+Box-only TAP variables: `TAP_ADMIN_PASSWORD` (shared secret for TAP Basic auth,
+sent as `Authorization: Basic admin:<password>` per `cmd/tap/README.md`).
 
 ## Testing
 

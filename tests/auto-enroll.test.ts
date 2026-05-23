@@ -3,9 +3,8 @@
  *
  * Pins:
  *   - Outbound POST /repos/add carries Basic auth derived from
- *     TAP_WEBHOOK_SECRET (regression guard for the silent-401 bug fixed in
- *     v0.24.5 — the old code read TAP_ADMIN_PASSWORD which the kipclip
- *     service never exports).
+ *     TAP_ADMIN_PASSWORD (regression guard for the silent-401 bug fixed in
+ *     v0.24.5).
  *   - A non-2xx TAP response throws and prevents the tracked_dids INSERT,
  *     so a failed enrollment never leaves a backfill-complete row with no
  *     live event flow (this was the silent-divergence failure mode).
@@ -70,16 +69,16 @@ async function withClean<T>(fn: () => Promise<T>): Promise<T> {
   await clearMirrorTables();
   _resetAutoEnrollState();
   Deno.env.set("MIRROR_MODE", "read");
-  Deno.env.set("TAP_WEBHOOK_SECRET", TEST_SECRET);
+  Deno.env.set("TAP_ADMIN_PASSWORD", TEST_SECRET);
   try {
     return await fn();
   } finally {
     _resetAutoEnrollState();
-    Deno.env.delete("TAP_WEBHOOK_SECRET");
+    Deno.env.delete("TAP_ADMIN_PASSWORD");
   }
 }
 
-Deno.test("tapEnroll sends Basic auth derived from TAP_WEBHOOK_SECRET", async () => {
+Deno.test("tapEnroll sends Basic auth derived from TAP_ADMIN_PASSWORD", async () => {
   await withClean(async () => {
     const stub = installFetchStub((call) => {
       if (call.url.endsWith("/repos/add")) {
