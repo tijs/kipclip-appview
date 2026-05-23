@@ -4,6 +4,26 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.20] - 2026-05-23
+
+### Fixed
+
+- `scripts/backfill-mirror.ts` now calls `tapEnroll()` before inserting into
+  `tracked_dids`, preventing DIDs from being tracked locally but invisible to
+  TAP's firehose. Root cause of 7 orphaned users during May 9-10 mirror
+  bring-up.
+
+### Added
+
+- `drift-alert.ts` compares kipclip's `tracked_dids` count against TAP's
+  `/stats/repo-count` and fires a Sentry warning on mismatch.
+
+### Changed
+
+- Rename `TAP_WEBHOOK_SECRET` to `TAP_ADMIN_PASSWORD` everywhere. Both sides now
+  use the same env var name for the same secret — the split naming was the
+  direct cause of the silent-401 orphan bug on day 1.
+
 ## [0.24.19] - 2026-05-23
 
 ### Changed
@@ -54,7 +74,8 @@ All notable changes to kipclip are documented in this file.
 
 ### Added
 
-- Community Tools section on the Tools page with a link to Airglow — automatically bookmarks links from posts you like on Bluesky.
+- Community Tools section on the Tools page with a link to Airglow —
+  automatically bookmarks links from posts you like on Bluesky.
 
 ## [0.24.17] - 2026-05-22
 
