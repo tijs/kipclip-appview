@@ -4,6 +4,8 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.19] - 2026-05-23
+
 ### Changed
 
 - Bump runtime to Deno 2.8.0 (TypeScript compiler 6.0.3). Brings `node:crypto`
@@ -34,6 +36,19 @@ All notable changes to kipclip are documented in this file.
   its upstream filename (`deno-${ARCH}.zip`) so `sha256sum -c` against the
   upstream `.sha256sum` file actually resolves. The bug never fired before
   because every prior tick was a no-op (`Already on v2.7.14; nothing to do`).
+
+### Fixed
+
+- `tap-update.sh` silently stalled for 3+ weeks: the indigo build clone was
+  shallow, causing `git fetch origin main` to skip updating
+  `refs/remotes/origin/main`. The script now auto-unshallows before fetching.
+
+### Ops
+
+- Replace stale `deploy/tap.config.example` (YAML — TAP doesn't use YAML) with
+  `deploy/tap.env.example` documenting all relevant `TAP_*` env vars.
+- Enable `TAP_METRICS_LISTEN` on the box for Prometheus metrics + pprof
+  visibility into backfill rate limiting and firehose processing.
 
 ## [0.24.18] - 2026-05-23
 
