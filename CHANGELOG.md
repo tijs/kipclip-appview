@@ -4,6 +4,17 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.21] - 2026-05-30
+
+### Fixed
+
+- Auto-enroll now short-circuits for already-tracked DIDs. `POST /api/bookmarks`
+  fires enrollment unconditionally (so `/save`-path users get tracked), which
+  meant every bookmark write by an existing user re-ran a full 5-collection PDS
+  backfill; on a slow PDS that timed out and raised a spurious "auto-enroll
+  failed" Sentry error. `runEnrollment` now no-ops when the DID is already
+  tracked with backfill started.
+
 ## [0.24.20] - 2026-05-23
 
 ### Fixed
