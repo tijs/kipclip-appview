@@ -13,6 +13,7 @@ import {
   upsertPreferences,
   upsertTag,
 } from "../mirror/upserts.ts";
+import { getSyncStatus } from "../mirror/queries.ts";
 import { db } from "./db.ts";
 import { getMirrorMode } from "./mirror-config.ts";
 import { captureMessage } from "./sentry.ts";
@@ -196,6 +197,22 @@ export async function runBackfill(did: string, pdsUrl: string): Promise<void> {
  * webhook wrote in the meantime (upserts are ON CONFLICT idempotent too).
  */
 async function runEnrollment(did: string, pdsUrl: string): Promise<void> {
+  // Already enrolled? Short-circuit before the expensive PDS backfill.
+  // Not every call site gates on tracked status — POST /api/bookmarks fires
+  // unconditionally so /save-path users still get tracked — so an
+  // already-tracked user adding a bookmark would otherwise re-run a full
+  // 5-collection listRecords sweep against their PDS on every write, and a
+  // slow PDS would time out and raise a spurious "auto-enroll failed". This
+  // guard matches the `fromMirror` condition (tracking && backfill started);
+  // the tracked_dids row is only written after a successful enroll, so its
+  // presence means TAP enroll + backfill already completed. Pre-`try` so a
+  // DB hiccup here doesn't masquerade as an enroll failure.
+  const existing = await getSyncStatus(did);
+  if (existing.tracking && existing.backfillStartedAt !== null) {
+    lastFailureAt.delete(did);
+    return;
+  }
+
   let stage: "tapEnroll" | "backfill" | "trackedDids" = "tapEnroll";
   try {
     console.log(`[auto-enroll] starting for ${did}`);

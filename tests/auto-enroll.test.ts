@@ -200,6 +200,35 @@ Deno.test("happy path enrolls, backfills, and stamps tracked_dids complete", asy
   });
 });
 
+Deno.test("already-tracked DID short-circuits — no TAP call, no backfill", async () => {
+  // Regression: POST /api/bookmarks fires autoEnrollIfNeeded unconditionally
+  // (so /save-path users get tracked), so an already-tracked user adding a
+  // bookmark would re-run a full PDS backfill on every write. On a slow PDS
+  // that 5-collection listRecords sweep timed out and raised a spurious
+  // "auto-enroll failed". runEnrollment must no-op when the DID is already
+  // tracked with backfill started.
+  await withClean(async () => {
+    await db.execute({
+      sql: `INSERT INTO tracked_dids
+              (did, pds_url, added_at, backfill_started_at, backfill_complete_at, last_seq, last_event_at)
+            VALUES (?, ?, ?, ?, ?, NULL, NULL)`,
+      args: [DID, PDS, 1, 1, 1],
+    });
+
+    const stub = installFetchStub(() =>
+      new Response(emptyListRecordsBody(), { status: 200 })
+    );
+    try {
+      await _runEnrollmentForTest(DID, PDS);
+    } finally {
+      stub.restore();
+    }
+
+    // No network at all: neither TAP enroll nor any PDS listRecords.
+    assertEquals(stub.calls.length, 0);
+  });
+});
+
 Deno.test("listRecords non-2xx leaves tracked_dids empty (TAP enrolled, backfill failed)", async () => {
   await withClean(async () => {
     const stub = installFetchStub((call) => {
