@@ -3,6 +3,7 @@ import { Toaster } from "sonner";
 import { App } from "./components/App.tsx";
 import { AppProvider } from "./context/AppContext.tsx";
 import { ErrorBoundary } from "./components/ErrorBoundary.tsx";
+import { FeedbackButton } from "./components/FeedbackButton.tsx";
 
 // Only run in browser environment
 if (typeof document !== "undefined") {
@@ -23,6 +24,7 @@ if (typeof document !== "undefined") {
     <ErrorBoundary>
       <AppProvider>
         <App />
+        <FeedbackButton />
         <Toaster
           position="bottom-center"
           duration={3500}

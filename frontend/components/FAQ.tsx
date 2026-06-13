@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { PageShell } from "./PageShell.tsx";
 import { Button } from "./Button.tsx";
 import { useApp } from "../context/AppContext.tsx";
+import { FEEDBACK_URL } from "../utils/feedback.ts";
 
 export function FAQ() {
   const { session } = useApp();
@@ -351,7 +352,15 @@ export function FAQ() {
           >
             About page
           </a>{" "}
-          for more information, or reach out on{" "}
+          for more information, share an idea or report an issue on the{" "}
+          <a
+            href={FEEDBACK_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-gray-800"
+          >
+            feedback board
+          </a>, or reach out on{" "}
           <a
             href="https://bsky.app/profile/tijs.org"
             target="_blank"

@@ -4,6 +4,13 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- User-feedback links pointing to the public feedback board (userinput.app): a
+  "Feedback" item in the account dropdown, a "feedback board" link in the FAQ's
+  "Still have questions?" section, and a floating Feedback button pinned
+  bottom-right on desktop (hidden on mobile to preserve screen space).
+
 ## [0.24.25] - 2026-06-13
 
 ### Fixed
