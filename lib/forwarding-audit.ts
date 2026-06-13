@@ -101,8 +101,11 @@ export async function auditForwardingDrift(
     return { skipped: false, flagged: [], checked: 0 };
   }
 
-  const path = opts.tapDbPath ?? Deno.env.get("TAP_DB_PATH") ??
-    DEFAULT_TAP_DB_PATH;
+  // Treat an empty TAP_DB_PATH as unset (?? keeps "" — which would open an
+  // empty `file:` db with no repo_records and skip every run).
+  const envPath = Deno.env.get("TAP_DB_PATH");
+  const path = opts.tapDbPath ??
+    (envPath && envPath.length > 0 ? envPath : DEFAULT_TAP_DB_PATH);
   // deno-lint-ignore no-explicit-any
   let tapClient: any;
   try {
