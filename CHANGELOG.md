@@ -4,6 +4,22 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.22] - 2026-06-13
+
+### Added
+
+- Reconciling mirror sync (`scripts/reconcile-mirror.ts` + `lib/reconcile.ts`).
+  Treats each tracked DID's PDS as the source of truth and repairs both drift
+  directions the webhook path can't: it deletes mirror rows for records removed
+  on the PDS (stale rows) and upserts records the webhook never received. The
+  enroll-time backfill is upsert-only, so a dropped TAP event — relay not
+  carrying a PDS, an `invalid repoOp` parse error, or an account migration —
+  used to leave the mirror permanently wrong (showing deleted bookmarks and
+  missing new ones). Runs as a daily systemd timer (`kipclip-reconcile.timer`,
+  default reconciles only audit-divergent DIDs) and as an operator CLI (`--all`,
+  `--did`, `--dry-run`). The PDS read runs before any delete, so a transient
+  fetch error or wrong host can never wipe a mirror.
+
 ## [0.24.21] - 2026-05-30
 
 ### Fixed

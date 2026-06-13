@@ -8,11 +8,11 @@
  */
 
 import {
-  upsertAnnotation,
-  upsertBookmark,
-  upsertPreferences,
-  upsertTag,
-} from "../mirror/upserts.ts";
+  fetchLiveRepo,
+  fetchWithTimeout,
+  type LiveUris,
+  upsertLiveRepo,
+} from "./mirror-sync.ts";
 import { getSyncStatus } from "../mirror/queries.ts";
 import { db } from "./db.ts";
 import { getMirrorMode } from "./mirror-config.ts";
@@ -28,12 +28,9 @@ function tapAdminPassword(): string | undefined {
   return Deno.env.get("TAP_ADMIN_PASSWORD");
 }
 
-// Per-fetch timeouts. TAP /repos/add is a single in-process call to a local
-// process on the box (low ms in practice). listRecords hits the user's PDS,
-// which can be anywhere on the internet — give it a more generous budget but
-// still bounded so a slow-loris PDS can't wedge enrollment indefinitely.
+// TAP /repos/add is a single in-process call to a local process on the box
+// (low ms in practice). The PDS-side listRecords budget lives in mirror-sync.
 const TAP_FETCH_TIMEOUT_MS = 10_000;
-const PDS_FETCH_TIMEOUT_MS = 20_000;
 
 // Per-DID cooldown so a sustained TAP/PDS outage doesn't produce one Sentry
 // event per page-load per user. After a failure, skip silently for the
@@ -45,56 +42,6 @@ const lastFailureAt = new Map<string, number>();
 // server process lifetime. A second request during the background run is a
 // no-op; the DID gets tracked before the next login cycle completes.
 const enrollingDids = new Set<string>();
-
-async function fetchWithTimeout(
-  url: string,
-  init: RequestInit,
-  timeoutMs: number,
-): Promise<Response> {
-  return await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
-}
-
-async function listAll(
-  pdsUrl: string,
-  did: string,
-  collection: string,
-): Promise<any[]> {
-  const records: any[] = [];
-  let cursor: string | undefined;
-  while (true) {
-    const url = new URL(`${pdsUrl}/xrpc/com.atproto.repo.listRecords`);
-    url.searchParams.set("repo", did);
-    url.searchParams.set("collection", collection);
-    url.searchParams.set("limit", "100");
-    if (cursor) url.searchParams.set("cursor", cursor);
-    const res = await fetchWithTimeout(
-      url.toString(),
-      { method: "GET" },
-      PDS_FETCH_TIMEOUT_MS,
-    );
-    if (!res.ok) {
-      throw new Error(`listRecords ${collection}: ${res.status}`);
-    }
-    const data = await res.json();
-    const batch: any[] = data.records ?? [];
-    records.push(...batch);
-    cursor = data.cursor;
-    if (!cursor || batch.length === 0) break;
-  }
-  return records;
-}
-
-function str(obj: unknown, key: string): string | undefined {
-  if (obj && typeof obj === "object" && key in (obj as object)) {
-    const v = (obj as Record<string, unknown>)[key];
-    return typeof v === "string" ? v : undefined;
-  }
-}
-
-function arr(val: unknown): string[] {
-  if (!Array.isArray(val)) return [];
-  return val.filter((x): x is string => typeof x === "string");
-}
 
 // TAP /repos/add is verified idempotent (200 on duplicate). Retrying after
 // a successful enroll but failed downstream step is safe.
@@ -118,74 +65,20 @@ export async function tapEnroll(did: string): Promise<void> {
   if (!r.ok) throw new Error(`TAP /repos/add returned ${r.status}`);
 }
 
-export async function runBackfill(did: string, pdsUrl: string): Promise<void> {
-  const [bookmarks, kipclipAnnotations, legacyAnnotations, tags, prefs] =
-    await Promise.all([
-      listAll(pdsUrl, did, "community.lexicon.bookmarks.bookmark"),
-      listAll(pdsUrl, did, "com.kipclip.annotation"),
-      listAll(pdsUrl, did, "app.bookmark.annotation"),
-      listAll(pdsUrl, did, "com.kipclip.tag"),
-      listAll(pdsUrl, did, "com.kipclip.preferences"),
-    ]);
-
-  for (const r of bookmarks) {
-    const rkey = r.uri.split("/").pop() ?? "";
-    const v = r.value ?? {};
-    const enriched = (v["$enriched"] as Record<string, unknown>) ?? {};
-    await upsertBookmark({
-      uri: r.uri,
-      did,
-      rkey,
-      cid: r.cid,
-      subject: str(v, "subject") ?? "",
-      createdAt: str(v, "createdAt") ?? "",
-      tags: arr(v["tags"]),
-      enrichedTitle: str(enriched, "title") ?? str(v, "title") ?? null,
-      enrichedDescription: str(enriched, "description") ?? null,
-      enrichedFavicon: str(enriched, "favicon") ?? null,
-      enrichedImage: str(enriched, "image") ?? null,
-    });
-  }
-
-  for (const r of [...kipclipAnnotations, ...legacyAnnotations]) {
-    const rkey = r.uri.split("/").pop() ?? "";
-    const v = r.value ?? {};
-    await upsertAnnotation({
-      uri: r.uri,
-      did,
-      rkey,
-      cid: r.cid,
-      subject: str(v, "subject") ?? "",
-      title: str(v, "title") ?? null,
-      description: str(v, "description") ?? null,
-      favicon: str(v, "favicon") ?? null,
-      image: str(v, "image") ?? null,
-      note: str(v, "note") ?? null,
-    });
-  }
-
-  for (const r of tags) {
-    const rkey = r.uri.split("/").pop() ?? "";
-    const v = r.value ?? {};
-    await upsertTag({
-      uri: r.uri,
-      did,
-      rkey,
-      cid: r.cid,
-      value: str(v, "value") ?? "",
-      createdAt: str(v, "createdAt") ?? "",
-    });
-  }
-
-  for (const r of prefs) {
-    const v = r.value ?? {};
-    await upsertPreferences({
-      did,
-      cid: r.cid,
-      dateFormat: str(v, "dateFormat") ?? null,
-      readingListTag: str(v, "readingListTag") ?? null,
-    });
-  }
+/**
+ * Enroll-time backfill: fetch every tracked collection from the PDS and
+ * upsert it into the mirror. Upsert-only — it never removes mirror rows, so
+ * it heals missing records but not stale ones. The reconciling sync
+ * (lib/reconcile.ts) is the authoritative repair that also deletes.
+ * Returns the live URI sets for callers that need them (reconcile reuses
+ * this to compute the delete-missing complement without a second fetch).
+ */
+export async function runBackfill(
+  did: string,
+  pdsUrl: string,
+): Promise<LiveUris> {
+  const repo = await fetchLiveRepo(pdsUrl, did);
+  return await upsertLiveRepo(did, repo);
 }
 
 /**

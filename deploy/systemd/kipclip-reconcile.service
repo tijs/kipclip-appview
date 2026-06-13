@@ -1,0 +1,27 @@
+[Unit]
+Description=kipclip mirror reconcile (PDS-authoritative repair of drifted tracked DIDs)
+After=network-online.target kipclip.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=kipclip
+Group=kipclip
+WorkingDirectory=/var/lib/kipclip/current
+EnvironmentFile=/etc/kipclip/env
+ExecStart=/opt/deno/bin/deno run --allow-net --allow-env --allow-read --allow-write --allow-sys --allow-ffi scripts/reconcile-mirror.ts
+
+# Hardening — script reads tracked_dids + mirror tables, fetches PDS records,
+# and writes the mirror (upsert current + delete records gone from the PDS).
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/kipclip
+
+# Reconcile exits 0 on a clean run (including runs that repaired drift) and 2
+# only when every target failed. There is no "expected nonzero" signal path.
+SuccessExitStatus=0
+
+[Install]
+WantedBy=multi-user.target
