@@ -4,6 +4,8 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.23] - 2026-06-13
+
 ### Fixed
 
 - Write-side PDS-migration guard. After a user migrates their repo to a new PDS,
