@@ -25,6 +25,7 @@
  */
 
 import { auditTrackedDrift, type DriftRow } from "../lib/drift-audit.ts";
+import { auditForwardingDrift } from "../lib/forwarding-audit.ts";
 import { captureMessage, Sentry } from "../lib/sentry.ts";
 
 const RECOVERABLE_SAMPLE_CAP = 20;
@@ -122,6 +123,47 @@ async function main() {
     }
   } else {
     console.log("[drift-alert] TAP repo-count check skipped (unreachable)");
+  }
+
+  // Forwarding-drift: TAP synced records the mirror never received (local
+  // mirror vs TAP repo_records). Runs before the 05:30 reconcile, which would
+  // otherwise heal and hide the divergence. This is the signal that would have
+  // caught vicwalker.dev.br on day one instead of via a user bug report.
+  const forwarding = await auditForwardingDrift();
+  if (forwarding.skipped) {
+    console.log(
+      `[drift-alert] forwarding-drift check skipped (${forwarding.reason})`,
+    );
+  } else {
+    console.log(
+      `[drift-alert] forwarding-drift checked=${forwarding.checked} ` +
+        `flagged=${forwarding.flagged.length}`,
+    );
+    if (forwarding.flagged.length > 0) {
+      const sample = forwarding.flagged.slice(0, RECOVERABLE_SAMPLE_CAP).map(
+        (r) => ({
+          did: r.did,
+          mirror: r.mirror,
+          tap: r.tap,
+          diff: r.mirror - r.tap,
+        }),
+      );
+      for (const s of sample) {
+        console.log(
+          `  ${s.did}  mirror=${s.mirror} tap=${s.tap} diff=${s.diff}`,
+        );
+      }
+      captureMessage(
+        `TAP forwarding drift: ${forwarding.flagged.length} DIDs where mirror != TAP repo_records`,
+        "warning",
+        {
+          flagged: forwarding.flagged.length,
+          checked: forwarding.checked,
+          sample,
+        },
+      );
+      driftDetected = true;
+    }
   }
 
   if (recoverable.length > 0) {

@@ -4,6 +4,20 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.24] - 2026-06-13
+
+### Added
+
+- Forwarding-drift monitor, folded into the daily `drift-alert` (05:00 UTC).
+  Compares each tracked DID's mirror record count against TAP's `repo_records`
+  (both local SQLite, no PDS/relay calls) and warns to Sentry when they diverge
+  with an empty TAP outbox — i.e. TAP synced a repo but never forwarded its
+  events to `/api/sync/hook`. It runs before the 05:30 reconcile heals the gap,
+  so the underlying TAP forwarding failure stays visible instead of being
+  silently papered over. This is the signal that would have surfaced the
+  vicwalker.dev.br migration on day one instead of via a user bug report.
+  Best-effort: skips cleanly if `tap.db` is unreadable (e.g. local dev).
+
 ## [0.24.23] - 2026-06-13
 
 ### Fixed
