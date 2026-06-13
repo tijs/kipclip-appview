@@ -4,6 +4,14 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.25] - 2026-06-13
+
+### Fixed
+
+- Forwarding-drift audit treats an empty `TAP_DB_PATH` as unset. `??` kept an
+  empty string, which opened an empty `file:` db with no `repo_records` and
+  skipped every run; it now falls through to the default `/var/lib/tap/tap.db`.
+
 ## [0.24.24] - 2026-06-13
 
 ### Added
