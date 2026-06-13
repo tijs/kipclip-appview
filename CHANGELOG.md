@@ -11,6 +11,16 @@ All notable changes to kipclip are documented in this file.
   "Still have questions?" section, and a floating Feedback button pinned
   bottom-right on desktop (hidden on mobile to preserve screen space).
 
+### Security
+
+- Bumped the build's esbuild dependency to the patched `0.28.1`
+  (GHSA-gv7w-rqvm-qjhr). The only remaining flagged copy is a transitive
+  `esbuild@0.25.7` pinned by `@fresh/core@2.3.3` (latest), which has no upstream
+  fix yet; the advisory is an npm install-time vector that does not apply under
+  Deno's no-lifecycle-script, lockfile-integrity model. `deno audit` is now run
+  through `scripts/audit.ts`, a wrapper that allowlists this one documented
+  advisory and fails the build on any other.
+
 ## [0.24.25] - 2026-06-13
 
 ### Fixed
