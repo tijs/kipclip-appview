@@ -4,6 +4,20 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Write-side PDS-migration guard. After a user migrates their repo to a new PDS,
+  their existing kipclip session is still bound to the old PDS (the DPoP token
+  was issued by the old PDS's auth server), so in-app writes landed on the
+  dead/old repo — the reason vicwalker.dev.br's deletes "did nothing". Mutating
+  requests (POST/PUT/PATCH/DELETE) now compare the session's bound PDS host
+  against the DID's current PDS from its DID document; on a mismatch the request
+  returns 401 and the frontend redirects to login, starting a fresh OAuth flow
+  against the new PDS. Reads still serve from the mirror, so a user between
+  PDSes can keep browsing. Fail-open: a PLC resolution error or timeout never
+  logs anyone out (the reconciler remains the correctness backstop), and
+  confirmed matches are cached for an hour to keep PLC off the write hot path.
+
 ## [0.24.22] - 2026-06-13
 
 ### Added

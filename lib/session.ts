@@ -5,9 +5,10 @@
 
 import type { SessionInterface } from "@tijs/atproto-oauth";
 import { SessionManager } from "@tijs/atproto-sessions";
-import { captureError } from "./sentry.ts";
+import { captureError, captureMessage } from "./sentry.ts";
 import { getOAuth } from "./oauth-config.ts";
 import { refreshTrackedPdsUrl } from "./tracked-pds-refresh.ts";
+import { evaluatePdsMigration } from "./pds-migration-guard.ts";
 
 // Test session provider override (set via setTestSessionProvider)
 let testSessionProvider:
@@ -176,13 +177,44 @@ export async function getSessionFromRequest(
       };
     }
 
-    // Opportunistic PDS-migration refresh. If the user moved repos
-    // since enrollment, tracked_dids.pds_url will be stale; this keeps
-    // it in sync so audit + backfill paths hit the right host.
-    // Fire-and-forget, cached to one DB write per migrated DID per
-    // process lifetime.
+    // PDS-migration handling, resolved once and driving two things:
+    //   1. tracked_dids.pds_url stays authoritative — we persist the session's
+    //      pdsUrl only after confirming it still matches the DID document, and
+    //      the resolved current host otherwise, so a stale session can't push
+    //      the old host back into tracked_dids. (Reads skip PLC and return
+    //      null, so the read hot path stays network-free.)
+    //   2. Write-side guard — a mutating request bound to a PDS the user has
+    //      migrated away from would write to the dead/old repo (the DPoP token
+    //      is bound to the old auth server and can't be repointed without a
+    //      fresh login). It returns a null session → the write routes turn that
+    //      into a 401 that the frontend redirects to login → fresh OAuth
+    //      against the new PDS. Reads are exempt (mirror serves them).
     if (oauthSession.pdsUrl) {
-      refreshTrackedPdsUrl(oauthSession.did, oauthSession.pdsUrl);
+      const decision = await evaluatePdsMigration(
+        request.method,
+        oauthSession.did,
+        oauthSession.pdsUrl,
+      );
+      if (decision.refreshPdsUrl) {
+        refreshTrackedPdsUrl(oauthSession.did, decision.refreshPdsUrl);
+      }
+      if (decision.block) {
+        console.warn("[Session] PDS migration detected — forcing re-auth", {
+          did: oauthSession.did,
+          sessionPds: oauthSession.pdsUrl,
+          currentPds: decision.currentPdsUrl,
+          url: request.url,
+        });
+        // The one path that actively logs a user out (every other branch fails
+        // open), so surface it: a spike here would mean PLC is returning a
+        // wrong/transient PDS host and mass-logging-out users.
+        captureMessage("PDS migration forced re-auth", "info", {
+          did: oauthSession.did,
+          sessionPds: oauthSession.pdsUrl,
+          currentPds: decision.currentPdsUrl,
+        });
+        return { session: null, error: decision.block };
+      }
     }
 
     return {

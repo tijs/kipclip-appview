@@ -53,12 +53,15 @@ export interface ResolvedDid {
 }
 
 /** Fetch the DID document from the source canonical for this DID method. */
-async function fetchDidDoc(did: string): Promise<ResolvedDid | null> {
+async function fetchDidDoc(
+  did: string,
+  signal?: AbortSignal,
+): Promise<ResolvedDid | null> {
   const url = did.startsWith("did:web:")
     ? didWebUrl(did)
     : `${PLC_DIRECTORY}/${did}`;
 
-  const response = await fetch(url);
+  const response = await fetch(url, { signal });
 
   if (!response.ok) {
     if (response.status === 404) return null;
@@ -72,14 +75,19 @@ async function fetchDidDoc(did: string): Promise<ResolvedDid | null> {
 /**
  * Resolve a DID to its PDS URL and handle. Supports did:plc and did:web.
  */
-export async function resolveDid(did: string): Promise<ResolvedDid | null> {
+export async function resolveDid(
+  did: string,
+  signal?: AbortSignal,
+): Promise<ResolvedDid | null> {
   if (!did.startsWith("did:plc:") && !did.startsWith("did:web:")) {
     return null;
   }
 
   try {
-    return await fetchDidDoc(did);
+    return await fetchDidDoc(did, signal);
   } catch (error) {
+    // Includes AbortError when a caller-supplied signal times out — callers
+    // treat null as "could not resolve" (the migration guard fails open).
     console.error(`[resolveDid] Failed to resolve ${did}:`, error);
     return null;
   }
