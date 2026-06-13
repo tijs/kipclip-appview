@@ -4,6 +4,8 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.26] - 2026-06-13
+
 ### Added
 
 - User-feedback links pointing to the public feedback board (userinput.app): a
