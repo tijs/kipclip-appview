@@ -26,6 +26,25 @@ deno lint               # Lint code
 deno test --allow-all tests/ --filter "test name pattern"
 ```
 
+### Dev server / frontend hot-reload
+
+`deno task dev` runs `scripts/dev.ts`, an orchestrator that spawns two watchers
+together:
+
+- **`build-frontend.ts --watch`** rebuilds the esbuild SPA bundle
+  (`static/bundle.<hash>.js`) whenever `frontend/` or `shared/` change. This is
+  necessary because the frontend is a custom esbuild bundle served as a static
+  asset — it is NOT a Fresh island/route, so Fresh's built-in dev bundling never
+  rebuilds it. After a frontend edit, just reload the browser (the new content
+  hash busts the cache).
+- **The Fresh server** with `--watch=routes/,lib/,shared/,main.ts`. It does not
+  watch `static/`: `lib/file-server.ts` reads `manifest.json` per request, so a
+  rebuilt bundle is served on the next page load with no server restart.
+
+> Historically `dev` only built the frontend once at startup, so frontend edits
+> silently served a stale bundle. If a frontend change isn't showing up, confirm
+> `deno task dev` (not a hand-rolled `deno run … dev.ts`) is what's running.
+
 ## Architecture
 
 kipclip is a real AppView. Production traffic serves from a Hetzner box that

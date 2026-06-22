@@ -4,6 +4,20 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.28] - 2026-06-22
+
+### Fixed
+
+- Tag autocomplete in the add-bookmark popup and modal is now fully
+  keyboard-driven and better at matching. Arrow keys move through suggestions
+  (the list scrolls to follow), Enter adds the highlighted tag or creates a new
+  one from the typed text instead of silently grabbing the first match, and
+  Escape closes the list. Matches are ranked exact → prefix → word-start →
+  substring (so typing "test" surfaces `test` above `abtesting`/`contest`), ties
+  break by most-recently-used, the matched run is emphasized in each row, and
+  the dropdown now shows every match in a bounded scrollable list rather than
+  capping at five.
+
 ## [0.24.27] - 2026-06-22
 
 ### Fixed

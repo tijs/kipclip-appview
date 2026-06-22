@@ -67,7 +67,7 @@
   ],
   "tasks": {
     "build:frontend": "deno run -A scripts/build-frontend.ts",
-    "dev": "deno task build:frontend && deno run -A --unstable-kv --watch=static/,routes/,lib/,frontend/,shared/ dev.ts",
+    "dev": "deno run -A --unstable-kv scripts/dev.ts",
     "build": "deno task build:frontend && deno run -A --unstable-kv dev.ts build",
     "start": "deno serve -A _fresh/server.js",
     "preview": "deno run -A --unstable-kv main.ts",

@@ -7,8 +7,6 @@
 import * as esbuild from "esbuild";
 import { encodeHex } from "@std/encoding/hex";
 
-const startTime = Date.now();
-
 /**
  * Generate a short hash from content for cache busting.
  */
@@ -130,7 +128,8 @@ async function cleanOldBundles(currentBundleName: string): Promise<void> {
   }
 }
 
-try {
+export async function buildFrontend(): Promise<void> {
+  const startTime = Date.now();
   // Build to memory first to get the content for hashing
   const result = await esbuild.build({
     entryPoints: ["frontend/index.tsx"],
@@ -226,9 +225,45 @@ try {
   console.log(`   Hash: ${contentHash}`);
   console.log(`   SRI: ${bundleIntegrity}`);
   console.log(`   Version: ${version} (sha ${sha})`);
-} catch (error) {
-  console.error("❌ Build failed:", error);
-  Deno.exit(1);
-} finally {
-  esbuild.stop();
+}
+
+/**
+ * Watch mode: rebuild the bundle whenever frontend/ or shared/ source
+ * changes. Used by the dev orchestrator (scripts/dev.ts). The esbuild
+ * service is intentionally never stopped here — it stays warm across
+ * rebuilds and is reclaimed when the process exits.
+ */
+async function runWatch(): Promise<void> {
+  try {
+    await buildFrontend();
+  } catch (error) {
+    console.error("❌ [build] initial build failed:", error);
+  }
+  console.log("👀 [build] watching frontend/ and shared/ for changes...");
+  let timer: number | undefined;
+  const watcher = Deno.watchFs(["frontend", "shared"]);
+  for await (const event of watcher) {
+    if (!event.paths.some((p) => /\.(ts|tsx|css)$/.test(p))) continue;
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      buildFrontend().catch((e) =>
+        console.error("❌ [build] rebuild failed:", e)
+      );
+    }, 150);
+  }
+}
+
+if (import.meta.main) {
+  if (Deno.args.includes("--watch")) {
+    await runWatch();
+  } else {
+    try {
+      await buildFrontend();
+    } catch (error) {
+      console.error("❌ Build failed:", error);
+      Deno.exit(1);
+    } finally {
+      esbuild.stop();
+    }
+  }
 }
