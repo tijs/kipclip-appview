@@ -276,6 +276,57 @@ Deno.test({
 });
 
 Deno.test({
+  name:
+    "POST /api/import - dedup strips UTM but treats meaningful params as distinct",
+  async fn() {
+    // Existing bookmark carries a meaningful param (the video id lives in ?v=).
+    setTestSessionProvider(() =>
+      Promise.resolve(
+        createImportSession([
+          {
+            uri:
+              "at://did:plc:test123/community.lexicon.bookmarks.bookmark/existing1",
+            cid: "bafyexisting1",
+            value: {
+              subject: "https://www.youtube.com/watch?v=abc",
+              createdAt: "2024-01-01T00:00:00Z",
+              tags: [],
+            },
+          },
+        ]),
+      )
+    );
+
+    const pinboardJson = JSON.stringify([
+      // Same video + a UTM tag → duplicate, must be skipped.
+      {
+        href: "https://www.youtube.com/watch?v=abc&utm_source=share",
+        description: "Same video, shared link",
+        tags: "",
+      },
+      // Different video id → genuinely new, must be imported.
+      {
+        href: "https://www.youtube.com/watch?v=xyz",
+        description: "Different video",
+        tags: "",
+      },
+    ]);
+
+    const req = createImportRequest(pinboardJson, "pinboard.json");
+    const res = await handler(req);
+
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.success, true);
+    assertEquals(body.total, 2);
+    assertEquals(body.skipped, 1);
+    assertEquals(body.toImport, 1);
+
+    setTestSessionProvider(null);
+  },
+});
+
+Deno.test({
   name: "Process: imports chunk and returns done",
   async fn() {
     const { prepareBody, processBody } = await runFullImport(

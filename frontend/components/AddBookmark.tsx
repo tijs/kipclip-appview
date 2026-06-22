@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import type { EnrichedBookmark, EnrichedTag } from "../../shared/types.ts";
-import { getBaseUrl } from "../../shared/url-utils.ts";
+import { normalizeUrlForMatching } from "../../shared/url-utils.ts";
 import { useApp } from "../context/AppContext.tsx";
 import { apiPost } from "../utils/api.ts";
 import { DuplicateWarning } from "./DuplicateWarning.tsx";
@@ -29,9 +29,11 @@ export function AddBookmark({
   const [duplicates, setDuplicates] = useState<EnrichedBookmark[] | null>(null);
 
   function findDuplicates(inputUrl: string): EnrichedBookmark[] {
-    const inputBase = getBaseUrl(inputUrl);
+    const inputBase = normalizeUrlForMatching(inputUrl);
     if (!inputBase) return [];
-    return bookmarks.filter((b) => getBaseUrl(b.subject) === inputBase);
+    return bookmarks.filter((b) =>
+      normalizeUrlForMatching(b.subject) === inputBase
+    );
   }
 
   async function saveBookmark() {

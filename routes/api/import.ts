@@ -21,21 +21,7 @@ import {
   ATPROTOFANS_SUPPORT_URL,
   isUserSupporter,
 } from "../../lib/atprotofans.ts";
-
-/** 403 response for endpoints that require supporter status. */
-function supporterRequiredResponse(): Response {
-  return Response.json(
-    {
-      success: false,
-      error: "supporter_required",
-      message: "Import is a supporter-only feature. Support kipclip to unlock.",
-      upgradeUrl: ATPROTOFANS_SUPPORT_URL,
-      statusUrl: "/api/user/supporter-status",
-    },
-    { status: 403 },
-  );
-}
-import { getBaseUrl } from "../../shared/url-utils.ts";
+import { normalizeUrlForMatching } from "../../shared/url-utils.ts";
 import { generateTidForTimestamp } from "../../lib/tid.ts";
 import {
   deduplicateTagsCaseInsensitive,
@@ -54,6 +40,20 @@ import {
   getNextPendingChunk,
   markJobCompleted,
 } from "../../lib/import-jobs.ts";
+
+/** 403 response for endpoints that require supporter status. */
+function supporterRequiredResponse(): Response {
+  return Response.json(
+    {
+      success: false,
+      error: "supporter_required",
+      message: "Import is a supporter-only feature. Support kipclip to unlock.",
+      upgradeUrl: ATPROTOFANS_SUPPORT_URL,
+      statusUrl: "/api/user/supporter-status",
+    },
+    { status: 403 },
+  );
+}
 
 export function registerImportRoutes(app: App<any>): App<any> {
   // Prepare: parse, dedup, store chunks
@@ -132,13 +132,13 @@ export function registerImportRoutes(app: App<any>): App<any> {
         oauthSession,
       );
       for (const rec of existingBookmarkRecords) {
-        const base = getBaseUrl(rec.value.subject);
+        const base = normalizeUrlForMatching(rec.value.subject);
         if (base) existingUrls.add(base);
       }
 
       // Filter out duplicates
       const newBookmarks = bookmarks.filter((b) => {
-        const base = getBaseUrl(b.url);
+        const base = normalizeUrlForMatching(b.url);
         return base && !existingUrls.has(base);
       });
 

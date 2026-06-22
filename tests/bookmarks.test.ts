@@ -500,7 +500,8 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
-  name: "POST /api/bookmarks/check-duplicates - finds duplicates by base URL",
+  name:
+    "POST /api/bookmarks/check-duplicates - matches when only UTM params differ",
   async fn() {
     const mockBookmarks = [
       {
@@ -539,7 +540,7 @@ Deno.test({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            url: "https://example.com/article?ref=google",
+            url: "https://example.com/article?utm_source=google",
           }),
         },
       );
@@ -562,7 +563,54 @@ Deno.test({
 
 Deno.test({
   name:
-    "POST /api/bookmarks/check-duplicates - ignores query params when comparing",
+    "POST /api/bookmarks/check-duplicates - does not match on differing meaningful params",
+  async fn() {
+    const mockBookmarks = [
+      {
+        uri: "at://did:plc:test123/community.lexicon.bookmarks.bookmark/abc",
+        cid: "cid1",
+        value: {
+          subject: "https://example.com/article?page=1",
+          createdAt: "2025-01-01T00:00:00.000Z",
+          tags: ["news"],
+          $enriched: { title: "Example Article" },
+        },
+      },
+    ];
+
+    const pdsResponses = new Map<string, Response>();
+    pdsResponses.set("listRecords", listRecordsResponse(mockBookmarks));
+
+    setTestSessionProvider(() =>
+      Promise.resolve(createMockSessionResult({ pdsResponses }))
+    );
+
+    try {
+      const req = new Request(
+        "https://kipclip.com/api/bookmarks/check-duplicates",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: "https://example.com/article?page=2",
+          }),
+        },
+      );
+
+      const res = await handler(req);
+      assertEquals(res.status, 200);
+
+      const body = await res.json();
+      assertEquals(body.duplicates.length, 0);
+    } finally {
+      setTestSessionProvider(null);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "POST /api/bookmarks/check-duplicates - matches param-free URL against UTM-tagged input",
   async fn() {
     const mockBookmarks = [
       {

@@ -54,7 +54,7 @@ import type {
   UpdateBookmarkTagsRequest,
   UpdateBookmarkTagsResponse,
 } from "../../shared/types.ts";
-import { getBaseUrl } from "../../shared/url-utils.ts";
+import { normalizeUrlForMatching } from "../../shared/url-utils.ts";
 
 export function registerBookmarkRoutes(app: App<any>): App<any> {
   // List bookmarks
@@ -143,7 +143,7 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         );
       }
 
-      const inputBase = getBaseUrl(body.url);
+      const inputBase = normalizeUrlForMatching(body.url);
       if (!inputBase) {
         return Response.json(
           { duplicates: [] } satisfies CheckDuplicatesResponse,
@@ -153,7 +153,9 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
       const records = await fetchOwnerBookmarkRecords(oauthSession);
 
       const duplicates: EnrichedBookmark[] = records
-        .filter((record: any) => getBaseUrl(record.value.subject) === inputBase)
+        .filter((record: any) =>
+          normalizeUrlForMatching(record.value.subject) === inputBase
+        )
         .map((record: any) => mapBookmarkRecord(record));
 
       const result: CheckDuplicatesResponse = { duplicates };

@@ -4,6 +4,18 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Duplicate detection no longer collapses distinct URLs that differ only by
+  meaningful query parameters (e.g. `?page=2`, `?id=42`). Matching previously
+  stripped the entire query string, so genuinely different pages on the same
+  path were wrongly treated as the same bookmark. URLs are now compared with
+  only known tracking parameters and the fragment removed — UTM tags (`utm_*`)
+  and the major ad/click identifiers (`fbclid`, `gclid`, `gbraid`, `wbraid`,
+  `dclid`, `msclkid`, `ttclid`, `twclid`, `yclid`, `igshid`) are analytics-only
+  and never change the underlying content, so two links that differ solely in
+  those still de-duplicate.
+
 ## [0.24.26] - 2026-06-13
 
 ### Added
