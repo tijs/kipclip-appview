@@ -4,6 +4,8 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.27] - 2026-06-22
+
 ### Fixed
 
 - Duplicate detection no longer collapses distinct URLs that differ only by
