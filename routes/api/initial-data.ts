@@ -39,6 +39,7 @@ import type {
 } from "../../shared/types.ts";
 import { newestTidCursor } from "../../lib/tid.ts";
 import { autoEnrollIfNeeded } from "../../lib/auto-enroll.ts";
+import { enqueueMissingPreviewJobsForDid } from "../../lib/preview-enrichment-jobs.ts";
 
 /** Pick the lower rate limit remaining from two PDS responses. */
 function pickLowestRateLimit(
@@ -63,7 +64,8 @@ function joinBookmarksWithAnnotations(
       subject: record.value.subject,
       createdAt: record.value.createdAt,
       tags: record.value.tags || [],
-      title: annotation?.title || record.value.$enriched?.title ||
+      title: annotation?.title ||
+        record.value.$enriched?.title ||
         record.value.title,
       description: annotation?.description ||
         record.value.$enriched?.description,
@@ -83,8 +85,11 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
   app = app.get("/api/initial-data", async (ctx) => {
     const timer = createTimer();
     try {
-      const { session: oauthSession, setCookieHeader, error } = await timer
-        .span("session", () => getSessionFromRequest(ctx.req));
+      const {
+        session: oauthSession,
+        setCookieHeader,
+        error,
+      } = await timer.span("session", () => getSessionFromRequest(ctx.req));
 
       if (!oauthSession) {
         return createAuthErrorResponse(error);
@@ -102,10 +107,7 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
         () => shouldReadFromMirror(oauthSession.did),
       );
       if (isFirstPage && !mirrorDecision.fromMirror) {
-        autoEnrollIfNeeded(
-          oauthSession.did,
-          oauthSession.pdsUrl ?? "",
-        );
+        autoEnrollIfNeeded(oauthSession.did, oauthSession.pdsUrl ?? "");
       }
       if (mirrorDecision.fromMirror) {
         // Wrap the mirror branch so a DB failure falls through to
@@ -130,10 +132,7 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
                 "mirror-bookmarks",
                 () => firstPageBookmarks(oauthSession.did),
               ),
-              timer.span(
-                "supporter",
-                () => isUserSupporter(oauthSession),
-              ),
+              timer.span("supporter", () => isUserSupporter(oauthSession)),
             ]);
             timer.add("first-page-parallel", performance.now() - parallelStart);
             // Safeguard: a backfill-complete mirror with 0 bookmarks is
@@ -149,12 +148,12 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
             }
             const settings: UserSettings = {
               instapaperEnabled: extras.instapaperEnabled,
-              instapaperUsername: extras.instapaperEnabled &&
-                  extras.instapaperUsernameEncrypted
-                ? await decrypt(extras.instapaperUsernameEncrypted).catch(() =>
-                  undefined
-                )
-                : undefined,
+              instapaperUsername:
+                extras.instapaperEnabled && extras.instapaperUsernameEncrypted
+                  ? await decrypt(extras.instapaperUsernameEncrypted).catch(
+                    () => undefined,
+                  )
+                  : undefined,
             };
             const preferences: UserPreferences = {
               dateFormat: extras.preferences?.dateFormat || "us",
@@ -168,6 +167,9 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
               isSupporter,
               ...(mirrorDecision.syncing ? { syncing: true } : {}),
             };
+            enqueueMissingPreviewJobsForDid(oauthSession.did, 25).catch((err) =>
+              console.warn("[preview-enrichment] enqueue failed", err)
+            );
             return timer.finalize(
               setSessionCookie(Response.json(result), setCookieHeader),
             );
@@ -188,20 +190,18 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
           );
         } catch (mirrorErr) {
           if (
-            !(mirrorErr instanceof Error &&
-              mirrorErr.message === "mirror_empty_fallthrough")
+            !(
+              mirrorErr instanceof Error &&
+              mirrorErr.message === "mirror_empty_fallthrough"
+            )
           ) {
-            captureMessage(
-              "mirror read fallback to PDS",
-              "warning",
-              {
-                did: oauthSession.did,
-                op: isFirstPage
-                  ? "initial-data first-page"
-                  : "initial-data next-page",
-                error: String(mirrorErr),
-              },
-            );
+            captureMessage("mirror read fallback to PDS", "warning", {
+              did: oauthSession.did,
+              op: isFirstPage
+                ? "initial-data first-page"
+                : "initial-data next-page",
+              error: String(mirrorErr),
+            });
           }
           // Fall through to the PDS path below.
         }
@@ -232,18 +232,9 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
             () =>
               listOnePage(oauthSession, ANNOTATION_COLLECTION, firstPageOpts),
           ),
-          timer.span(
-            "pds-settings",
-            () => getUserSettings(oauthSession.did),
-          ),
-          timer.span(
-            "pds-preferences",
-            () => getUserPreferences(oauthSession),
-          ),
-          timer.span(
-            "supporter",
-            () => isUserSupporter(oauthSession),
-          ),
+          timer.span("pds-settings", () => getUserSettings(oauthSession.did)),
+          timer.span("pds-preferences", () => getUserPreferences(oauthSession)),
+          timer.span("supporter", () => isUserSupporter(oauthSession)),
         ]);
 
         const annotationMap = new Map<string, AnnotationRecord>();
@@ -275,6 +266,9 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
         const response = timer.finalize(
           setSessionCookie(Response.json(result), setCookieHeader),
         );
+        enqueueMissingPreviewJobsForDid(oauthSession.did, 10).catch((err) =>
+          console.warn("[preview-enrichment] enqueue failed", err)
+        );
 
         // Background migrations: run once per user per server session.
         // Tags are fetched inside this branch because runPdsMigrations needs
@@ -286,31 +280,33 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
             listAllRecords(oauthSession, BOOKMARK_COLLECTION),
             listAllRecords(oauthSession, ANNOTATION_COLLECTION),
             listAllRecords(oauthSession, TAG_COLLECTION),
-          ]).then(([allBookmarks, allAnnotations, allTagRecords]) => {
-            const allAnnotationMap = new Map<string, AnnotationRecord>();
-            for (const record of allAnnotations) {
-              const rkey = record.uri.split("/").pop();
-              if (rkey) {
-                allAnnotationMap.set(rkey, record.value as AnnotationRecord);
+          ])
+            .then(([allBookmarks, allAnnotations, allTagRecords]) => {
+              const allAnnotationMap = new Map<string, AnnotationRecord>();
+              for (const record of allAnnotations) {
+                const rkey = record.uri.split("/").pop();
+                if (rkey) {
+                  allAnnotationMap.set(rkey, record.value as AnnotationRecord);
+                }
               }
-            }
-            const tagRecords: EnrichedTag[] = allTagRecords.map(
-              (record: any) => ({
-                uri: record.uri,
-                cid: record.cid,
-                value: record.value.value,
-                createdAt: record.value.createdAt,
-              }),
+              const tagRecords: EnrichedTag[] = allTagRecords.map(
+                (record: any) => ({
+                  uri: record.uri,
+                  cid: record.cid,
+                  value: record.value.value,
+                  createdAt: record.value.createdAt,
+                }),
+              );
+              return runPdsMigrations({
+                oauthSession,
+                bookmarkRecords: allBookmarks,
+                tagRecords,
+                annotationMap: allAnnotationMap,
+              });
+            })
+            .catch((err) =>
+              console.error("Background PDS migration error:", err)
             );
-            return runPdsMigrations({
-              oauthSession,
-              bookmarkRecords: allBookmarks,
-              tagRecords,
-              annotationMap: allAnnotationMap,
-            });
-          }).catch((err) =>
-            console.error("Background PDS migration error:", err)
-          );
         }
 
         return response;
@@ -335,9 +331,11 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
                 reverse: true,
               }),
           )
-          : Promise.resolve(
-            { records: [] as any[], cursor: undefined, rateLimit: undefined },
-          ),
+          : Promise.resolve({
+            records: [] as any[],
+            cursor: undefined,
+            rateLimit: undefined,
+          }),
       ]);
 
       const annotationMap = new Map<string, AnnotationRecord>();

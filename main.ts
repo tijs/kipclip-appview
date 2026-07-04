@@ -10,6 +10,7 @@ import { load } from "@std/dotenv";
 import { initializeTables } from "./lib/db.ts";
 import { logMirrorMode } from "./lib/mirror-config.ts";
 import { initOAuth, tryInitOAuthFromEnv } from "./lib/oauth-config.ts";
+import { startPreviewEnrichmentWorker } from "./lib/preview-enrichment-worker.ts";
 import { captureError } from "./lib/sentry.ts";
 
 // Route modules
@@ -85,9 +86,11 @@ app = app.use(async (ctx) => {
 // (e.g. local dev without BASE_URL), fall back to a one-shot per-request
 // init that derives BASE_URL from ctx.url.
 const oauthEagerInit = tryInitOAuthFromEnv();
+if (oauthEagerInit) startPreviewEnrichmentWorker();
 if (!oauthEagerInit) {
   app = app.use(async (ctx) => {
     initOAuth(ctx.url);
+    startPreviewEnrichmentWorker();
     return await ctx.next();
   });
 }

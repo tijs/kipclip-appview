@@ -168,4 +168,26 @@ export const MIRROR_MIGRATIONS: MigrationEntry[] = [
         FROM preferences
     `,
   },
+  {
+    version: "011",
+    description: "Create preview enrichment queue",
+    sql: `
+      CREATE TABLE IF NOT EXISTS preview_enrichment_jobs (
+        bookmark_uri TEXT PRIMARY KEY,
+        did TEXT NOT NULL,
+        rkey TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        next_run_at INTEGER NOT NULL,
+        last_error TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_preview_jobs_runnable
+        ON preview_enrichment_jobs(status, next_run_at);
+      CREATE INDEX IF NOT EXISTS idx_preview_jobs_did
+        ON preview_enrichment_jobs(did)
+    `,
+  },
 ];

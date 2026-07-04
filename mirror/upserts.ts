@@ -160,6 +160,12 @@ export async function upsertAnnotation(
       Date.now(),
     ],
   });
+  await db
+    .execute({
+      sql: "DELETE FROM preview_enrichment_jobs WHERE bookmark_uri = ?",
+      args: [record.subject],
+    })
+    .catch(() => {});
 }
 
 export async function deleteAnnotation(
@@ -242,9 +248,7 @@ export async function deletePreferences(did: string): Promise<void> {
  * (last_seq, last_event_at) so out-of-order webhook deliveries don't regress.
  * On INSERT, added_at is stamped to now.
  */
-export async function upsertTrackedDid(
-  state: TrackedDidUpsert,
-): Promise<void> {
+export async function upsertTrackedDid(state: TrackedDidUpsert): Promise<void> {
   await db.execute({
     sql: `
       INSERT INTO tracked_dids (

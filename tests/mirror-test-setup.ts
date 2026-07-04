@@ -19,6 +19,7 @@ export async function clearMirrorTables(): Promise<void> {
   await db.execute({ sql: "DELETE FROM tracked_dids", args: [] });
   await db.execute({ sql: "DELETE FROM preferences", args: [] });
   await db.execute({ sql: "DELETE FROM seen_webhook_events", args: [] });
+  await db.execute({ sql: "DELETE FROM preview_enrichment_jobs", args: [] });
   // tracked_dids drives shouldReadFromMirror's getSyncStatus result; the
   // 1s TTL cache would otherwise serve stale tracking state across tests.
   _resetSyncStatusCache();
