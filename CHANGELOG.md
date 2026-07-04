@@ -4,6 +4,16 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.29] - 2026-07-04
+
+### Fixed
+
+- Tags containing spaces now work everywhere they are treated as exact tag
+  filters. Sidebar clicks quote multi-word tags in the search query, manual
+  `tag:Animated Short` input resolves against known tags, deselecting those
+  filters removes the whole tag instead of duplicating it, and share links keep
+  matching space-containing tag values.
+
 ## [0.24.28] - 2026-06-22
 
 ### Fixed
