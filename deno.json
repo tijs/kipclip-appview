@@ -63,8 +63,7 @@
   "exclude": [
     "**/_fresh/*",
     "static/",
-    "tests/fixtures/",
-    "scripts/og-card.html"
+    "tests/fixtures/"
   ],
   "tasks": {
     "build:frontend": "deno run -A scripts/build-frontend.ts",
