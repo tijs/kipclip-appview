@@ -4,6 +4,23 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.30] - 2026-07-04
+
+### Added
+
+- Bookmarks created outside Kipclip (e.g. iPhone Shortcuts + AT Toolbox)
+  now get preview cards automatically. A DB-backed queue detects bookmarks
+  missing a `com.kipclip.annotation` sidecar and a background worker fetches
+  URL metadata and writes the annotation to the owner's PDS. Enrichment is
+  silent and only runs for users where Kipclip has write authority; bookmarks
+  for users without an active session stay plain until their next login/sync
+  enqueues them. Failed fetches retry sparsely (now, +1d, +7d) then stop after
+  three attempts.
+
+### Changed
+
+- Pinned CI Deno version to v2.9.1.
+
 ## [0.24.29] - 2026-07-04
 
 ### Fixed
