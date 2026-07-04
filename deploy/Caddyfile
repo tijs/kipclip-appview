@@ -72,10 +72,7 @@
 	# HSTS once we're live on the apex. Safe to keep on staging too.
 	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 
-	reverse_proxy 127.0.0.1:8000 {
-		header_up X-Forwarded-Proto https
-		header_up X-Forwarded-Host {host}
-	}
+	reverse_proxy 127.0.0.1:8000
 }
 
 staging.kipclip.com {
