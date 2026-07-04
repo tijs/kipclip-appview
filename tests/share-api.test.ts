@@ -162,12 +162,40 @@ Deno.test("GET /api/share - finds matching bookmarks beyond the first page", asy
     assertEquals(body.handle, TEST_HANDLE);
     assertEquals(body.tags, ["accessibility"]);
     assertEquals(body.bookmarks.length, 2);
-    const subjects = body.bookmarks.map((b: { subject: string }) => b.subject)
+    const subjects = body.bookmarks
+      .map((b: { subject: string }) => b.subject)
       .sort();
     assertEquals(subjects, [
       "https://example.com/post-150",
       "https://example.com/post-220",
     ]);
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("GET /api/share - supports tags with spaces", async () => {
+  const bookmarks: BookmarkFixture[] = [
+    { rkey: "a", subject: "https://example.com/a", tags: ["Animated Short"] },
+    {
+      rkey: "b",
+      subject: "https://example.com/b",
+      tags: ["Animated", "Short"],
+    },
+  ];
+
+  const restore = installPdsStub(bookmarks);
+  try {
+    const encoded = encodeTagsForUrl(["Animated Short"]);
+    const req = new Request(
+      `https://kipclip.com/api/share/${TEST_DID}/${encoded}`,
+    );
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.tags, ["Animated Short"]);
+    assertEquals(body.bookmarks.length, 1);
+    assertEquals(body.bookmarks[0].subject, "https://example.com/a");
   } finally {
     restore();
   }
@@ -205,13 +233,16 @@ Deno.test("GET /api/share - merges annotation metadata for matched bookmarks", a
     { rkey: "skip", subject: "https://example.com/2", tags: ["other"] },
   ];
   const annotations = new Map<string, unknown>([
-    ["match1", {
-      subject: `at://${TEST_DID}/community.lexicon.bookmarks.bookmark/match1`,
-      title: "Accessibility Guide",
-      description: "How to build accessible apps",
-      favicon: "https://example.com/fav.ico",
-      createdAt: "2025-01-01T00:00:00Z",
-    }],
+    [
+      "match1",
+      {
+        subject: `at://${TEST_DID}/community.lexicon.bookmarks.bookmark/match1`,
+        title: "Accessibility Guide",
+        description: "How to build accessible apps",
+        favicon: "https://example.com/fav.ico",
+        createdAt: "2025-01-01T00:00:00Z",
+      },
+    ],
   ]);
 
   const restore = installPdsStub(bookmarks, { annotations });
@@ -225,10 +256,7 @@ Deno.test("GET /api/share - merges annotation metadata for matched bookmarks", a
     const body = await res.json();
     assertEquals(body.bookmarks.length, 1);
     assertEquals(body.bookmarks[0].title, "Accessibility Guide");
-    assertEquals(
-      body.bookmarks[0].description,
-      "How to build accessible apps",
-    );
+    assertEquals(body.bookmarks[0].description, "How to build accessible apps");
     assertEquals(body.bookmarks[0].favicon, "https://example.com/fav.ico");
   } finally {
     restore();
@@ -260,11 +288,13 @@ Deno.test("GET /api/share - rejects loopback PDS (SSRF)", async () => {
           JSON.stringify({
             id: TEST_DID,
             alsoKnownAs: [`at://${TEST_HANDLE}`],
-            service: [{
-              id: "#atproto_pds",
-              type: "AtprotoPersonalDataServer",
-              serviceEndpoint: "https://127.0.0.1:8080",
-            }],
+            service: [
+              {
+                id: "#atproto_pds",
+                type: "AtprotoPersonalDataServer",
+                serviceEndpoint: "https://127.0.0.1:8080",
+              },
+            ],
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },
         ),
@@ -297,11 +327,13 @@ Deno.test("GET /api/share - rejects non-https PDS (SSRF)", async () => {
           JSON.stringify({
             id: TEST_DID,
             alsoKnownAs: [`at://${TEST_HANDLE}`],
-            service: [{
-              id: "#atproto_pds",
-              type: "AtprotoPersonalDataServer",
-              serviceEndpoint: "http://example.com",
-            }],
+            service: [
+              {
+                id: "#atproto_pds",
+                type: "AtprotoPersonalDataServer",
+                serviceEndpoint: "http://example.com",
+              },
+            ],
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },
         ),
@@ -337,11 +369,13 @@ Deno.test("GET /api/share - hostile PDS with non-advancing cursor is bounded", a
           JSON.stringify({
             id: TEST_DID,
             alsoKnownAs: [`at://${TEST_HANDLE}`],
-            service: [{
-              id: "#atproto_pds",
-              type: "AtprotoPersonalDataServer",
-              serviceEndpoint: TEST_PDS,
-            }],
+            service: [
+              {
+                id: "#atproto_pds",
+                type: "AtprotoPersonalDataServer",
+                serviceEndpoint: TEST_PDS,
+              },
+            ],
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },
         ),
@@ -360,10 +394,10 @@ Deno.test("GET /api/share - hostile PDS with non-advancing cursor is bounded", a
         },
       }));
       return Promise.resolve(
-        new Response(
-          JSON.stringify({ records, cursor: "stuck" }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        ),
+        new Response(JSON.stringify({ records, cursor: "stuck" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
       );
     }
     return Promise.resolve(new Response("unexpected", { status: 500 }));

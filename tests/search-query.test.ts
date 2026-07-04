@@ -49,6 +49,21 @@ Deno.test("parseSearchQuery - tag: with no value is literal text", () => {
   assertEquals(result, { tags: [], text: "tag:" });
 });
 
+Deno.test("parseSearchQuery - quoted tag with spaces", () => {
+  const result = parseSearchQuery('tag:"animated short"');
+  assertEquals(result, { tags: ["animated short"], text: "" });
+});
+
+Deno.test("parseSearchQuery - known unquoted tag with spaces", () => {
+  const result = parseSearchQuery("tag:Animated Short", ["Animated Short"]);
+  assertEquals(result, { tags: ["animated short"], text: "" });
+});
+
+Deno.test("parseSearchQuery - unknown unquoted words stay free text", () => {
+  const result = parseSearchQuery("tag:swift tutorials", ["swift"]);
+  assertEquals(result, { tags: ["swift"], text: "tutorials" });
+});
+
 Deno.test("parseSearchQuery - tags interspersed with text", () => {
   const result = parseSearchQuery("how to tag:swift learn tag:ios today");
   assertEquals(result, { tags: ["swift", "ios"], text: "how to learn today" });
@@ -64,6 +79,37 @@ Deno.test("toggleTagInQuery - add to empty query", () => {
 
 Deno.test("toggleTagInQuery - add to existing text (prepend)", () => {
   assertEquals(toggleTagInQuery("tutorials", "swift"), "tag:swift tutorials");
+});
+
+Deno.test("toggleTagInQuery - quote tag with spaces", () => {
+  assertEquals(toggleTagInQuery("", "Animated Short"), 'tag:"animated short"');
+});
+
+Deno.test("toggleTagInQuery - sidebar click round-trips tag with spaces", () => {
+  const query = toggleTagInQuery("", "Animated Short");
+  const parsed = parseSearchQuery(query, ["Animated Short"]);
+  assertEquals(parsed, { tags: ["animated short"], text: "" });
+});
+
+Deno.test("toggleTagInQuery - remove quoted tag with spaces", () => {
+  assertEquals(
+    toggleTagInQuery('tag:"animated short" tutorials', "Animated Short"),
+    "tutorials",
+  );
+});
+
+Deno.test("toggleTagInQuery - remove known unquoted tag with spaces", () => {
+  assertEquals(
+    toggleTagInQuery("tag:Animated Short tutorials", "Animated Short"),
+    "tutorials",
+  );
+});
+
+Deno.test("toggleTagInQuery - known single-word tag does not consume text", () => {
+  assertEquals(
+    toggleTagInQuery("tag:swift tutorials", "swift", ["swift"]),
+    "tutorials",
+  );
 });
 
 Deno.test("toggleTagInQuery - remove existing tag", () => {

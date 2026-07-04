@@ -90,9 +90,7 @@ async function fetchFirstPage(): Promise<InitialDataResponse> {
   const response = await apiGet("/api/initial-data");
   if (!response.ok) {
     const body = await response.text().catch(() => "");
-    throw new Error(
-      `Failed to load initial data: ${response.status} ${body}`,
-    );
+    throw new Error(`Failed to load initial data: ${response.status} ${body}`);
   }
   const first: InitialDataResponse = await response.json();
   perf.end("initialDataFirstPage");
@@ -336,7 +334,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   function updateBookmark(bookmark: EnrichedBookmark) {
     setBookmarks((prev) =>
-      prev.map((b) => b.uri === bookmark.uri ? bookmark : b)
+      prev.map((b) => (b.uri === bookmark.uri ? bookmark : b))
     );
   }
 
@@ -355,7 +353,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   function updateTag(tag: EnrichedTag) {
-    setTags((prev) => prev.map((t) => t.uri === tag.uri ? tag : t));
+    setTags((prev) => prev.map((t) => (t.uri === tag.uri ? tag : t)));
   }
 
   function deleteTag(uri: string) {
@@ -423,7 +421,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const BATCH_INTERVAL_MS = 500;
     const pending: EnrichedBookmark[] = [];
     let pagesSinceFlush = 0;
-    let flushTimer: number | undefined;
+    let flushTimer: ReturnType<typeof setTimeout> | undefined;
 
     const flush = () => {
       if (flushTimer !== undefined) {
@@ -595,9 +593,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (ev.type !== "record" || !ev.collection) continue;
           if (ev.collection === "com.kipclip.tag") {
             needsTags = true;
-          } else if (
-            ev.collection === "community.lexicon.bookmarks.bookmark"
-          ) {
+          } else if (ev.collection === "community.lexicon.bookmarks.bookmark") {
             // Bookmark mutations affect tag counts in the sidebar; refresh
             // the bookmark list and the tag list together.
             needsBookmarks = true;
@@ -696,8 +692,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Derive selectedTags from search query
   const parsedQuery = useMemo(
-    () => parseSearchQuery(bookmarkSearchQuery),
-    [bookmarkSearchQuery],
+    () =>
+      parseSearchQuery(
+        bookmarkSearchQuery,
+        tags.map((t) => t.value),
+      ),
+    [bookmarkSearchQuery, tags],
   );
   const selectedTags = useMemo(
     () => new Set(parsedQuery.tags),
@@ -707,7 +707,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Filter actions
   function toggleTag(tagValue: string) {
     trackTagUsage(tagValue);
-    setBookmarkSearchQuery(toggleTagInQuery(bookmarkSearchQuery, tagValue));
+    setBookmarkSearchQuery(
+      toggleTagInQuery(
+        bookmarkSearchQuery,
+        tagValue,
+        tags.map((t) => t.value),
+      ),
+    );
   }
 
   function clearFilters() {
@@ -754,16 +760,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
   }, [bookmarks, tagIndex, selectedTags, parsedQuery.text]);
 
-  const readingListBookmarks = useMemo(
-    () => {
-      const rlLower = preferences.readingListTag.toLowerCase();
-      return bookmarks.filter((b) => {
-        const tags = tagIndex.get(b.uri);
-        return tags !== undefined && tags.has(rlLower);
-      });
-    },
-    [bookmarks, tagIndex, preferences.readingListTag],
-  );
+  const readingListBookmarks = useMemo(() => {
+    const rlLower = preferences.readingListTag.toLowerCase();
+    return bookmarks.filter((b) => {
+      const tags = tagIndex.get(b.uri);
+      return tags !== undefined && tags.has(rlLower);
+    });
+  }, [bookmarks, tagIndex, preferences.readingListTag]);
 
   const readingListTags = useMemo(() => {
     const tagSet = new Set<string>();

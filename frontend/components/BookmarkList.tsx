@@ -44,7 +44,7 @@ function useIncrementalRender(total: number, pageSize = 100) {
   // /api/initial-data streams in another batched flush — each remount
   // grows the rendered list by `pageSize - 50` rows and torches CLS.
   useEffect(() => {
-    setVisible((v) => v > total ? Math.min(pageSize, total) : v);
+    setVisible((v) => (v > total ? Math.min(pageSize, total) : v));
   }, [total, pageSize]);
 
   return { visible, sentinelRef };
@@ -109,14 +109,17 @@ export function BookmarkList() {
   // Debounced search input
   const [localSearchQuery, setLocalSearchQuery] = useState(bookmarkSearchQuery);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout>>();
-  const handleSearchChange = useCallback((value: string) => {
-    setLocalSearchQuery(value);
-    clearTimeout(searchTimerRef.current);
-    searchTimerRef.current = setTimeout(
-      () => setBookmarkSearchQuery(value),
-      150,
-    );
-  }, [setBookmarkSearchQuery]);
+  const handleSearchChange = useCallback(
+    (value: string) => {
+      setLocalSearchQuery(value);
+      clearTimeout(searchTimerRef.current);
+      searchTimerRef.current = setTimeout(
+        () => setBookmarkSearchQuery(value),
+        150,
+      );
+    },
+    [setBookmarkSearchQuery],
+  );
   useEffect(() => () => clearTimeout(searchTimerRef.current), []);
 
   // Sync external query changes (e.g. sidebar tag clicks) to local input,
@@ -135,8 +138,12 @@ export function BookmarkList() {
 
   // Parse query for matching tag suggestions
   const parsedQuery = useMemo(
-    () => parseSearchQuery(bookmarkSearchQuery),
-    [bookmarkSearchQuery],
+    () =>
+      parseSearchQuery(
+        bookmarkSearchQuery,
+        availableTags.map((t) => t.value),
+      ),
+    [bookmarkSearchQuery, availableTags],
   );
 
   // Matching tags: suggest tags that match the free text portion of the query
@@ -144,9 +151,10 @@ export function BookmarkList() {
     const text = parsedQuery.text.toLowerCase();
     if (!text) return [];
     return availableTags
-      .filter((t) =>
-        t.value.toLowerCase().includes(text) &&
-        !selectedTags.has(t.value.toLowerCase())
+      .filter(
+        (t) =>
+          t.value.toLowerCase().includes(text) &&
+          !selectedTags.has(t.value.toLowerCase()),
       )
       .slice(0, 8);
   }, [parsedQuery.text, availableTags, selectedTags]);
@@ -692,10 +700,7 @@ export function BookmarkList() {
             <p className="text-gray-500 mb-6">
               Start collecting your favorite links!
             </p>
-            <Button
-              type="button"
-              onClick={() => setShowAddModal(true)}
-            >
+            <Button type="button" onClick={() => setShowAddModal(true)}>
               Add Your First Bookmark
             </Button>
           </div>
@@ -829,8 +834,8 @@ export function BookmarkList() {
           onComplete={(deletedUris, updatedBookmarks) => {
             const deletedSet = new Set(deletedUris);
             const deleted = allBookmarks.filter((b) => deletedSet.has(b.uri));
-            const remaining = allBookmarks.filter((b) =>
-              !deletedSet.has(b.uri)
+            const remaining = allBookmarks.filter(
+              (b) => !deletedSet.has(b.uri),
             );
             for (const uri of deletedUris) deleteBookmark(uri);
             for (const b of updatedBookmarks) updateBookmark(b);
@@ -849,8 +854,8 @@ export function BookmarkList() {
           onPartialFailure={(deletedUris, updatedBookmarks, failedUris) => {
             const deletedSet = new Set(deletedUris);
             const deleted = allBookmarks.filter((b) => deletedSet.has(b.uri));
-            const remaining = allBookmarks.filter((b) =>
-              !deletedSet.has(b.uri)
+            const remaining = allBookmarks.filter(
+              (b) => !deletedSet.has(b.uri),
             );
             for (const uri of deletedUris) deleteBookmark(uri);
             for (const b of updatedBookmarks) updateBookmark(b);

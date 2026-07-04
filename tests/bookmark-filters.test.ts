@@ -38,14 +38,8 @@ Deno.test("buildTagIndex - creates lowercase tag sets", () => {
   const index = buildTagIndex(bookmarks);
 
   assertEquals(index.size, 2);
-  assertEquals(
-    index.get(bookmarks[0].uri),
-    new Set(["swift", "ios"]),
-  );
-  assertEquals(
-    index.get(bookmarks[1].uri),
-    new Set(["react", "web"]),
-  );
+  assertEquals(index.get(bookmarks[0].uri), new Set(["swift", "ios"]));
+  assertEquals(index.get(bookmarks[1].uri), new Set(["react", "web"]));
 });
 
 Deno.test("buildTagIndex - handles undefined tags", () => {
@@ -109,6 +103,35 @@ Deno.test("filterByTags - tag value with different casing", () => {
   assertEquals(result2[0].uri, bookmarks[0].uri);
 });
 
+Deno.test("filterByTags - tag value with spaces", () => {
+  const bookmarks = [
+    makeBookmark("1", ["Animated Short"]),
+    makeBookmark("2", ["Animated", "Short"]),
+  ];
+  const index = buildTagIndex(bookmarks);
+
+  const result = filterByTags(bookmarks, new Set(["animated short"]), index);
+  assertEquals(result.length, 1);
+  assertEquals(result[0].uri, bookmarks[0].uri);
+});
+
+Deno.test("filterByTags - AND logic with tag values containing spaces", () => {
+  const bookmarks = [
+    makeBookmark("1", ["Animated Short", "Favorites"]),
+    makeBookmark("2", ["Animated Short"]),
+    makeBookmark("3", ["Favorites"]),
+  ];
+  const index = buildTagIndex(bookmarks);
+
+  const result = filterByTags(
+    bookmarks,
+    new Set(["animated short", "favorites"]),
+    index,
+  );
+  assertEquals(result.length, 1);
+  assertEquals(result[0].uri, bookmarks[0].uri);
+});
+
 Deno.test("filterByTags - returns empty when no bookmarks match", () => {
   const bookmarks = [
     makeBookmark("1", ["swift"]),
@@ -132,11 +155,7 @@ Deno.test("filterByTags - AND logic: all selected tags must be present", () => {
   ];
   const index = buildTagIndex(bookmarks);
 
-  const result = filterByTags(
-    bookmarks,
-    new Set(["swift", "ios"]),
-    index,
-  );
+  const result = filterByTags(bookmarks, new Set(["swift", "ios"]), index);
   assertEquals(result.length, 1);
   assertEquals(result[0].uri, bookmarks[0].uri);
 });
@@ -148,11 +167,7 @@ Deno.test("filterByTags - AND with case-insensitive tags", () => {
   ];
   const index = buildTagIndex(bookmarks);
 
-  const result = filterByTags(
-    bookmarks,
-    new Set(["SWIFT", "IOS"]),
-    index,
-  );
+  const result = filterByTags(bookmarks, new Set(["SWIFT", "IOS"]), index);
   assertEquals(result.length, 1);
   assertEquals(result[0].uri, bookmarks[0].uri);
 });
