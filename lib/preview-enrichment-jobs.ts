@@ -116,6 +116,38 @@ export async function enqueueMissingPreviewJobsForDid(
   return enqueued;
 }
 
+export async function listPreviewEnrichmentSessionDids(
+  limit = 10,
+  offset = 0,
+  now = Date.now(),
+): Promise<string[]> {
+  const result = await db.execute({
+    sql: `
+      SELECT DISTINCT b.did
+      FROM bookmarks b
+      JOIN iron_session_storage s ON s.key = 'session:' || b.did
+      WHERE s.expires_at IS NULL OR s.expires_at > ?
+      ORDER BY b.did
+      LIMIT ? OFFSET ?
+    `,
+    args: [now, limit, offset],
+  });
+  return result.rows.map((row) => String(row[0]));
+}
+
+export async function enqueueMissingPreviewJobsForSessionDids(
+  didLimit = 10,
+  perDidLimit = 25,
+  offset = 0,
+): Promise<{ enqueued: number; dids: number }> {
+  const dids = await listPreviewEnrichmentSessionDids(didLimit, offset);
+  let enqueued = 0;
+  for (const did of dids) {
+    enqueued += await enqueueMissingPreviewJobsForDid(did, perDidLimit);
+  }
+  return { enqueued, dids: dids.length };
+}
+
 export async function claimPreviewEnrichmentJobs(
   limit = 5,
   now = Date.now(),

@@ -4,6 +4,7 @@ import { upsertAnnotation, upsertBookmark } from "../mirror/upserts.ts";
 import {
   claimPreviewEnrichmentJobs,
   enqueueMissingPreviewJobsForDid,
+  enqueueMissingPreviewJobsForSessionDids,
   findMissingPreviewBookmarks,
   markPreviewJobRetry,
 } from "../lib/preview-enrichment-jobs.ts";
@@ -13,11 +14,16 @@ import {
 } from "../lib/preview-enrichment-worker.ts";
 
 const DID = "did:plc:previewtest";
+const OTHER_DID = "did:plc:previewother";
 
-async function bookmark(rkey: string, subject = `https://example.com/${rkey}`) {
+async function bookmark(
+  rkey: string,
+  subject = `https://example.com/${rkey}`,
+  did = DID,
+) {
   await upsertBookmark({
-    uri: `at://${DID}/community.lexicon.bookmarks.bookmark/${rkey}`,
-    did: DID,
+    uri: `at://${did}/community.lexicon.bookmarks.bookmark/${rkey}`,
+    did,
     rkey,
     cid: `bafy${rkey}`,
     subject,
@@ -37,6 +43,38 @@ Deno.test("preview jobs enqueue idempotently for missing annotations", async () 
     args: [DID],
   });
   assertEquals(Number(rows.rows[0][0]), 1);
+});
+
+Deno.test("preview jobs enqueue from active session DIDs", async () => {
+  await clearMirrorTables();
+  await db.execute({ sql: "DELETE FROM iron_session_storage", args: [] });
+  await bookmark("a");
+  await bookmark("b", "https://example.com/b", OTHER_DID);
+  await db.execute({
+    sql:
+      "INSERT INTO iron_session_storage (key, value, expires_at, created_at, updated_at) VALUES (?, '{}', ?, '', ''), (?, '{}', ?, '', '')",
+    args: [
+      `session:${DID}`,
+      Date.now() + 60_000,
+      `session:${OTHER_DID}`,
+      Date.now() - 60_000,
+    ],
+  });
+
+  assertEquals(await enqueueMissingPreviewJobsForSessionDids(10, 10), {
+    enqueued: 1,
+    dids: 1,
+  });
+
+  const rows = await db.execute({
+    sql: "SELECT did FROM preview_enrichment_jobs",
+    args: [],
+  });
+  assertEquals(
+    rows.rows.map((row) => row[0]),
+    [DID],
+  );
+  await db.execute({ sql: "DELETE FROM iron_session_storage", args: [] });
 });
 
 Deno.test("missing preview query excludes annotation with preview data", async () => {

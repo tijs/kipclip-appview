@@ -3,6 +3,7 @@ import { extractUrlMetadata as extractUrlMetadataRecord } from "./enrichment.ts"
 import { getOAuth } from "./oauth-config.ts";
 import {
   claimPreviewEnrichmentJobs,
+  enqueueMissingPreviewJobsForSessionDids,
   hasUsableAnnotation,
   markPreviewJobBlockedNoSession,
   markPreviewJobDone,
@@ -20,11 +21,14 @@ export interface PreviewEnrichmentStats {
   stopped: number;
   skippedNoSession: number;
   skippedExisting: number;
+  enqueued: number;
 }
 
 export interface PreviewWorkerOptions {
   batchSize?: number;
   intervalMs?: number;
+  enqueueDidBatchSize?: number;
+  enqueuePerDidLimit?: number;
 }
 
 export interface PreviewWorkerDeps {
@@ -37,6 +41,7 @@ export interface PreviewWorkerDeps {
 
 let timer: ReturnType<typeof setInterval> | undefined;
 let running = false;
+let enqueueOffset = 0;
 
 function emptyStats(): PreviewEnrichmentStats {
   return {
@@ -46,6 +51,7 @@ function emptyStats(): PreviewEnrichmentStats {
     stopped: 0,
     skippedNoSession: 0,
     skippedExisting: 0,
+    enqueued: 0,
   };
 }
 
@@ -131,6 +137,15 @@ export async function runPreviewEnrichmentTick(
   running = true;
   const total = emptyStats();
   try {
+    const didLimit = options.enqueueDidBatchSize ?? 10;
+    const enqueued = await enqueueMissingPreviewJobsForSessionDids(
+      didLimit,
+      options.enqueuePerDidLimit ?? 25,
+      enqueueOffset,
+    );
+    total.enqueued = enqueued.enqueued;
+    enqueueOffset = enqueued.dids < didLimit ? 0 : enqueueOffset + didLimit;
+
     const jobs = await claimPreviewEnrichmentJobs(options.batchSize ?? 5);
     for (const job of jobs) {
       const stats = await processPreviewEnrichmentJob(job);
@@ -140,8 +155,9 @@ export async function runPreviewEnrichmentTick(
       total.stopped += stats.stopped;
       total.skippedNoSession += stats.skippedNoSession;
       total.skippedExisting += stats.skippedExisting;
+      total.enqueued += stats.enqueued;
     }
-    if (total.processed > 0) {
+    if (total.processed > 0 || total.enqueued > 0) {
       console.log("[preview-enrichment] tick", total);
     }
     return total;

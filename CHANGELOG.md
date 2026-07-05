@@ -4,6 +4,15 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.31] - 2026-07-05
+
+### Fixed
+
+- Preview sidecar backfill now discovers eligible backlog from active OAuth
+  sessions in the background worker, instead of only enqueueing users who load
+  `/api/initial-data`. This lets existing missing favicon/preview annotations
+  drain gradually without requiring each user to visit first.
+
 ## [0.24.30] - 2026-07-04
 
 ### Added
@@ -1291,7 +1300,8 @@ All notable changes to kipclip are documented in this file.
 - Responsive mobile and desktop layouts
 - Kip logo and "Find it, Kip it" tagline
 
-[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.15.1...HEAD
+[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.24.31...HEAD
+[0.24.31]: https://github.com/tijs/kipclip-appview/compare/v0.24.30...v0.24.31
 [0.15.1]: https://github.com/tijs/kipclip-appview/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/tijs/kipclip-appview/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/tijs/kipclip-appview/compare/v0.13.0...v0.14.0
