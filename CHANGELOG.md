@@ -4,6 +4,8 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.32] - 2026-07-12
+
 ### Fixed
 
 - Auto-enrollment now resolves a DID's current PDS before backfilling, so users
