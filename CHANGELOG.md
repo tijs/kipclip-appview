@@ -4,6 +4,13 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.33] - 2026-07-12
+
+### Fixed
+
+- App shutdown is capped at 10 seconds so long-lived WebSocket connections can
+  no longer stall releases and reboots for systemd's 90-second default.
+
 ## [0.24.32] - 2026-07-12
 
 ### Fixed

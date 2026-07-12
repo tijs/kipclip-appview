@@ -11,6 +11,9 @@ EnvironmentFile=/etc/kipclip/env
 ExecStart=/opt/deno/bin/deno serve -A --host 127.0.0.1 --port 8000 _fresh/server.js
 Restart=always
 RestartSec=2s
+# Deno waits for long-lived WebSocket connections during graceful shutdown.
+# Bound release/reboot downtime before systemd force-closes them.
+TimeoutStopSec=10s
 
 # Hardening
 NoNewPrivileges=true
