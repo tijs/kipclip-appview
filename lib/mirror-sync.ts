@@ -35,6 +35,19 @@ export async function fetchWithTimeout(
 // deno-lint-ignore no-explicit-any
 type Record_ = any;
 
+export class ListRecordsError extends Error {
+  constructor(
+    readonly collection: string,
+    readonly status: number,
+    readonly detail = "",
+  ) {
+    super(
+      `listRecords ${collection}: ${status}${detail ? ` (${detail})` : ""}`,
+    );
+    this.name = "ListRecordsError";
+  }
+}
+
 /** Page through every record in a collection. Throws on any non-2xx page so
  * a partial read never masquerades as an authoritative empty result. */
 export async function listAll(
@@ -45,7 +58,8 @@ export async function listAll(
   const records: Record_[] = [];
   let cursor: string | undefined;
   while (true) {
-    const url = new URL(`${pdsUrl}/xrpc/com.atproto.repo.listRecords`);
+    const url = URL.parse(`${pdsUrl}/xrpc/com.atproto.repo.listRecords`);
+    if (!url) throw new Error(`Invalid PDS URL: ${pdsUrl}`);
     url.searchParams.set("repo", did);
     url.searchParams.set("collection", collection);
     url.searchParams.set("limit", "100");
@@ -56,7 +70,11 @@ export async function listAll(
       PDS_FETCH_TIMEOUT_MS,
     );
     if (!res.ok) {
-      throw new Error(`listRecords ${collection}: ${res.status}`);
+      const body: unknown = await res.json().catch(() => null);
+      const detail = [str(body, "error"), str(body, "message")]
+        .filter(Boolean)
+        .join(": ");
+      throw new ListRecordsError(collection, res.status, detail);
     }
     const data = await res.json();
     const batch: Record_[] = data.records ?? [];
@@ -149,6 +167,7 @@ export async function upsertLiveRepo(
     const rkey = (r.uri as string).split("/").pop() ?? "";
     const v = r.value ?? {};
     const enriched = (v["$enriched"] as Record<string, unknown>) ?? {};
+    // pi-lens-ignore: await-in-loop
     await upsertBookmark({
       uri: r.uri,
       did,
@@ -167,6 +186,7 @@ export async function upsertLiveRepo(
   for (const r of [...repo.kipclipAnnotations, ...repo.legacyAnnotations]) {
     const rkey = (r.uri as string).split("/").pop() ?? "";
     const v = r.value ?? {};
+    // pi-lens-ignore: await-in-loop
     await upsertAnnotation({
       uri: r.uri,
       did,
@@ -184,6 +204,7 @@ export async function upsertLiveRepo(
   for (const r of repo.tags) {
     const rkey = (r.uri as string).split("/").pop() ?? "";
     const v = r.value ?? {};
+    // pi-lens-ignore: await-in-loop
     await upsertTag({
       uri: r.uri,
       did,
@@ -196,6 +217,7 @@ export async function upsertLiveRepo(
 
   for (const r of repo.preferences) {
     const v = r.value ?? {};
+    // pi-lens-ignore: await-in-loop
     await upsertPreferences({
       did,
       cid: r.cid,

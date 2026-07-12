@@ -10,12 +10,14 @@
 import {
   fetchLiveRepo,
   fetchWithTimeout,
+  ListRecordsError,
   type LiveUris,
   upsertLiveRepo,
 } from "./mirror-sync.ts";
 import { getSyncStatus } from "../mirror/queries.ts";
 import { db } from "./db.ts";
 import { getMirrorMode } from "./mirror-config.ts";
+import { resolveCurrentPds } from "./pds-migration-guard.ts";
 import { captureMessage } from "./sentry.ts";
 
 const TAP_CONTROL_URL = Deno.env.get("TAP_CONTROL_URL") ??
@@ -36,7 +38,8 @@ const TAP_FETCH_TIMEOUT_MS = 10_000;
 // event per page-load per user. After a failure, skip silently for the
 // cooldown window — the user's next request beyond the window retries.
 const RETRY_COOLDOWN_MS = 30_000;
-const lastFailureAt = new Map<string, number>();
+const MISSING_REPO_RETRY_COOLDOWN_MS = 60 * 60 * 1000;
+const retryAfter = new Map<string, number>();
 
 // Prevents concurrent enrollment attempts for the same DID within one
 // server process lifetime. A second request during the background run is a
@@ -102,16 +105,23 @@ async function runEnrollment(did: string, pdsUrl: string): Promise<void> {
   // DB hiccup here doesn't masquerade as an enroll failure.
   const existing = await getSyncStatus(did);
   if (existing.tracking && existing.backfillStartedAt !== null) {
-    lastFailureAt.delete(did);
+    retryAfter.delete(did);
     return;
   }
 
+  let enrollmentPdsUrl = pdsUrl;
+  let canonicalPdsConfirmed = false;
   let stage: "tapEnroll" | "backfill" | "trackedDids" = "tapEnroll";
   try {
     console.log(`[auto-enroll] starting for ${did}`);
     await tapEnroll(did);
+    const resolved = await resolveCurrentPds(did);
+    if (resolved?.pdsUrl) {
+      enrollmentPdsUrl = resolved.pdsUrl;
+      canonicalPdsConfirmed = true;
+    }
     stage = "backfill";
-    await runBackfill(did, pdsUrl);
+    await runBackfill(did, enrollmentPdsUrl);
     stage = "trackedDids";
     const now = Date.now();
     await db.execute({
@@ -124,18 +134,36 @@ async function runEnrollment(did: string, pdsUrl: string): Promise<void> {
           backfill_started_at = COALESCE(tracked_dids.backfill_started_at, excluded.backfill_started_at),
           backfill_complete_at = COALESCE(tracked_dids.backfill_complete_at, excluded.backfill_complete_at)
       `,
-      args: [did, pdsUrl, now, now, now],
+      args: [did, enrollmentPdsUrl, now, now, now],
     });
-    lastFailureAt.delete(did);
+    retryAfter.delete(did);
     console.log(`[auto-enroll] complete for ${did}`);
   } catch (err) {
-    lastFailureAt.set(did, Date.now());
-    captureMessage("auto-enroll failed", "error", {
+    const canonicalRepoMissing = canonicalPdsConfirmed &&
+      err instanceof ListRecordsError &&
+      (err.status === 400 || err.status === 404) &&
+      /repo(?:sitory)?notfound|could not find repo/i.test(err.detail);
+    retryAfter.set(
       did,
-      stage,
-      error: String(err),
-    });
-    console.error(`[auto-enroll] failed for ${did} at ${stage}:`, err);
+      Date.now() +
+        (canonicalRepoMissing
+          ? MISSING_REPO_RETRY_COOLDOWN_MS
+          : RETRY_COOLDOWN_MS),
+    );
+    captureMessage(
+      "auto-enroll failed",
+      canonicalRepoMissing ? "warning" : "error",
+      {
+        did,
+        stage,
+        pdsUrl: enrollmentPdsUrl,
+        canonicalPdsConfirmed,
+        error: String(err),
+      },
+    );
+    const message = `[auto-enroll] failed for ${did} at ${stage}:`;
+    if (canonicalRepoMissing) console.warn(message, err);
+    else console.error(message, err);
     throw err;
   }
 }
@@ -148,7 +176,9 @@ async function runEnrollment(did: string, pdsUrl: string): Promise<void> {
 function startEnrollment(did: string, pdsUrl: string): Promise<void> {
   enrollingDids.add(did);
   return runEnrollment(did, pdsUrl)
-    .catch(() => {/* already captured in runEnrollment */})
+    .catch(() => {
+      /* already captured in runEnrollment */
+    })
     .finally(() => {
       enrollingDids.delete(did);
     });
@@ -162,8 +192,8 @@ function startEnrollment(did: string, pdsUrl: string): Promise<void> {
 export function autoEnrollIfNeeded(did: string, pdsUrl: string): void {
   if (getMirrorMode() !== "read") return;
   if (enrollingDids.has(did)) return;
-  const lastFail = lastFailureAt.get(did);
-  if (lastFail && Date.now() - lastFail < RETRY_COOLDOWN_MS) return;
+  const retryAt = retryAfter.get(did);
+  if (retryAt && Date.now() < retryAt) return;
   void startEnrollment(did, pdsUrl);
 }
 
@@ -190,5 +220,5 @@ export function _runEnrollmentForTest(
 /** Test-only — clear in-process state between test cases. */
 export function _resetAutoEnrollState(): void {
   enrollingDids.clear();
-  lastFailureAt.clear();
+  retryAfter.clear();
 }

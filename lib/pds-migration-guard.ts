@@ -48,7 +48,7 @@ function hostOf(url: string): string | null {
 // bounds the wait AND cancels the underlying plc.directory request, so a slow
 // PLC can't pile up abandoned in-flight sockets on the write path. resolveDid
 // swallows the resulting AbortError and returns null → caller fails open.
-async function resolveCurrentPds(did: string) {
+export async function resolveCurrentPds(did: string) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), RESOLVE_TIMEOUT_MS);
   try {
@@ -77,7 +77,8 @@ export async function checkPdsMigration(
 
   const cached = confirmedMatch.get(did);
   if (
-    cached && cached.host === sessionHost &&
+    cached &&
+    cached.host === sessionHost &&
     Date.now() - cached.checkedAt < TTL_MS
   ) {
     return { migrated: false };

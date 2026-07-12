@@ -4,6 +4,14 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Auto-enrollment now resolves a DID's current PDS before backfilling, so users
+  who migrated servers keep their same-DID bookmark history even when their
+  OAuth session still names the old PDS. Confirmed missing repositories retain
+  detailed diagnostics but retry hourly at warning severity instead of raising
+  repeated production errors.
+
 ## [0.24.31] - 2026-07-05
 
 ### Fixed

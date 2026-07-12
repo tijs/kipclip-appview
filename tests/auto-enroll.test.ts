@@ -135,8 +135,11 @@ Deno.test("happy path enrolls, backfills, and stamps tracked_dids complete", asy
       if (call.url.endsWith("/repos/add")) {
         return new Response("", { status: 200 });
       }
-      // Return one bookmark record on the first listRecords path so the
-      // upsert side of runBackfill also exercises.
+      if (call.url.startsWith("https://plc.directory/")) {
+        return new Response("Not found", { status: 404 });
+      }
+      // Resolver failure falls back to the session PDS. Return one bookmark
+      // record there so the upsert side of runBackfill also exercises.
       if (
         call.url.includes("collection=community.lexicon.bookmarks.bookmark")
       ) {
@@ -215,8 +218,8 @@ Deno.test("already-tracked DID short-circuits — no TAP call, no backfill", asy
       args: [DID, PDS, 1, 1, 1],
     });
 
-    const stub = installFetchStub(() =>
-      new Response(emptyListRecordsBody(), { status: 200 })
+    const stub = installFetchStub(
+      () => new Response(emptyListRecordsBody(), { status: 200 }),
     );
     try {
       await _runEnrollmentForTest(DID, PDS);
@@ -252,5 +255,130 @@ Deno.test("listRecords non-2xx leaves tracked_dids empty (TAP enrolled, backfill
     // TAP add was attempted, then aborted on listRecords failure.
     const tapCalls = stub.calls.filter((c) => c.url.endsWith("/repos/add"));
     assertEquals(tapCalls.length, 1);
+  });
+});
+
+Deno.test("auto-enroll backfills and tracks the DID document's current PDS", async () => {
+  await withClean(async () => {
+    const currentPds = "https://new-pds.example.test";
+    const stub = installFetchStub((call) => {
+      if (call.url.endsWith("/repos/add")) {
+        return new Response("", { status: 200 });
+      }
+      if (call.url.startsWith("https://plc.directory/")) {
+        return Response.json({
+          id: DID,
+          service: [
+            {
+              id: "#atproto_pds",
+              type: "AtprotoPersonalDataServer",
+              serviceEndpoint: currentPds,
+            },
+          ],
+        });
+      }
+      if (call.url.startsWith(`${currentPds}/`)) {
+        return new Response(emptyListRecordsBody(), { status: 200 });
+      }
+      return new Response("stale PDS", { status: 500 });
+    });
+    try {
+      await _runEnrollmentForTest(DID, PDS);
+    } finally {
+      stub.restore();
+    }
+
+    const tracked = await db.execute({
+      sql: "SELECT pds_url FROM tracked_dids WHERE did = ?",
+      args: [DID],
+    });
+    assertEquals(tracked.rows[0][0], currentPds);
+    assertEquals(
+      stub.calls.some((call) =>
+        call.url.startsWith(`${PDS}/xrpc/com.atproto.repo.listRecords`)
+      ),
+      false,
+    );
+  });
+});
+
+Deno.test("canonical missing repo is a detailed warning and stays untracked", async () => {
+  await withClean(async () => {
+    const logs: unknown[][] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args);
+    const stub = installFetchStub((call) => {
+      if (call.url.endsWith("/repos/add")) {
+        return new Response("", { status: 200 });
+      }
+      if (call.url.startsWith("https://plc.directory/")) {
+        return Response.json({
+          id: DID,
+          service: [
+            {
+              id: "#atproto_pds",
+              type: "AtprotoPersonalDataServer",
+              serviceEndpoint: PDS,
+            },
+          ],
+        });
+      }
+      return Response.json(
+        { error: "InvalidRequest", message: `Could not find repo: ${DID}` },
+        { status: 400 },
+      );
+    });
+    try {
+      await _runEnrollmentForTest(DID, PDS);
+    } finally {
+      stub.restore();
+      console.log = originalLog;
+    }
+
+    const tracked = await db.execute({
+      sql: "SELECT COUNT(*) FROM tracked_dids WHERE did = ?",
+      args: [DID],
+    });
+    assertEquals(Number(tracked.rows[0][0]), 0);
+    const warning = logs.find(
+      (args) => args[0] === "[WARNING]" && args[1] === "auto-enroll failed",
+    );
+    assertExists(warning);
+    assertStringIncludes(
+      String((warning[2] as { error: string }).error),
+      "InvalidRequest: Could not find repo",
+    );
+  });
+});
+
+Deno.test("unconfirmed missing repo remains an error", async () => {
+  await withClean(async () => {
+    const logs: unknown[][] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args);
+    const stub = installFetchStub((call) => {
+      if (call.url.endsWith("/repos/add")) {
+        return new Response("", { status: 200 });
+      }
+      if (call.url.startsWith("https://plc.directory/")) {
+        return new Response("Not found", { status: 404 });
+      }
+      return Response.json(
+        { error: "InvalidRequest", message: `Could not find repo: ${DID}` },
+        { status: 400 },
+      );
+    });
+    try {
+      await _runEnrollmentForTest(DID, PDS);
+    } finally {
+      stub.restore();
+      console.log = originalLog;
+    }
+
+    assertExists(
+      logs.find(
+        (args) => args[0] === "[ERROR]" && args[1] === "auto-enroll failed",
+      ),
+    );
   });
 });
