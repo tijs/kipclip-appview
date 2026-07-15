@@ -78,6 +78,17 @@ function ackAsync(): boolean {
   return Deno.env.get("MIRROR_WEBHOOK_ACK_ASYNC") === "1";
 }
 
+async function webhookEventKey(id: number, payload: string): Promise<string> {
+  const digest = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(payload)),
+  );
+  const hash = Array.from(
+    digest,
+    (byte) => byte.toString(16).padStart(2, "0"),
+  ).join("");
+  return `${id}:${hash}`;
+}
+
 // Defense-in-depth shared secret between TAP and kipclip. The Caddy
 // `respond @hook 403` rule is the primary barrier; this check catches
 // drift (e.g., a new vhost block forgetting `import common`).
@@ -175,20 +186,23 @@ export async function handleWebhookRequest(req: Request): Promise<Response> {
   }
 
   let body: MarshallableEvt;
+  let payload: string;
   try {
-    body = await req.json();
+    payload = await req.text();
+    body = JSON.parse(payload);
   } catch {
     return Response.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  // Replay protection. TAP assigns a monotonically-increasing id per
-  // outbox event. If we've seen this id before, return 200 immediately
-  // without re-running the event — replaying a delete after the user
-  // re-created the record would otherwise silently re-delete it. Events
-  // without an id (TAP shouldn't send these, but be defensive) bypass
-  // dedup and rely on the idempotent upsert layer alone.
+  // Replay protection. TAP reuses IDs after a restart when its outbox is
+  // empty, so an ID alone is not unique across process lifetimes. Include a
+  // payload hash: exact retries deduplicate, while a new event reusing an old
+  // ID still applies. Events without an id bypass dedup and rely on the
+  // idempotent upsert layer alone.
   if (typeof body.id === "number") {
-    const firstTime = await markWebhookEventSeen(body.id);
+    const firstTime = await markWebhookEventSeen(
+      await webhookEventKey(body.id, payload),
+    );
     if (!firstTime) {
       return Response.json({
         id: body.id,

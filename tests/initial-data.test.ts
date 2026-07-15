@@ -14,8 +14,11 @@ import { app } from "../main.ts";
 import { initOAuth } from "../lib/oauth-config.ts";
 import { setTestSessionProvider } from "../lib/session.ts";
 import type { SessionResult } from "../lib/session.ts";
+import { _resetPdsMigrationCache } from "../lib/pds-migration-guard.ts";
 
-initOAuth(new URL("https://kipclip.com"));
+const appUrl = URL.parse("https://kipclip.com");
+if (!appUrl) throw new Error("Invalid test app URL");
+initOAuth(appUrl);
 const handler = app.handler();
 
 const TEST_DID = "did:plc:test123";
@@ -41,6 +44,23 @@ function createSession(
       },
     } as any,
     setCookieHeader: "sid=mock; Path=/; HttpOnly",
+  };
+}
+
+function stubCurrentPds(pdsUrl: string): () => void {
+  const original = globalThis.fetch;
+  globalThis.fetch = (() =>
+    Promise.resolve(
+      Response.json({
+        service: [{
+          id: "#atproto_pds",
+          type: "AtprotoPersonalDataServer",
+          serviceEndpoint: pdsUrl,
+        }],
+      }),
+    )) as typeof globalThis.fetch;
+  return () => {
+    globalThis.fetch = original;
   };
 }
 
@@ -239,6 +259,132 @@ Deno.test(
     }
   },
 );
+
+// ---------- Missing PDS repo gets a helpful error ----------
+
+Deno.test({
+  name: "GET /api/initial-data - reports an unavailable canonical PDS repo",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  async fn() {
+    _resetPdsMigrationCache();
+    const restoreFetch = stubCurrentPds("https://test.pds.example");
+    setTestSessionProvider(() =>
+      Promise.resolve(
+        createSession((_method, url) => {
+          if (url.includes("listRecords")) {
+            return Response.json(
+              {
+                error: "InvalidRequest",
+                message: `Could not find repo: ${TEST_DID}`,
+              },
+              { status: 400 },
+            );
+          }
+          return Response.json({});
+        }),
+      )
+    );
+
+    try {
+      const res = await handler(
+        new Request("https://kipclip.com/api/initial-data"),
+      );
+      assertEquals(res.status, 503);
+      assertEquals(await res.json(), {
+        error:
+          "Your account's data server is unavailable. Try again later. If this keeps happening, contact your account provider.",
+      });
+    } finally {
+      restoreFetch();
+      setTestSessionProvider(null);
+    }
+  },
+});
+
+Deno.test({
+  name: "GET /api/initial-data - stale PDS session forces reauthentication",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  async fn() {
+    _resetPdsMigrationCache();
+    const restoreFetch = stubCurrentPds("https://new.pds.example");
+    setTestSessionProvider(() =>
+      Promise.resolve(
+        createSession((_method, url) => {
+          if (url.includes("listRecords")) {
+            return Response.json(
+              { error: "RepoNotFound", message: "Repository not found" },
+              { status: 404 },
+            );
+          }
+          return Response.json({});
+        }),
+      )
+    );
+
+    try {
+      const res = await handler(
+        new Request("https://kipclip.com/api/initial-data"),
+      );
+      assertEquals(res.status, 401);
+      assertEquals(await res.json(), {
+        error: "Authentication required",
+        message:
+          "You moved your account to a new server. Please sign in again to keep saving.",
+        code: "PDS_MIGRATED",
+      });
+    } finally {
+      restoreFetch();
+      setTestSessionProvider(null);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "GET /api/initial-data - unrelated and oversized PDS errors remain empty results",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  async fn() {
+    try {
+      for (
+        const { body, status } of [
+          {
+            body: { error: "InvalidRequest", message: "Invalid cursor" },
+            status: 400,
+          },
+          {
+            body: { error: "RepoNotFoundish", message: "Could not find repo" },
+            status: 404,
+          },
+          {
+            body: { error: "RepoNotFound", padding: "x".repeat(5000) },
+            status: 400,
+          },
+        ]
+      ) {
+        setTestSessionProvider(() =>
+          Promise.resolve(
+            createSession((_method, url) =>
+              url.includes("listRecords")
+                ? Response.json(body, { status })
+                : Response.json({})
+            ),
+          )
+        );
+        const res = await handler(
+          new Request("https://kipclip.com/api/initial-data"),
+        );
+        assertEquals(res.status, 200);
+        const result = await res.json();
+        assertEquals(result.bookmarks, []);
+      }
+    } finally {
+      setTestSessionProvider(null);
+    }
+  },
+});
 
 // ---------- First page returns cursor when more pages available ----------
 

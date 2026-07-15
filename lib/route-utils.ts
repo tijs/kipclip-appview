@@ -111,6 +111,60 @@ export interface RateLimitInfo {
   limit: number;
 }
 
+export class RepoUnavailableError extends Error {
+  constructor(readonly did: string, readonly pdsUrl: string) {
+    super(
+      "Your account's data server is unavailable. Try again later. If this keeps happening, contact your account provider.",
+    );
+    this.name = "RepoUnavailableError";
+  }
+}
+
+const MAX_PDS_ERROR_BYTES = 4096;
+
+async function readPdsError(res: Response): Promise<unknown> {
+  if (!res.body) return null;
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > MAX_PDS_ERROR_BYTES) {
+        await reader.cancel().catch(() => {});
+        return null;
+      }
+      chunks.push(value);
+    }
+  } catch {
+    return null;
+  } finally {
+    reader.releaseLock();
+  }
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return JSON.parse(new TextDecoder().decode(body));
+  } catch {
+    return null;
+  }
+}
+
+function isMissingRepoError(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const { error, message } = value as Record<string, unknown>;
+  return error === "RepoNotFound" ||
+    (error === "InvalidRequest" && typeof message === "string" &&
+      /^Could not find repo(?::|$)/i.test(message));
+}
+
 /** Extract rate limit info from a PDS response */
 function parseRateLimit(res: Response): RateLimitInfo | undefined {
   const remaining = parseInt(
@@ -146,7 +200,16 @@ export async function listOnePage(
     "GET",
     `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.listRecords?${params}`,
   );
-  if (!res.ok) return { records: [] };
+  if (!res.ok) {
+    const detail = await readPdsError(res);
+    if (
+      (res.status === 400 || res.status === 404) &&
+      isMissingRepoError(detail)
+    ) {
+      throw new RepoUnavailableError(oauthSession.did, oauthSession.pdsUrl);
+    }
+    return { records: [] };
+  }
 
   const rateLimit = parseRateLimit(res);
   const data = await res.json();

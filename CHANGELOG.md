@@ -4,6 +4,20 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.34] - 2026-07-15
+
+### Fixed
+
+- TAP webhook replay protection now combines each event ID with a payload hash.
+  TAP reuses IDs after restarting with an empty outbox; treating the ID alone as
+  globally unique caused new events to be acknowledged as replays without
+  updating the mirror. Exact retries remain idempotent while reused IDs carrying
+  new events are applied normally.
+- Users whose canonical data server has no repository now see a clear retryable
+  error instead of an empty bookmark library. Stale sessions pointing at a PDS
+  the account migrated away from trigger reauthentication, and PDS error bodies
+  are parsed with a strict 4 KiB limit.
+
 ## [0.24.33] - 2026-07-12
 
 ### Fixed
@@ -1317,7 +1331,10 @@ All notable changes to kipclip are documented in this file.
 - Responsive mobile and desktop layouts
 - Kip logo and "Find it, Kip it" tagline
 
-[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.24.31...HEAD
+[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.24.34...HEAD
+[0.24.34]: https://github.com/tijs/kipclip-appview/compare/v0.24.33...v0.24.34
+[0.24.33]: https://github.com/tijs/kipclip-appview/compare/v0.24.32...v0.24.33
+[0.24.32]: https://github.com/tijs/kipclip-appview/compare/v0.24.31...v0.24.32
 [0.24.31]: https://github.com/tijs/kipclip-appview/compare/v0.24.30...v0.24.31
 [0.15.1]: https://github.com/tijs/kipclip-appview/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/tijs/kipclip-appview/compare/v0.14.0...v0.15.0

@@ -286,26 +286,26 @@ export async function upsertTrackedDid(state: TrackedDidUpsert): Promise<void> {
 }
 
 /**
- * Webhook replay protection. INSERT OR IGNORE returns rowsAffected = 1
- * the first time we see eventId, 0 on replays. Caller must skip
- * processing when this returns false — replaying a delete event after
- * the user re-created the record would silently re-delete it.
+ * Webhook replay protection. TAP reuses event IDs after restarting with an
+ * empty outbox, so the key combines its ID with a hash of the full payload.
+ * Exact redeliveries still deduplicate while a new event reusing an old ID is
+ * applied normally.
  *
  * Single-DB write: always goes to the primary db, which is authoritative.
  */
-export async function markWebhookEventSeen(eventId: number): Promise<boolean> {
+export async function markWebhookEventSeen(eventKey: string): Promise<boolean> {
   const result = await db.execute({
     sql: `
-      INSERT OR IGNORE INTO seen_webhook_events (event_id, seen_at)
+      INSERT OR IGNORE INTO seen_webhook_deliveries (event_key, seen_at)
       VALUES (?, ?)
     `,
-    args: [eventId, Date.now()],
+    args: [eventKey, Date.now()],
   });
   return result.rowsAffected === 1;
 }
 
 /**
- * GC seen_webhook_events older than the retention window. Called once
+ * GC webhook replay keys older than the retention window. Called once
  * at module load (process restart on every release swap covers cadence)
  * so the table can't grow unbounded under steady webhook traffic.
  * Default retention: 7 days, well past TAP's longest backoff window.
@@ -316,12 +316,12 @@ export async function gcSeenWebhookEvents(
   const cutoff = Date.now() - retentionMs;
   try {
     await db.execute({
-      sql: "DELETE FROM seen_webhook_events WHERE seen_at < ?",
+      sql: "DELETE FROM seen_webhook_deliveries WHERE seen_at < ?",
       args: [cutoff],
     });
   } catch (err) {
     // GC is opportunistic — failure is logged but doesn't block the
     // process. Worst case the table grows a bit until next restart.
-    console.warn("[webhook-gc] failed to prune seen_webhook_events:", err);
+    console.warn("[webhook-gc] failed to prune replay keys:", err);
   }
 }

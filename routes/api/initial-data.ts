@@ -13,6 +13,7 @@ import {
   listAllRecords,
   listOnePage,
   type RateLimitInfo,
+  RepoUnavailableError,
   setSessionCookie,
   TAG_COLLECTION,
 } from "../../lib/route-utils.ts";
@@ -39,6 +40,10 @@ import type {
 } from "../../shared/types.ts";
 import { newestTidCursor } from "../../lib/tid.ts";
 import { autoEnrollIfNeeded } from "../../lib/auto-enroll.ts";
+import {
+  checkPdsMigration,
+  PDS_MIGRATED_ERROR,
+} from "../../lib/pds-migration-guard.ts";
 import { enqueueMissingPreviewJobsForDid } from "../../lib/preview-enrichment-jobs.ts";
 
 /** Pick the lower rate limit remaining from two PDS responses. */
@@ -366,9 +371,20 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
         ),
       );
       return response;
-    } catch (error: any) {
+    } catch (error) {
+      if (error instanceof RepoUnavailableError) {
+        const migration = await checkPdsMigration(error.did, error.pdsUrl);
+        if (migration.migrated) {
+          return createAuthErrorResponse(PDS_MIGRATED_ERROR);
+        }
+        console.warn("PDS repository unavailable:", error);
+        return Response.json({ error: error.message }, { status: 503 });
+      }
       console.error("Error fetching initial data:", error);
-      return Response.json({ error: error.message }, { status: 500 });
+      return Response.json(
+        { error: error instanceof Error ? error.message : String(error) },
+        { status: 500 },
+      );
     }
   });
 

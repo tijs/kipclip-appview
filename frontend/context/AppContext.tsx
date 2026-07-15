@@ -85,12 +85,26 @@ interface PaginationPage {
  * Settings / preferences / isSupporter / syncing are emitted on the first
  * response only.
  */
+async function responseError(
+  response: Response,
+  fallback: string,
+): Promise<Error> {
+  const body: unknown = await response.json().catch(() => null);
+  if (body && typeof body === "object") {
+    const message = (body as Record<string, unknown>).error;
+    if (typeof message === "string") return new Error(message);
+  }
+  return new Error(fallback);
+}
+
 async function fetchFirstPage(): Promise<InitialDataResponse> {
   perf.start("initialDataFirstPage");
   const response = await apiGet("/api/initial-data");
   if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(`Failed to load initial data: ${response.status} ${body}`);
+    throw await responseError(
+      response,
+      `Failed to load initial data (${response.status})`,
+    );
   }
   const first: InitialDataResponse = await response.json();
   perf.end("initialDataFirstPage");
@@ -144,9 +158,9 @@ async function streamRemainingPages(
 
     const response = await apiGet(`/api/initial-data?${params}`);
     if (!response.ok) {
-      const body = await response.text().catch(() => "");
-      throw new Error(
-        `Failed to load page ${pageNumber}: ${response.status} ${body}`,
+      throw await responseError(
+        response,
+        `Failed to load page ${pageNumber} (${response.status})`,
       );
     }
     const page: PaginationPage = await response.json();
@@ -946,6 +960,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     filteredReadingList,
   };
 
+  // @ts-expect-error TS2875: Deno cannot resolve React's npm JSX runtime; esbuild handles it.
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
 

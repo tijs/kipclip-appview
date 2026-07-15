@@ -12,7 +12,9 @@ import { setTestSessionProvider } from "../lib/session.ts";
 import { createMockSessionResult, createMockSocket } from "./test-helpers.ts";
 import { _addSocketForTest, _clearSocketsForTest } from "../routes/api/live.ts";
 
-initOAuth(new URL("https://kipclip.com"));
+const appUrl = URL.parse("https://kipclip.com");
+if (!appUrl) throw new Error("Invalid test app URL");
+initOAuth(appUrl);
 const baseHandler = app.handler();
 
 // Inject loopback conn info so the /api/sync/hook ipFilter middleware
@@ -121,11 +123,9 @@ Deno.test("POST /api/sync/hook - ipFilter allows ::1 (IPv6 loopback)", async () 
   assertEquals(res.status, 200);
 });
 
-// Auto-incrementing event id. The mirror's replay-protection layer
-// (mirror/upserts.ts markWebhookEventSeen) dedupes by id, so distinct
-// recordEvent() calls within a test must produce distinct ids.
-// Tests that intentionally redeliver the same event capture the result
-// of one recordEvent() call and reuse it.
+// Auto-increment event IDs to mirror TAP. Replay tests deliberately reuse an
+// ID with either the same payload (redelivery) or a different payload (TAP
+// restart) to pin both sides of the deduplication behavior.
 let _nextEventId = 1;
 function recordEvent(
   collection: string,
@@ -271,6 +271,48 @@ Deno.test("POST /api/sync/hook - duplicate redelivery is idempotent", async () =
   const { firstPageBookmarks } = await import("../mirror/queries.ts");
   const page = await firstPageBookmarks(SESSION_DID);
   assertEquals(page.bookmarks.length, 1);
+});
+
+Deno.test("POST /api/sync/hook - reused TAP id with a new payload still applies", async () => {
+  await clearMirrorTables();
+  const first = recordEvent(
+    "community.lexicon.bookmarks.bookmark",
+    "reused-a",
+    "create",
+    {
+      subject: "https://example.com/reused-a",
+      createdAt: "2026-05-01T00:00:00.000Z",
+    },
+    "bafyReusedA",
+  );
+  const second = {
+    ...recordEvent(
+      "community.lexicon.bookmarks.bookmark",
+      "reused-b",
+      "create",
+      {
+        subject: "https://example.com/reused-b",
+        createdAt: "2026-05-01T00:00:00.000Z",
+      },
+      "bafyReusedB",
+    ),
+    id: first.id,
+  };
+
+  for (const event of [first, second]) {
+    const res = await handler(
+      new Request("http://127.0.0.1:8000/api/sync/hook", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(event),
+      }),
+    );
+    assertEquals((await res.json()).applied, true);
+  }
+
+  const { firstPageBookmarks } = await import("../mirror/queries.ts");
+  const page = await firstPageBookmarks(SESSION_DID);
+  assertEquals(page.bookmarks.length, 2);
 });
 
 Deno.test("POST /api/sync/hook - bookmark + annotation + tag events fill mirror", async () => {
@@ -749,7 +791,12 @@ Deno.test("POST /api/sync/hook - bookmark create broadcasts to live socket for t
   assertEquals(res.status, 200);
 
   assertEquals(sock.sent.length, 1);
-  const payload = JSON.parse(sock.sent[0]);
+  let payload;
+  try {
+    payload = JSON.parse(sock.sent[0]);
+  } catch {
+    throw new Error("Live socket sent invalid JSON");
+  }
   assertEquals(payload.type, "record");
   assertEquals(payload.did, SESSION_DID);
   assertEquals(payload.collection, "community.lexicon.bookmarks.bookmark");

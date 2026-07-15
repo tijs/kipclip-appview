@@ -106,6 +106,12 @@ function isMutation(method: string): boolean {
   return m === "POST" || m === "PUT" || m === "PATCH" || m === "DELETE";
 }
 
+export const PDS_MIGRATED_ERROR = {
+  type: "PDS_MIGRATED",
+  message:
+    "You moved your account to a new server. Please sign in again to keep saving.",
+};
+
 export interface MigrationDecision {
   /** Auth error to return (request must be blocked) — set only when a mutating
    * request is bound to a PDS the user migrated away from. */
@@ -148,11 +154,7 @@ export async function evaluatePdsMigration(
   return {
     refreshPdsUrl: migration.currentPdsUrl ?? null,
     currentPdsUrl: migration.currentPdsUrl,
-    block: {
-      type: "PDS_MIGRATED",
-      message:
-        "You moved your account to a new server. Please sign in again to keep saving.",
-    },
+    block: PDS_MIGRATED_ERROR,
   };
 }
 

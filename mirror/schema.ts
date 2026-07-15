@@ -190,4 +190,16 @@ export const MIRROR_MIGRATIONS: MigrationEntry[] = [
         ON preview_enrichment_jobs(did)
     `,
   },
+  {
+    version: "012",
+    description: "Deduplicate TAP webhooks across reused event IDs",
+    sql: `
+      CREATE TABLE IF NOT EXISTS seen_webhook_deliveries (
+        event_key TEXT PRIMARY KEY,
+        seen_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_seen_webhook_deliveries_seen_at
+        ON seen_webhook_deliveries(seen_at)
+    `,
+  },
 ];
