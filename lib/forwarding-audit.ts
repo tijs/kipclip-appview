@@ -60,6 +60,86 @@ export interface ForwardingAuditResult {
   checked: number;
 }
 
+/** The two directional differences between kipclip's mirror cohort and TAP. */
+export interface TapEnrollmentAuditResult {
+  /** True when tap.db couldn't be read; `reason` explains why. */
+  skipped: boolean;
+  reason?: string;
+  /** DIDs in kipclip's tracked_dids table but absent from TAP's repos table. */
+  kipclipOnly: string[];
+  /** DIDs TAP tracks but kipclip has no tracked_dids row for. */
+  tapOnly: string[];
+  kipclipCount: number;
+  tapCount: number;
+}
+
+/**
+ * Compare enrollment sets rather than only their cardinalities. A count mismatch
+ * does not identify which side lost a DID, and equal counts can still hide a
+ * one-for-one swap.
+ */
+export function diffTapEnrollments(
+  kipclipDids: Iterable<string>,
+  tapDids: Iterable<string>,
+): { kipclipOnly: string[]; tapOnly: string[] } {
+  const kipclip = new Set(kipclipDids);
+  const tap = new Set(tapDids);
+  return {
+    kipclipOnly: [...kipclip].filter((did) => !tap.has(did)).sort(),
+    tapOnly: [...tap].filter((did) => !kipclip.has(did)).sort(),
+  };
+}
+
+/**
+ * Audit the configured TAP enrollment set against kipclip's tracked cohort.
+ * This uses tap.db instead of TAP's count-only control endpoint, so alerts can
+ * name the divergent DIDs and also detect equal-size, different-set drift.
+ */
+export async function auditTapEnrollments(
+  opts: { tapDbPath?: string } = {},
+): Promise<TapEnrollmentAuditResult> {
+  const kipclipRes = await db.execute({
+    sql: "SELECT did FROM tracked_dids",
+    args: [],
+  });
+  const kipclipDids = kipclipRes.rows.map((row) => String(row[0]));
+  const envPath = Deno.env.get("TAP_DB_PATH");
+  const path = opts.tapDbPath ??
+    (envPath && envPath.length > 0 ? envPath : DEFAULT_TAP_DB_PATH);
+  // deno-lint-ignore no-explicit-any
+  let tapClient: any;
+  try {
+    const { createClient } = await import("@libsql/client");
+    tapClient = createClient({ url: `file:${path}` });
+    const tapRes = await tapClient.execute({
+      sql: "SELECT did FROM repos",
+      args: [],
+    });
+    const tapDids = tapRes.rows.map((row: unknown[]) => String(row[0]));
+    const { kipclipOnly, tapOnly } = diffTapEnrollments(kipclipDids, tapDids);
+    return {
+      skipped: false,
+      kipclipOnly,
+      tapOnly,
+      kipclipCount: kipclipDids.length,
+      tapCount: tapDids.length,
+    };
+  } catch (err) {
+    return {
+      skipped: true,
+      reason: String(err),
+      kipclipOnly: [],
+      tapOnly: [],
+      kipclipCount: kipclipDids.length,
+      tapCount: 0,
+    };
+  } finally {
+    try {
+      tapClient?.close();
+    } catch { /* best-effort */ }
+  }
+}
+
 /**
  * A DID is flagged when the mirror and TAP counts differ by at least `minDiff`
  * AND TAP's outbox for that DID is empty. The empty-outbox guard rules out a

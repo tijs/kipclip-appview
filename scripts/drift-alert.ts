@@ -25,36 +25,14 @@
  */
 
 import { auditTrackedDrift, type DriftRow } from "../lib/drift-audit.ts";
-import { auditForwardingDrift } from "../lib/forwarding-audit.ts";
+import { tapEnroll } from "../lib/auto-enroll.ts";
+import {
+  auditForwardingDrift,
+  auditTapEnrollments,
+} from "../lib/forwarding-audit.ts";
 import { captureMessage, Sentry } from "../lib/sentry.ts";
 
 const RECOVERABLE_SAMPLE_CAP = 20;
-
-const TAP_CONTROL_URL = Deno.env.get("TAP_CONTROL_URL") ??
-  "http://127.0.0.1:2480";
-
-function tapAuth(): Record<string, string> {
-  const secret = Deno.env.get("TAP_ADMIN_PASSWORD");
-  if (!secret) return {};
-  return { Authorization: "Basic " + btoa(`admin:${secret}`) };
-}
-
-async function checkTapSync(
-  kipclipCount: number,
-): Promise<{ tapCount: number; drift: boolean } | null> {
-  try {
-    const res = await fetch(`${TAP_CONTROL_URL}/stats/repo-count`, {
-      headers: tapAuth(),
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const tapCount = data.repo_count as number;
-    return { tapCount, drift: tapCount !== kipclipCount };
-  } catch {
-    return null;
-  }
-}
 
 function summarize(rows: DriftRow[]): Array<Record<string, unknown>> {
   return rows.slice(0, RECOVERABLE_SAMPLE_CAP).map((r) => ({
@@ -107,22 +85,65 @@ async function main() {
     }
   }
 
-  const tapSync = await checkTapSync(rows.length);
-  if (tapSync) {
+  const enrollment = await auditTapEnrollments();
+  if (!enrollment.skipped) {
+    const enrollmentDrift = enrollment.kipclipOnly.length > 0 ||
+      enrollment.tapOnly.length > 0;
     console.log(
-      `[drift-alert] TAP repo-count=${tapSync.tapCount} kipclip tracked=${rows.length}` +
-        (tapSync.drift ? " MISMATCH" : " ok"),
+      `[drift-alert] TAP repo-count=${enrollment.tapCount} kipclip tracked=${enrollment.kipclipCount}` +
+        (enrollmentDrift ? " MISMATCH" : " ok"),
     );
-    if (tapSync.drift) {
+    if (enrollmentDrift) {
+      console.log(
+        `[drift-alert] enrollment drift kipclip-only=${enrollment.kipclipOnly.length} ` +
+          `tap-only=${enrollment.tapOnly.length}`,
+      );
+      for (const did of enrollment.kipclipOnly) {
+        console.log(`  kipclip-only ${did}`);
+      }
+      for (const did of enrollment.tapOnly) {
+        console.log(`  tap-only ${did}`);
+      }
+
+      // A local-only DID was fully enrolled before, so TAP's idempotent add is
+      // sufficient to restore live sync. The opposite direction needs a PDS
+      // backfill before a tracked_dids row can safely be created, so leave it
+      // for operator recovery instead of creating an empty mirror cohort.
+      const reenrollment = await Promise.allSettled(
+        enrollment.kipclipOnly.map((did) => tapEnroll(did)),
+      );
+      const reenrollFailures = reenrollment.flatMap((result, index) =>
+        result.status === "rejected"
+          ? [{
+            did: enrollment.kipclipOnly[index],
+            error: String(result.reason),
+          }]
+          : []
+      );
+      if (reenrollment.length > 0) {
+        console.log(
+          `[drift-alert] TAP re-enrollment restored=${
+            reenrollment.length - reenrollFailures.length
+          } failed=${reenrollFailures.length}`,
+        );
+      }
       captureMessage(
-        `TAP/kipclip tracked-DID mismatch: TAP=${tapSync.tapCount} kipclip=${rows.length}`,
+        `TAP/kipclip tracked-DID mismatch: TAP=${enrollment.tapCount} kipclip=${enrollment.kipclipCount}`,
         "warning",
-        { tapCount: tapSync.tapCount, kipclipCount: rows.length },
+        {
+          tapCount: enrollment.tapCount,
+          kipclipCount: enrollment.kipclipCount,
+          kipclipOnly: enrollment.kipclipOnly,
+          tapOnly: enrollment.tapOnly,
+          reenrollFailures,
+        },
       );
       driftDetected = true;
     }
   } else {
-    console.log("[drift-alert] TAP repo-count check skipped (unreachable)");
+    console.log(
+      `[drift-alert] TAP enrollment check skipped (${enrollment.reason})`,
+    );
   }
 
   // Forwarding-drift: TAP synced records the mirror never received (local

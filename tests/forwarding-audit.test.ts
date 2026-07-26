@@ -16,6 +16,8 @@ import { assertEquals } from "@std/assert";
 
 import {
   auditForwardingDrift,
+  auditTapEnrollments,
+  diffTapEnrollments,
   flagForwardingDrift,
 } from "../lib/forwarding-audit.ts";
 import { upsertBookmark } from "../mirror/upserts.ts";
@@ -33,6 +35,50 @@ Deno.test("flagForwardingDrift: respects minDiff threshold", () => {
   const rows = [{ did: "did:plc:a", mirror: 4, tap: 5, outbox: 0 }];
   assertEquals(flagForwardingDrift(rows, 1).length, 1);
   assertEquals(flagForwardingDrift(rows, 2).length, 0);
+});
+
+Deno.test("diffTapEnrollments: detects both directions, even with equal counts", () => {
+  assertEquals(
+    diffTapEnrollments(
+      ["did:plc:shared", "did:plc:kipclip-only"],
+      ["did:plc:shared", "did:plc:tap-only"],
+    ),
+    {
+      kipclipOnly: ["did:plc:kipclip-only"],
+      tapOnly: ["did:plc:tap-only"],
+    },
+  );
+});
+
+Deno.test("auditTapEnrollments: identifies the divergent DIDs", async () => {
+  await clearMirrorTables();
+  for (const did of ["did:plc:shared", "did:plc:kipclip-only"]) {
+    await db.execute({
+      sql: "INSERT INTO tracked_dids (did, pds_url, added_at) VALUES (?, ?, ?)",
+      args: [did, "https://pds.test", 1],
+    });
+  }
+
+  const tmp = await Deno.makeTempFile({ suffix: ".db" });
+  const { createClient } = await import("@libsql/client");
+  const tap = createClient({ url: `file:${tmp}` });
+  try {
+    await tap.execute("CREATE TABLE repos (did TEXT PRIMARY KEY)");
+    await tap.execute("INSERT INTO repos (did) VALUES ('did:plc:shared')");
+    await tap.execute("INSERT INTO repos (did) VALUES ('did:plc:tap-only')");
+    tap.close();
+
+    const res = await auditTapEnrollments({ tapDbPath: tmp });
+    assertEquals(res.skipped, false);
+    assertEquals(res.kipclipCount, 2);
+    assertEquals(res.tapCount, 2);
+    assertEquals(res.kipclipOnly, ["did:plc:kipclip-only"]);
+    assertEquals(res.tapOnly, ["did:plc:tap-only"]);
+  } finally {
+    await Deno.remove(tmp).catch(() => {});
+    await Deno.remove(`${tmp}-wal`).catch(() => {});
+    await Deno.remove(`${tmp}-shm`).catch(() => {});
+  }
 });
 
 Deno.test("auditForwardingDrift: skips (fails open) when tap.db is unreadable", async () => {
