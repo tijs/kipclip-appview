@@ -5,6 +5,7 @@
  */
 
 import { db } from "./db.ts";
+import { ListRecordsError } from "./mirror-sync.ts";
 
 /** Re-check a missing repo only after this cooldown (7 days). */
 export const MISSING_REPO_RECHECK_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
@@ -87,6 +88,17 @@ export async function listMissingRepos(): Promise<MissingRepoRow[]> {
 /**
  * DIDs that have been missing long enough to be removed from tracking.
  */
+/**
+ * True when an error from listAll / fetchLiveRepo represents a canonical
+ * RepoNotFound response from the PDS. Used by auto-enroll and drift-audit
+ * to avoid treating transient errors as permanent deletions.
+ */
+export function isRepoNotFoundError(err: unknown): boolean {
+  if (!(err instanceof ListRecordsError)) return false;
+  if (err.status !== 400 && err.status !== 404) return false;
+  return /repo(?:sitory)?notfound|could not find repo/i.test(err.detail);
+}
+
 export async function listMissingReposForRemoval(
   thresholdMs: number,
 ): Promise<MissingRepoRow[]> {

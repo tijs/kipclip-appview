@@ -37,6 +37,7 @@ import {
   listMissingReposForRemoval,
   MISSING_REPO_REMOVAL_THRESHOLD_MS,
 } from "../lib/missing-repo.ts";
+import { withTapDb } from "../lib/tap-db.ts";
 
 const RECOVERABLE_SAMPLE_CAP = 20;
 
@@ -50,32 +51,23 @@ function summarize(rows: DriftRow[]): Array<Record<string, unknown>> {
   }));
 }
 
-const DEFAULT_TAP_DB_PATH = "/var/lib/tap/tap.db";
+function placeholders(n: number): string {
+  return Array.from({ length: n }, () => "?").join(",");
+}
 
 async function removeFromTapRepos(dids: string[]): Promise<boolean> {
   if (dids.length === 0) return true;
-  const envPath = Deno.env.get("TAP_DB_PATH");
-  const path = envPath && envPath.length > 0 ? envPath : DEFAULT_TAP_DB_PATH;
-  // deno-lint-ignore no-explicit-any
-  let tapClient: any;
   try {
-    const { createClient } = await import("@libsql/client");
-    tapClient = createClient({ url: `file:${path}` });
-    const placeholders = dids.map(() => "?").join(",");
-    await tapClient.execute({
-      sql: `DELETE FROM repos WHERE did IN (${placeholders})`,
-      args: dids,
+    await withTapDb(undefined, async (tapClient) => {
+      await tapClient.execute({
+        sql: `DELETE FROM repos WHERE did IN (${placeholders(dids.length)})`,
+        args: dids,
+      });
     });
     return true;
   } catch (err) {
     console.error(`[drift-alert] failed to remove DIDs from TAP repos: ${err}`);
     return false;
-  } finally {
-    try {
-      tapClient?.close();
-    } catch {
-      /* best-effort */
-    }
   }
 }
 
@@ -94,18 +86,12 @@ async function cleanupStaleMissingRepos(): Promise<number> {
     return 0;
   }
   await db.execute({
-    sql: `DELETE FROM tracked_dids WHERE did IN (${
-      dids
-        .map(() => "?")
-        .join(",")
-    })`,
+    sql: `DELETE FROM tracked_dids WHERE did IN (${placeholders(dids.length)})`,
     args: dids,
   });
   await db.execute({
     sql: `DELETE FROM missing_repos WHERE did IN (${
-      dids
-        .map(() => "?")
-        .join(",")
+      placeholders(dids.length)
     })`,
     args: dids,
   });

@@ -161,3 +161,50 @@ Deno.test("auditForwardingDrift: flags mirror-vs-TAP divergence end to end", asy
     await Deno.remove(`${tmp}-shm`).catch(() => {});
   }
 });
+
+Deno.test("auditForwardingDrift: excludes DIDs known to be missing", async () => {
+  await clearMirrorTables();
+  const BOOKMARK = "community.lexicon.bookmarks.bookmark";
+
+  await db.execute({
+    sql: "INSERT INTO tracked_dids (did, pds_url, added_at) VALUES (?, ?, ?)",
+    args: ["did:plc:missing", "https://pds.test", 1],
+  });
+  await upsertBookmark({
+    uri: "at://did:plc:missing/community.lexicon.bookmarks.bookmark/r0",
+    did: "did:plc:missing",
+    rkey: "r0",
+    cid: "c0",
+    subject: "https://example.com/missing/0",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    tags: [],
+  });
+  const now = Date.now();
+  await db.execute({
+    sql:
+      "INSERT INTO missing_repos (did, first_missing_at, last_missing_at, missing_count) VALUES (?, ?, ?, 1)",
+    args: ["did:plc:missing", now, now],
+  });
+
+  const tmp = await Deno.makeTempFile({ suffix: ".db" });
+  const { createClient } = await import("@libsql/client");
+  const tap = createClient({ url: `file:${tmp}` });
+  try {
+    await tap.execute(
+      "CREATE TABLE repo_records (did TEXT, collection TEXT, rkey TEXT, cid TEXT NOT NULL, PRIMARY KEY (did, collection, rkey))",
+    );
+    await tap.execute(
+      "CREATE TABLE outbox_buffers (id INTEGER PRIMARY KEY AUTOINCREMENT, did TEXT NOT NULL, live NUMERIC NOT NULL, data TEXT NOT NULL)",
+    );
+    tap.close();
+
+    const res = await auditForwardingDrift({ tapDbPath: tmp });
+    assertEquals(res.skipped, false);
+    assertEquals(res.checked, 0);
+    assertEquals(res.flagged.length, 0);
+  } finally {
+    await Deno.remove(tmp).catch(() => {});
+    await Deno.remove(`${tmp}-wal`).catch(() => {});
+    await Deno.remove(`${tmp}-shm`).catch(() => {});
+  }
+});

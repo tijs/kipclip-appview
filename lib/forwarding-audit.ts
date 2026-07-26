@@ -26,6 +26,7 @@
  */
 
 import { db } from "./db.ts";
+import { withTapDb } from "./tap-db.ts";
 
 // Collections TAP forwards to us (mirrors worker/webhook.ts). Both annotation
 // collections land in the single `annotations` mirror table, so both count
@@ -37,8 +38,6 @@ const TRACKED_COLLECTIONS = [
   "com.kipclip.tag",
   "com.kipclip.preferences",
 ];
-
-const DEFAULT_TAP_DB_PATH = "/var/lib/tap/tap.db";
 
 export interface ForwardingDriftRow {
   did: string;
@@ -103,19 +102,14 @@ export async function auditTapEnrollments(
     args: [],
   });
   const kipclipDids = kipclipRes.rows.map((row) => String(row[0]));
-  const envPath = Deno.env.get("TAP_DB_PATH");
-  const path = opts.tapDbPath ??
-    (envPath && envPath.length > 0 ? envPath : DEFAULT_TAP_DB_PATH);
-  // deno-lint-ignore no-explicit-any
-  let tapClient: any;
   try {
-    const { createClient } = await import("@libsql/client");
-    tapClient = createClient({ url: `file:${path}` });
-    const tapRes = await tapClient.execute({
-      sql: "SELECT did FROM repos",
-      args: [],
+    const tapDids = await withTapDb(opts, async (tapClient) => {
+      const tapRes = await tapClient.execute({
+        sql: "SELECT did FROM repos",
+        args: [],
+      });
+      return tapRes.rows.map((row: unknown[]) => String(row[0]));
     });
-    const tapDids = tapRes.rows.map((row: unknown[]) => String(row[0]));
     const { kipclipOnly, tapOnly } = diffTapEnrollments(kipclipDids, tapDids);
     return {
       skipped: false,
@@ -133,10 +127,6 @@ export async function auditTapEnrollments(
       kipclipCount: kipclipDids.length,
       tapCount: 0,
     };
-  } finally {
-    try {
-      tapClient?.close();
-    } catch { /* best-effort */ }
   }
 }
 
@@ -161,6 +151,8 @@ export async function auditForwardingDrift(
   const minDiff = opts.minDiff ?? 1;
 
   // Mirror tracked-collection totals per DID from the primary kipclip db.
+  // Exclude repos known to be missing — TAP can't sync them, so a mirror > 0
+  // vs TAP 0 gap is expected, not a dropped forward.
   const mirrorRes = await db.execute({
     sql: `
       SELECT d.did,
@@ -169,6 +161,7 @@ export async function auditForwardingDrift(
        +(SELECT COUNT(*) FROM tags WHERE did = d.did)
        +(SELECT COUNT(*) FROM preferences WHERE did = d.did) AS mirror
       FROM tracked_dids d
+      WHERE d.did NOT IN (SELECT did FROM missing_repos)
     `,
     args: [],
   });
@@ -181,36 +174,32 @@ export async function auditForwardingDrift(
     return { skipped: false, flagged: [], checked: 0 };
   }
 
-  // Treat an empty TAP_DB_PATH as unset (?? keeps "" — which would open an
-  // empty `file:` db with no repo_records and skip every run).
-  const envPath = Deno.env.get("TAP_DB_PATH");
-  const path = opts.tapDbPath ??
-    (envPath && envPath.length > 0 ? envPath : DEFAULT_TAP_DB_PATH);
-  // deno-lint-ignore no-explicit-any
-  let tapClient: any;
   try {
-    const { createClient } = await import("@libsql/client");
-    tapClient = createClient({ url: `file:${path}` });
+    const { tapByDid, outboxByDid } = await withTapDb(
+      opts,
+      async (tapClient) => {
+        const placeholders = TRACKED_COLLECTIONS.map(() => "?").join(",");
+        const tapRes = await tapClient.execute({
+          sql:
+            `SELECT did, COUNT(*) FROM repo_records WHERE collection IN (${placeholders}) GROUP BY did`,
+          args: TRACKED_COLLECTIONS,
+        });
+        const tapByDid = new Map<string, number>();
+        for (const row of tapRes.rows) {
+          tapByDid.set(String(row[0]), Number(row[1] ?? 0));
+        }
 
-    const placeholders = TRACKED_COLLECTIONS.map(() => "?").join(",");
-    const tapRes = await tapClient.execute({
-      sql:
-        `SELECT did, COUNT(*) FROM repo_records WHERE collection IN (${placeholders}) GROUP BY did`,
-      args: TRACKED_COLLECTIONS,
-    });
-    const tapByDid = new Map<string, number>();
-    for (const row of tapRes.rows) {
-      tapByDid.set(String(row[0]), Number(row[1] ?? 0));
-    }
-
-    const outboxRes = await tapClient.execute({
-      sql: "SELECT did, COUNT(*) FROM outbox_buffers GROUP BY did",
-      args: [],
-    });
-    const outboxByDid = new Map<string, number>();
-    for (const row of outboxRes.rows) {
-      outboxByDid.set(String(row[0]), Number(row[1] ?? 0));
-    }
+        const outboxRes = await tapClient.execute({
+          sql: "SELECT did, COUNT(*) FROM outbox_buffers GROUP BY did",
+          args: [],
+        });
+        const outboxByDid = new Map<string, number>();
+        for (const row of outboxRes.rows) {
+          outboxByDid.set(String(row[0]), Number(row[1] ?? 0));
+        }
+        return { tapByDid, outboxByDid };
+      },
+    );
 
     const rows: ForwardingDriftRow[] = [];
     for (const [did, mirror] of mirrorByDid) {
@@ -228,9 +217,5 @@ export async function auditForwardingDrift(
     };
   } catch (err) {
     return { skipped: true, reason: String(err), flagged: [], checked: 0 };
-  } finally {
-    try {
-      tapClient?.close();
-    } catch { /* best-effort */ }
   }
 }

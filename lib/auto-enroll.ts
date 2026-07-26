@@ -10,7 +10,6 @@
 import {
   fetchLiveRepo,
   fetchWithTimeout,
-  ListRecordsError,
   type LiveUris,
   upsertLiveRepo,
 } from "./mirror-sync.ts";
@@ -19,7 +18,11 @@ import { db } from "./db.ts";
 import { getMirrorMode } from "./mirror-config.ts";
 import { resolveCurrentPds } from "./pds-migration-guard.ts";
 import { captureMessage } from "./sentry.ts";
-import { forgetMissingRepo, recordMissingRepo } from "./missing-repo.ts";
+import {
+  forgetMissingRepo,
+  isRepoNotFoundError,
+  recordMissingRepo,
+} from "./missing-repo.ts";
 
 const TAP_CONTROL_URL = Deno.env.get("TAP_CONTROL_URL") ??
   "http://127.0.0.1:2480";
@@ -142,9 +145,7 @@ async function runEnrollment(did: string, pdsUrl: string): Promise<void> {
     console.log(`[auto-enroll] complete for ${did}`);
   } catch (err) {
     const canonicalRepoMissing = canonicalPdsConfirmed &&
-      err instanceof ListRecordsError &&
-      (err.status === 400 || err.status === 404) &&
-      /repo(?:sitory)?notfound|could not find repo/i.test(err.detail);
+      isRepoNotFoundError(err);
     if (canonicalRepoMissing) {
       await recordMissingRepo(did, String(err));
     }

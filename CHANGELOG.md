@@ -11,6 +11,10 @@ All notable changes to kipclip are documented in this file.
   days, and removed from `tracked_dids` and TAP after 60 days. This stops
   deleted-account DIDs from generating daily enrollment-drift warnings and TAP
   resync loops.
+- Forwarding-drift audit now excludes DIDs recorded in `missing_repos`, so a
+  repo TAP cannot sync no longer triggers a false "dropped forward" alert.
+- Shared `lib/tap-db.ts` helper for TAP's local SQLite reads/writes, used by
+  forwarding-audit and drift-alert.
 
 ## [0.24.35] - 2026-07-26
 
