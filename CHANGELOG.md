@@ -4,13 +4,21 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Persistent missing-repo tracking. Repos that return `RepoNotFound` are
+  recorded in `missing_repos`, skipped during drift-alert's PDS checks for 7
+  days, and removed from `tracked_dids` and TAP after 60 days. This stops
+  deleted-account DIDs from generating daily enrollment-drift warnings and TAP
+  resync loops.
+
 ## [0.24.35] - 2026-07-26
 
 ### Fixed
 
-- TAP enrollment drift now compares the actual tracked-DID sets rather than
-  only their counts, reports the divergent DIDs, and re-enrolls DIDs missing
-  from TAP.
+- TAP enrollment drift now compares the actual tracked-DID sets rather than only
+  their counts, reports the divergent DIDs, and re-enrolls DIDs missing from
+  TAP.
 
 ## [0.24.34] - 2026-07-15
 

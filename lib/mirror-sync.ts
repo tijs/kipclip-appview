@@ -54,10 +54,11 @@ export async function listAll(
   pdsUrl: string,
   did: string,
   collection: string,
+  maxPages?: number,
 ): Promise<Record_[]> {
   const records: Record_[] = [];
   let cursor: string | undefined;
-  while (true) {
+  for (let page = 0; maxPages === undefined || page < maxPages; page++) {
     const url = URL.parse(`${pdsUrl}/xrpc/com.atproto.repo.listRecords`);
     if (!url) throw new Error(`Invalid PDS URL: ${pdsUrl}`);
     url.searchParams.set("repo", did);

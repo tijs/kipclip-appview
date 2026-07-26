@@ -31,6 +31,12 @@ import {
   auditTapEnrollments,
 } from "../lib/forwarding-audit.ts";
 import { captureMessage, Sentry } from "../lib/sentry.ts";
+import { db } from "../lib/db.ts";
+import {
+  listMissingRepos,
+  listMissingReposForRemoval,
+  MISSING_REPO_REMOVAL_THRESHOLD_MS,
+} from "../lib/missing-repo.ts";
 
 const RECOVERABLE_SAMPLE_CAP = 20;
 
@@ -44,8 +50,77 @@ function summarize(rows: DriftRow[]): Array<Record<string, unknown>> {
   }));
 }
 
+const DEFAULT_TAP_DB_PATH = "/var/lib/tap/tap.db";
+
+async function removeFromTapRepos(dids: string[]): Promise<boolean> {
+  if (dids.length === 0) return true;
+  const envPath = Deno.env.get("TAP_DB_PATH");
+  const path = envPath && envPath.length > 0 ? envPath : DEFAULT_TAP_DB_PATH;
+  // deno-lint-ignore no-explicit-any
+  let tapClient: any;
+  try {
+    const { createClient } = await import("@libsql/client");
+    tapClient = createClient({ url: `file:${path}` });
+    const placeholders = dids.map(() => "?").join(",");
+    await tapClient.execute({
+      sql: `DELETE FROM repos WHERE did IN (${placeholders})`,
+      args: dids,
+    });
+    return true;
+  } catch (err) {
+    console.error(`[drift-alert] failed to remove DIDs from TAP repos: ${err}`);
+    return false;
+  } finally {
+    try {
+      tapClient?.close();
+    } catch {
+      /* best-effort */
+    }
+  }
+}
+
+async function cleanupStaleMissingRepos(): Promise<number> {
+  const toRemove = await listMissingReposForRemoval(
+    MISSING_REPO_REMOVAL_THRESHOLD_MS,
+  );
+  if (toRemove.length === 0) return 0;
+
+  const dids = toRemove.map((r) => r.did);
+  const removedFromTap = await removeFromTapRepos(dids);
+  if (!removedFromTap) {
+    console.error(
+      `[drift-alert] TAP cleanup failed; leaving ${dids.length} stale missing repos for retry`,
+    );
+    return 0;
+  }
+  await db.execute({
+    sql: `DELETE FROM tracked_dids WHERE did IN (${
+      dids
+        .map(() => "?")
+        .join(",")
+    })`,
+    args: dids,
+  });
+  await db.execute({
+    sql: `DELETE FROM missing_repos WHERE did IN (${
+      dids
+        .map(() => "?")
+        .join(",")
+    })`,
+    args: dids,
+  });
+
+  for (const did of dids) {
+    console.log(`[drift-alert] removed stale missing repo: ${did}`);
+  }
+  return dids.length;
+}
+
 async function main() {
   const quiet = Deno.args.includes("--quiet");
+
+  const missingBefore = await listMissingRepos();
+  const missingBeforeSet = new Set(missingBefore.map((r) => r.did));
 
   let result;
   try {
@@ -79,15 +154,29 @@ async function main() {
       `[drift-alert] PDS migrations detected (tracked_dids updated):`,
     );
     for (const r of migrated) {
-      console.log(
-        `  ${r.did}  ${r.pdsMigrated!.from} -> ${r.pdsMigrated!.to}`,
-      );
+      console.log(`  ${r.did}  ${r.pdsMigrated!.from} -> ${r.pdsMigrated!.to}`);
     }
   }
 
+  const removed = await cleanupStaleMissingRepos();
+  const missingAfter = await listMissingRepos();
+  const newlyConfirmed = missingAfter.filter(
+    (r) => !missingBeforeSet.has(r.did),
+  ).length;
+  console.log(
+    `[drift-alert] missing_repos=${missingAfter.length} ` +
+      `(checked ${missingBefore.length}, newly confirmed ${newlyConfirmed}, stale removals ${removed})`,
+  );
+
   const enrollment = await auditTapEnrollments();
   if (!enrollment.skipped) {
-    const enrollmentDrift = enrollment.kipclipOnly.length > 0 ||
+    const missingSet = new Set(missingAfter.map((r) => r.did));
+    // Re-enrolling a known-missing DID just re-adds it to TAP's retry loop.
+    // Treat those as accounted-for until the cleanup threshold removes them.
+    const kipclipOnlyActionable = enrollment.kipclipOnly.filter(
+      (did) => !missingSet.has(did),
+    );
+    const enrollmentDrift = kipclipOnlyActionable.length > 0 ||
       enrollment.tapOnly.length > 0;
     console.log(
       `[drift-alert] TAP repo-count=${enrollment.tapCount} kipclip tracked=${enrollment.kipclipCount}` +
@@ -95,10 +184,10 @@ async function main() {
     );
     if (enrollmentDrift) {
       console.log(
-        `[drift-alert] enrollment drift kipclip-only=${enrollment.kipclipOnly.length} ` +
+        `[drift-alert] enrollment drift kipclip-only=${kipclipOnlyActionable.length} ` +
           `tap-only=${enrollment.tapOnly.length}`,
       );
-      for (const did of enrollment.kipclipOnly) {
+      for (const did of kipclipOnlyActionable) {
         console.log(`  kipclip-only ${did}`);
       }
       for (const did of enrollment.tapOnly) {
@@ -110,14 +199,16 @@ async function main() {
       // backfill before a tracked_dids row can safely be created, so leave it
       // for operator recovery instead of creating an empty mirror cohort.
       const reenrollment = await Promise.allSettled(
-        enrollment.kipclipOnly.map((did) => tapEnroll(did)),
+        kipclipOnlyActionable.map((did) => tapEnroll(did)),
       );
       const reenrollFailures = reenrollment.flatMap((result, index) =>
         result.status === "rejected"
-          ? [{
-            did: enrollment.kipclipOnly[index],
-            error: String(result.reason),
-          }]
+          ? [
+            {
+              did: kipclipOnlyActionable[index],
+              error: String(result.reason),
+            },
+          ]
           : []
       );
       if (reenrollment.length > 0) {
@@ -133,9 +224,10 @@ async function main() {
         {
           tapCount: enrollment.tapCount,
           kipclipCount: enrollment.kipclipCount,
-          kipclipOnly: enrollment.kipclipOnly,
+          kipclipOnly: kipclipOnlyActionable,
           tapOnly: enrollment.tapOnly,
           reenrollFailures,
+          knownMissing: missingAfter.length,
         },
       );
       driftDetected = true;
@@ -161,14 +253,14 @@ async function main() {
         `flagged=${forwarding.flagged.length}`,
     );
     if (forwarding.flagged.length > 0) {
-      const sample = forwarding.flagged.slice(0, RECOVERABLE_SAMPLE_CAP).map(
-        (r) => ({
+      const sample = forwarding.flagged
+        .slice(0, RECOVERABLE_SAMPLE_CAP)
+        .map((r) => ({
           did: r.did,
           mirror: r.mirror,
           tap: r.tap,
           diff: r.mirror - r.tap,
-        }),
-      );
+        }));
       for (const s of sample) {
         console.log(
           `  ${s.did}  mirror=${s.mirror} tap=${s.tap} diff=${s.diff}`,

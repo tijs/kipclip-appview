@@ -52,10 +52,13 @@ edits.
    Hostname: `kipclip-box-01`.
 2. **OS prereqs** (Caddy, restic, git, jq, sqlite3, fail2ban,
    unattended-upgrades, golang for TAP, build tools, curl, unzip):
+
    ```bash
    sudo deploy/release/install-prereqs.sh
    ```
+
 3. **System users** (no login shells):
+
    ```bash
    sudo useradd --system --shell /usr/sbin/nologin --home-dir /var/lib/kipclip kipclip
    sudo useradd --system --shell /usr/sbin/nologin --home-dir /var/lib/tap tap
@@ -63,13 +66,17 @@ edits.
    sudo install -d -o tap -g tap /var/lib/tap
    sudo install -d /var/log/kipclip /var/log/tap /etc/kipclip /etc/tap
    ```
+
 4. **Deno runtime**:
+
    ```bash
    sudo deploy/release/install-deno.sh
    ```
+
    `deno-update.timer` keeps it current weekly after this.
 5. **Env files** (out-of-band — never committed). Schema is documented in the
    example files:
+
    ```bash
    sudo cp deploy/kipclip.env.example /etc/kipclip/env       # fill in
    sudo cp deploy/restic.env.example /etc/kipclip/restic.env # fill in
@@ -79,15 +86,19 @@ edits.
    sudo chmod 0600 /etc/kipclip/restic.env
    sudo chown root:tap /etc/tap/env && sudo chmod 0640 /etc/tap/env
    ```
+
 6. **DNS**: A record `kipclip.com → <box-ip>`, TTL 300. Caddy auto-issues Let's
    Encrypt cert on first request.
 7. **Bootstrap**:
+
    ```bash
    sudo deploy/release/bootstrap.sh
    ```
+
    Installs systemd units, sudoers, Caddyfile, journald cap, and enables every
    timer. Triggers the first release synchronously so failure is loud.
 8. **TAP install** (one-off):
+
    ```bash
    sudo install -d -o tap -g tap /var/lib/tap/build
    sudo -u tap git clone https://github.com/bluesky-social/indigo.git \
@@ -110,13 +121,14 @@ edits.
 
 ## Auto-update timers
 
-| Timer                   | When            | Action                                                                    |
-| ----------------------- | --------------- | ------------------------------------------------------------------------- |
-| `kipclip-release.timer` | Every 60s       | Pulls latest `v*` tag merged into `main`, builds, atomic-swaps, restarts. |
-| `tap-update.timer`      | Sun 04:00 UTC   | Rebuilds TAP from indigo `main` on the box, restarts.                     |
-| `deno-update.timer`     | Sun 04:30 UTC   | Pulls latest stable Deno from `dl.deno.land`, sha-verifies, restarts.     |
-| `restic-backup.timer`   | Daily 04:00 UTC | Snapshots `mirror.db` to B2.                                              |
-| `unattended-upgrades`   | Daily (Debian)  | Debian security packages only.                                            |
+| Timer                       | When            | Action                                                                            |
+| --------------------------- | --------------- | --------------------------------------------------------------------------------- |
+| `kipclip-release.timer`     | Every 60s       | Pulls latest `v*` tag merged into `main`, builds, atomic-swaps, restarts.         |
+| `tap-update.timer`          | Sun 04:00 UTC   | Rebuilds TAP from indigo `main` on the box, restarts.                             |
+| `deno-update.timer`         | Sun 04:30 UTC   | Pulls latest stable Deno from `dl.deno.land`, sha-verifies, restarts.             |
+| `restic-backup.timer`       | Daily 04:00 UTC | Snapshots `mirror.db` to B2.                                                      |
+| `kipclip-drift-alert.timer` | Daily 05:00 UTC | Audits mirror vs PDS, re-enrolls TAP gaps, and removes repos missing for 60 days. |
+| `unattended-upgrades`       | Daily (Debian)  | Debian security packages only.                                                    |
 
 All update timers have rollback paths on health-check failure. Pin overrides
 documented in `deploy/release/README.md`.
@@ -129,11 +141,16 @@ Journal is capped at 1G via `/etc/systemd/journald.conf.d/kipclip.conf`
 `MaxRetentionSec=30day`).
 
 ```bash
-sudo journalctl -u kipclip -f          # app logs
-sudo journalctl -u tap -f              # firehose subscriber
-sudo journalctl -u kipclip-release -f  # release flow
-sudo journalctl --disk-usage           # current journal size
+sudo journalctl -u kipclip -f              # app logs
+sudo journalctl -u tap -f                  # firehose subscriber
+sudo journalctl -u kipclip-release -f      # release flow
+sudo journalctl -u kipclip-drift-alert -f  # drift alert
+sudo journalctl --disk-usage               # current journal size
 ```
+
+Drift-alert suppresses PDS checks for repos that return `RepoNotFound` during a
+7-day cooldown, then removes them from `tracked_dids` and TAP after 60 days.
+Mirror data is kept in case the account returns.
 
 ## Rollback paths
 

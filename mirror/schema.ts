@@ -202,4 +202,21 @@ export const MIRROR_MIGRATIONS: MigrationEntry[] = [
         ON seen_webhook_deliveries(seen_at)
     `,
   },
+  {
+    version: "013",
+    description: "Track repos confirmed missing for backoff and cleanup",
+    sql: `
+      CREATE TABLE IF NOT EXISTS missing_repos (
+        did TEXT PRIMARY KEY,
+        first_missing_at INTEGER NOT NULL,
+        last_missing_at INTEGER NOT NULL,
+        missing_count INTEGER NOT NULL DEFAULT 1,
+        last_error TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_missing_repos_last_missing_at
+        ON missing_repos(last_missing_at);
+      CREATE INDEX IF NOT EXISTS idx_missing_repos_first_missing_at
+        ON missing_repos(first_missing_at)
+    `,
+  },
 ];
