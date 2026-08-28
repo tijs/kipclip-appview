@@ -4,6 +4,8 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.36] - 2026-08-28
+
 ### Added
 
 - Persistent missing-repo tracking. Repos that return `RepoNotFound` are
@@ -1351,7 +1353,9 @@ All notable changes to kipclip are documented in this file.
 - Responsive mobile and desktop layouts
 - Kip logo and "Find it, Kip it" tagline
 
-[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.24.34...HEAD
+[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.24.36...HEAD
+[0.24.36]: https://github.com/tijs/kipclip-appview/compare/v0.24.35...v0.24.36
+[0.24.35]: https://github.com/tijs/kipclip-appview/compare/v0.24.34...v0.24.35
 [0.24.34]: https://github.com/tijs/kipclip-appview/compare/v0.24.33...v0.24.34
 [0.24.33]: https://github.com/tijs/kipclip-appview/compare/v0.24.32...v0.24.33
 [0.24.32]: https://github.com/tijs/kipclip-appview/compare/v0.24.31...v0.24.32

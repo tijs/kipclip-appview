@@ -164,7 +164,6 @@ Deno.test("auditForwardingDrift: flags mirror-vs-TAP divergence end to end", asy
 
 Deno.test("auditForwardingDrift: excludes DIDs known to be missing", async () => {
   await clearMirrorTables();
-  const BOOKMARK = "community.lexicon.bookmarks.bookmark";
 
   await db.execute({
     sql: "INSERT INTO tracked_dids (did, pds_url, added_at) VALUES (?, ?, ?)",
