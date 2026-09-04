@@ -4,6 +4,16 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.37] - 2026-09-04
+
+### Fixed
+
+- Hardened retroactive preview enrichment queue transitions. Periodic scans no
+  longer reopen unchanged completed, failed, or no-session jobs, preventing
+  repeated retries and preserving backoff state. Explicit authenticated
+  initial-data requests can reopen failed/no-session jobs with fresh attempts,
+  while bookmark subject changes reset enrichment immediately.
+
 ## [0.24.36] - 2026-08-28
 
 ### Added
