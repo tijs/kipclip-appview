@@ -69,13 +69,59 @@ export async function findMissingPreviewBookmarks(
   }));
 }
 
+export interface EnqueuePreviewOptions {
+  /** Explicit authenticated reactivation: reopen failed / blocked_no_session
+   * jobs as a fresh pending attempt (attempts reset, immediate next run).
+   * Periodic scans (default) must leave terminal jobs stable. */
+  reactivate?: boolean;
+}
+
 export async function enqueueMissingPreviewJobsForDid(
   did: string,
   limit = 25,
+  opts: EnqueuePreviewOptions = {},
 ): Promise<number> {
   const missing = await findMissingPreviewBookmarks(did, limit);
   let enqueued = 0;
   const now = Date.now();
+  const reactivate = opts.reactivate ?? false;
+  // Periodic scans (reactivate=false) insert new pending jobs and refresh
+  // rkey/subject but never reopen terminal jobs (done/failed/blocked_no_session).
+  // Explicit reactivation reopens failed and blocked_no_session jobs as a fresh
+  // pending attempt: attempts reset to 0 and next_run_at scheduled immediately.
+  const onConflict = reactivate
+    ? `
+        ON CONFLICT(bookmark_uri) DO UPDATE SET
+          subject = excluded.subject,
+          rkey = excluded.rkey,
+          status = CASE
+            WHEN preview_enrichment_jobs.status IN ('failed', 'blocked_no_session')
+              THEN 'pending'
+            ELSE preview_enrichment_jobs.status
+          END,
+          attempts = CASE
+            WHEN preview_enrichment_jobs.status IN ('failed', 'blocked_no_session') THEN 0
+            WHEN preview_enrichment_jobs.subject != excluded.subject THEN 0
+            ELSE preview_enrichment_jobs.attempts
+          END,
+          next_run_at = CASE
+            WHEN preview_enrichment_jobs.status IN ('failed', 'blocked_no_session')
+              THEN excluded.next_run_at
+            WHEN preview_enrichment_jobs.subject != excluded.subject THEN excluded.next_run_at
+            ELSE preview_enrichment_jobs.next_run_at
+          END,
+          last_error = CASE
+            WHEN preview_enrichment_jobs.status IN ('failed', 'blocked_no_session') THEN NULL
+            ELSE preview_enrichment_jobs.last_error
+          END,
+          updated_at = excluded.updated_at
+      `
+    : `
+        ON CONFLICT(bookmark_uri) DO UPDATE SET
+          subject = excluded.subject,
+          rkey = excluded.rkey,
+          updated_at = excluded.updated_at
+      `;
   for (const bookmark of missing) {
     const result = await db.execute({
       sql: `
@@ -83,23 +129,7 @@ export async function enqueueMissingPreviewJobsForDid(
           bookmark_uri, did, rkey, subject, status, attempts,
           next_run_at, last_error, created_at, updated_at
         ) VALUES (?, ?, ?, ?, 'pending', 0, ?, NULL, ?, ?)
-        ON CONFLICT(bookmark_uri) DO UPDATE SET
-          subject = excluded.subject,
-          rkey = excluded.rkey,
-          status = CASE
-            WHEN preview_enrichment_jobs.status IN ('done', 'failed', 'blocked_no_session')
-              THEN 'pending'
-            ELSE preview_enrichment_jobs.status
-          END,
-          attempts = CASE
-            WHEN preview_enrichment_jobs.subject != excluded.subject THEN 0
-            ELSE preview_enrichment_jobs.attempts
-          END,
-          next_run_at = CASE
-            WHEN preview_enrichment_jobs.subject != excluded.subject THEN excluded.next_run_at
-            ELSE preview_enrichment_jobs.next_run_at
-          END,
-          updated_at = excluded.updated_at
+        ${onConflict}
       `,
       args: [
         bookmark.uri,

@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import { clearMirrorTables, db } from "./mirror-test-setup.ts";
 import { upsertAnnotation, upsertBookmark } from "../mirror/upserts.ts";
 import {
@@ -6,6 +6,8 @@ import {
   enqueueMissingPreviewJobsForDid,
   enqueueMissingPreviewJobsForSessionDids,
   findMissingPreviewBookmarks,
+  markPreviewJobBlockedNoSession,
+  markPreviewJobDone,
   markPreviewJobRetry,
 } from "../lib/preview-enrichment-jobs.ts";
 import {
@@ -283,4 +285,154 @@ Deno.test("worker skips if annotation appears after metadata fetch", async () =>
   });
   assertEquals(stats.skippedExisting, 1);
   assertEquals(wrote, false);
+});
+
+Deno.test("periodic enqueue does not reopen a done preview job", async () => {
+  await clearMirrorTables();
+  await bookmark("a");
+  await enqueueMissingPreviewJobsForDid(DID, 10);
+  const job = (await claimPreviewEnrichmentJobs(1))[0];
+  await markPreviewJobDone(job.bookmarkUri);
+
+  await enqueueMissingPreviewJobsForDid(DID, 10);
+  const rows = await db.execute({
+    sql:
+      "SELECT status, attempts FROM preview_enrichment_jobs WHERE bookmark_uri = ?",
+    args: [job.bookmarkUri],
+  });
+  assertEquals(rows.rows[0], ["done", 0]);
+});
+
+Deno.test("periodic enqueue does not reopen a failed preview job", async () => {
+  await clearMirrorTables();
+  await bookmark("a");
+  await enqueueMissingPreviewJobsForDid(DID, 10);
+  const job = (await claimPreviewEnrichmentJobs(1))[0];
+  await markPreviewJobRetry(
+    { ...job, attempts: 2 },
+    new Error("final"),
+    Date.now(),
+  );
+
+  const before = await db.execute({
+    sql:
+      "SELECT status, attempts, next_run_at FROM preview_enrichment_jobs WHERE bookmark_uri = ?",
+    args: [job.bookmarkUri],
+  });
+  assertEquals(before.rows[0][0], "failed");
+
+  await enqueueMissingPreviewJobsForDid(DID, 10);
+  const after = await db.execute({
+    sql:
+      "SELECT status, attempts, next_run_at FROM preview_enrichment_jobs WHERE bookmark_uri = ?",
+    args: [job.bookmarkUri],
+  });
+  assertEquals(after.rows[0], before.rows[0]);
+});
+
+Deno.test("periodic enqueue does not reopen a blocked_no_session preview job", async () => {
+  await clearMirrorTables();
+  await bookmark("a");
+  await enqueueMissingPreviewJobsForDid(DID, 10);
+  const job = (await claimPreviewEnrichmentJobs(1))[0];
+  await markPreviewJobBlockedNoSession(job);
+
+  await enqueueMissingPreviewJobsForDid(DID, 10);
+  const rows = await db.execute({
+    sql:
+      "SELECT status, attempts FROM preview_enrichment_jobs WHERE bookmark_uri = ?",
+    args: [job.bookmarkUri],
+  });
+  assertEquals(rows.rows[0], ["blocked_no_session", 0]);
+});
+
+Deno.test("explicit reactivation reopens a failed job, resets attempts, schedules immediate run", async () => {
+  await clearMirrorTables();
+  await bookmark("a");
+  await enqueueMissingPreviewJobsForDid(DID, 10);
+  const job = (await claimPreviewEnrichmentJobs(1))[0];
+  await markPreviewJobRetry({ ...job, attempts: 2 }, new Error("final"), 1_000);
+  let rows = await db.execute({
+    sql:
+      "SELECT status, attempts, next_run_at FROM preview_enrichment_jobs WHERE bookmark_uri = ?",
+    args: [job.bookmarkUri],
+  });
+  assertEquals(rows.rows[0][0], "failed");
+  assertEquals(Number(rows.rows[0][1]), 3);
+
+  const before = Date.now();
+  const enqueued = await enqueueMissingPreviewJobsForDid(DID, 10, {
+    reactivate: true,
+  });
+  assertEquals(enqueued, 1);
+  rows = await db.execute({
+    sql:
+      "SELECT status, attempts, next_run_at, last_error FROM preview_enrichment_jobs WHERE bookmark_uri = ?",
+    args: [job.bookmarkUri],
+  });
+  assertEquals(rows.rows[0][0], "pending");
+  assertEquals(Number(rows.rows[0][1]), 0);
+  const nextRunAt = Number(rows.rows[0][2]);
+  assert(nextRunAt >= before && nextRunAt <= before + 5_000);
+  assertEquals(rows.rows[0][3], null);
+
+  const claimed = await claimPreviewEnrichmentJobs(1, before + 1);
+  assertEquals(claimed.map((j) => j.bookmarkUri), [job.bookmarkUri]);
+  assertEquals(claimed[0].attempts, 0);
+});
+
+Deno.test("explicit reactivation reopens a blocked_no_session job with a fresh attempt", async () => {
+  await clearMirrorTables();
+  await bookmark("a");
+  await enqueueMissingPreviewJobsForDid(DID, 10);
+  const job = (await claimPreviewEnrichmentJobs(1))[0];
+  await markPreviewJobBlockedNoSession(job);
+
+  const enqueued = await enqueueMissingPreviewJobsForDid(DID, 10, {
+    reactivate: true,
+  });
+  assertEquals(enqueued, 1);
+  const rows = await db.execute({
+    sql:
+      "SELECT status, attempts, last_error FROM preview_enrichment_jobs WHERE bookmark_uri = ?",
+    args: [job.bookmarkUri],
+  });
+  assertEquals(rows.rows[0], ["pending", 0, null]);
+});
+
+Deno.test("explicit reactivation leaves a done preview job unchanged", async () => {
+  await clearMirrorTables();
+  await bookmark("a");
+  await enqueueMissingPreviewJobsForDid(DID, 10);
+  const job = (await claimPreviewEnrichmentJobs(1))[0];
+  await markPreviewJobDone(job.bookmarkUri);
+
+  await enqueueMissingPreviewJobsForDid(DID, 10, { reactivate: true });
+  const rows = await db.execute({
+    sql:
+      "SELECT status, attempts FROM preview_enrichment_jobs WHERE bookmark_uri = ?",
+    args: [job.bookmarkUri],
+  });
+  assertEquals(rows.rows[0], ["done", 0]);
+});
+
+Deno.test("existing usable annotation prevents creating repeated preview work", async () => {
+  await clearMirrorTables();
+  await bookmark("a");
+  await enqueueMissingPreviewJobsForDid(DID, 10);
+  await upsertAnnotation({
+    uri: `at://${DID}/com.kipclip.annotation/a`,
+    did: DID,
+    rkey: "a",
+    cid: "bafyann",
+    subject: `at://${DID}/community.lexicon.bookmarks.bookmark/a`,
+    title: "Done",
+  });
+
+  assertEquals(await enqueueMissingPreviewJobsForDid(DID, 10), 0);
+  const rows = await db.execute({
+    sql: "SELECT COUNT(*) FROM preview_enrichment_jobs WHERE did = ?",
+    args: [DID],
+  });
+  assertEquals(Number(rows.rows[0][0]), 0);
 });

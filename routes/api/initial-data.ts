@@ -172,7 +172,9 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
               isSupporter,
               ...(mirrorDecision.syncing ? { syncing: true } : {}),
             };
-            enqueueMissingPreviewJobsForDid(oauthSession.did, 25).catch((err) =>
+            enqueueMissingPreviewJobsForDid(oauthSession.did, 25, {
+              reactivate: true,
+            }).catch((err) =>
               console.warn("[preview-enrichment] enqueue failed", err)
             );
             return timer.finalize(
@@ -271,7 +273,9 @@ export function registerInitialDataRoutes(app: App<any>): App<any> {
         const response = timer.finalize(
           setSessionCookie(Response.json(result), setCookieHeader),
         );
-        enqueueMissingPreviewJobsForDid(oauthSession.did, 10).catch((err) =>
+        enqueueMissingPreviewJobsForDid(oauthSession.did, 10, {
+          reactivate: true,
+        }).catch((err) =>
           console.warn("[preview-enrichment] enqueue failed", err)
         );
 
