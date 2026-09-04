@@ -346,6 +346,63 @@ Deno.test("periodic enqueue does not reopen a blocked_no_session preview job", a
   assertEquals(rows.rows[0], ["blocked_no_session", 0]);
 });
 
+Deno.test("periodic enqueue resets retry state when bookmark subject changes", async () => {
+  await clearMirrorTables();
+  await bookmark("a", "https://example.com/old");
+  await enqueueMissingPreviewJobsForDid(DID, 10);
+  const job = (await claimPreviewEnrichmentJobs(1))[0];
+  await markPreviewJobRetry({ ...job, attempts: 2 }, new Error("final"), 1_000);
+
+  await bookmark("a", "https://example.com/new");
+  const before = Date.now();
+  await enqueueMissingPreviewJobsForDid(DID, 10);
+  const rows = await db.execute({
+    sql:
+      "SELECT status, attempts, next_run_at, last_error, subject FROM preview_enrichment_jobs WHERE bookmark_uri = ?",
+    args: [job.bookmarkUri],
+  });
+  assertEquals(rows.rows[0][0], "pending");
+  assertEquals(Number(rows.rows[0][1]), 0);
+  const nextRunAt = Number(rows.rows[0][2]);
+  assert(nextRunAt >= before && nextRunAt <= before + 5_000);
+  assertEquals(rows.rows[0][3], null);
+  assertEquals(rows.rows[0][4], "https://example.com/new");
+});
+
+Deno.test("periodic enqueue resets a done job when bookmark subject changes", async () => {
+  await clearMirrorTables();
+  await bookmark("a", "https://example.com/old");
+  await enqueueMissingPreviewJobsForDid(DID, 10);
+  const job = (await claimPreviewEnrichmentJobs(1))[0];
+  await markPreviewJobDone(job.bookmarkUri);
+
+  await bookmark("a", "https://example.com/new");
+  await enqueueMissingPreviewJobsForDid(DID, 10);
+  const rows = await db.execute({
+    sql:
+      "SELECT status, attempts, subject FROM preview_enrichment_jobs WHERE bookmark_uri = ?",
+    args: [job.bookmarkUri],
+  });
+  assertEquals(rows.rows[0], ["pending", 0, "https://example.com/new"]);
+});
+
+Deno.test("periodic enqueue resets a blocked job when bookmark subject changes", async () => {
+  await clearMirrorTables();
+  await bookmark("a", "https://example.com/old");
+  await enqueueMissingPreviewJobsForDid(DID, 10);
+  const job = (await claimPreviewEnrichmentJobs(1))[0];
+  await markPreviewJobBlockedNoSession(job);
+
+  await bookmark("a", "https://example.com/new");
+  await enqueueMissingPreviewJobsForDid(DID, 10);
+  const rows = await db.execute({
+    sql:
+      "SELECT status, attempts, last_error, subject FROM preview_enrichment_jobs WHERE bookmark_uri = ?",
+    args: [job.bookmarkUri],
+  });
+  assertEquals(rows.rows[0], ["pending", 0, null, "https://example.com/new"]);
+});
+
 Deno.test("explicit reactivation reopens a failed job, resets attempts, schedules immediate run", async () => {
   await clearMirrorTables();
   await bookmark("a");

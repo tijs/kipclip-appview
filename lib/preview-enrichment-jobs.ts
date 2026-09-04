@@ -76,6 +76,10 @@ export interface EnqueuePreviewOptions {
   reactivate?: boolean;
 }
 
+/**
+ * Enqueue missing bookmark previews and return the number of rows touched by
+ * the upsert, including idempotent subject/rkey refreshes.
+ */
 export async function enqueueMissingPreviewJobsForDid(
   did: string,
   limit = 25,
@@ -120,6 +124,22 @@ export async function enqueueMissingPreviewJobsForDid(
         ON CONFLICT(bookmark_uri) DO UPDATE SET
           subject = excluded.subject,
           rkey = excluded.rkey,
+          status = CASE
+            WHEN preview_enrichment_jobs.subject != excluded.subject THEN 'pending'
+            ELSE preview_enrichment_jobs.status
+          END,
+          attempts = CASE
+            WHEN preview_enrichment_jobs.subject != excluded.subject THEN 0
+            ELSE preview_enrichment_jobs.attempts
+          END,
+          next_run_at = CASE
+            WHEN preview_enrichment_jobs.subject != excluded.subject THEN excluded.next_run_at
+            ELSE preview_enrichment_jobs.next_run_at
+          END,
+          last_error = CASE
+            WHEN preview_enrichment_jobs.subject != excluded.subject THEN NULL
+            ELSE preview_enrichment_jobs.last_error
+          END,
           updated_at = excluded.updated_at
       `;
   for (const bookmark of missing) {
