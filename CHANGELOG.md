@@ -4,6 +4,23 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- `tap-update.sh` ticks are idempotent: the dedicated build tree is hard-reset
+  and cleaned to the pinned immutable base before the reviewed patch is
+  re-applied, so two consecutive ticks against the same pin both succeed (the
+  second reports "already up to date" instead of failing `git apply --check` on
+  the previous tick's applied patch). The reset targets only the verified pinned
+  sha — moving refs remain refused. The shell regression simulates two
+  consecutive runs and asserts the reset/clean targets.
+- Missing-repo `last_error` persistence is bounded (first line, ≤200 chars), and
+  the dead 60-day-removal exports (`listMissingReposForRemoval`,
+  `MISSING_REPO_REMOVAL_THRESHOLD_MS`) were removed — there is no automatic
+  deletion path, matching the quarantine-only policy.
+- Malformed-webhook diagnostics never emit a full short DID: `didSuffix` treats
+  ≤12-char DID-shaped strings as invalid instead of leaking the whole
+  identifier.
+
 ## [0.24.38] - 2026-09-11
 
 ### Fixed

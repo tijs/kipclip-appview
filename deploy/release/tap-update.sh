@@ -26,7 +26,9 @@
 #      still building).
 #   2. Resolve the desired ref: pin file > TAP_UPDATE_DEFAULT_REF (sha
 #      required) > $TAP_DEFAULT_BASE_SHA. Refuse branch refs / origin/*.
-#   3. Fetch + checkout the immutable base sha in /var/lib/tap/build.
+#   3. Fetch, then hard-reset + clean the build tree to the immutable base
+#      sha (a previous tick's applied patch must never survive into the
+#      next — reset/clean is what makes consecutive runs reproducible).
 #   4. Apply every patch in PATCH_DIR with `git apply --check` then apply.
 #   5. If the resolved commit matches /opt/tap/.version AND the patch set
 #      matches .patches.sha256, exit 0.
@@ -219,7 +221,24 @@ main() {
   fi
 
   log "Building TAP $DESIRED_SHORT (was: ${CURRENT_SHA:0:12})"
-  sudo -u "$TAP_USER" git -C "$BUILD_DIR" checkout --quiet "$DESIRED_SHA"
+
+  # Make the DEDICATED build tree EXACTLY the pinned base before applying
+  # the reviewed patch. A plain `git checkout <sha>` is a no-op when HEAD
+  # is already on that sha, so a previous run's applied patch would survive
+  # into the next tick and `git apply --check` would then fail — the timer
+  # would stop instead of reporting "already up to date". The tree is
+  # script-owned, so reset --hard + clean -fdx (CI-style) makes consecutive
+  # ticks reproducible: the tracked-file modifications from the applied
+  # patch are discarded by the reset, and untracked leftovers (e.g. an
+  # interrupted build's tap-build-out) by the clean.
+  #
+  # The reset target is ALWAYS the verified immutable DESIRED_SHA resolved
+  # above: resolve_ref refuses branch names and origin/* refs, and
+  # DESIRED_SHA came from `rev-parse --verify "${DESIRED_REF}^{commit}"`
+  # after the fetch — this code can never silently rebuild a moving
+  # origin/main.
+  sudo -u "$TAP_USER" git -C "$BUILD_DIR" reset --hard --quiet "$DESIRED_SHA"
+  sudo -u "$TAP_USER" git -C "$BUILD_DIR" clean -fdx
 
   apply_patches
 

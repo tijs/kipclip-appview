@@ -27,11 +27,11 @@ overflow; the last commit touching `cmd/tap/util.go` is `1d6a130c35cd`
 owned by THIS repository — not an upstream commit, never pushed to
 `bluesky-social/indigo`.
 
-| Artifact                                               | Purpose                                                                                                                                                                                                                                                            |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `deploy/tap/patches/0001-tap-backoff-saturating.patch` | Unified diff fixing `backoff()` (cap exponent before shift; base delay stays in `[1, max]` s + ≤1 s jitter). Base: `41278964ec8e3253e70d4e919dfb8e34211c543d`.                                                                                                     |
-| `deploy/tap/backoff-harness/`                          | Standalone Go fixture mirroring the patched function byte-for-byte; tests zero / normal / capped / very-large counts and the 1–60 s envelope. `./verify.sh` runs `go vet` + `go test`. Go is not installed on the dev Mac — run it on the box or any Go machine.   |
-| `deploy/release/tap-update.sh`                         | Build flow: fetch → checkout immutable base sha → `git apply --check` + apply patches (fail loud on drift) → build → record `.version` (source sha) + `.patches.sha256` + `.binary.sha256` → restart → health check → rollback restoring binary AND recorded SHAs. |
+| Artifact                                               | Purpose                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `deploy/tap/patches/0001-tap-backoff-saturating.patch` | Unified diff fixing `backoff()` (cap exponent before shift; base delay stays in `[1, max]` s + ≤1 s jitter). Base: `41278964ec8e3253e70d4e919dfb8e34211c543d`.                                                                                                                                                                                                              |
+| `deploy/tap/backoff-harness/`                          | Standalone Go fixture mirroring the patched function byte-for-byte; tests zero / normal / capped / very-large counts and the 1–60 s envelope. `./verify.sh` runs `go vet` + `go test` — it requires a Go toolchain anywhere (e.g. the box's Go install), not a specific machine.                                                                                            |
+| `deploy/release/tap-update.sh`                         | Build flow: fetch → hard-reset + clean the dedicated build tree to the immutable base sha (a previous tick's applied patch never survives into the next) → `git apply --check` + apply patches (fail loud on drift) → build → record `.version` (source sha) + `.patches.sha256` + `.binary.sha256` → restart → health check → rollback restoring binary AND recorded SHAs. |
 
 ## Pin the production TAP build
 
@@ -39,9 +39,12 @@ Default is the documented base + patch set (immutable). To pin explicitly (e.g.
 after re-reviewing a new base):
 
 ```bash
-ssh kipclip "echo 41278964ec8e3253e70d4e919dfb8e34211c543d | sudo tee /etc/tap/tap-version"
-sudo systemctl start tap-update.service      # apply now
-journalctl -u tap-update.service -n 30 --no-pager
+# The box SSH target — explicit identity + strict host checking, no ssh-config
+# aliases assumed. Define once per shell session:
+PROD_SSH='ssh -i /Users/tijs/.ssh/id_ed25519 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/Users/tijs/.ssh/known_hosts root@178.104.156.35'
+$PROD_SSH "echo 41278964ec8e3253e70d4e919dfb8e34211c543d | sudo tee /etc/tap/tap-version"
+$PROD_SSH "sudo systemctl start tap-update.service"   # apply now
+$PROD_SSH "journalctl -u tap-update.service -n 30 --no-pager"
 ```
 
 The pin file accepts a 40-hex commit sha ONLY. Branch names and `origin/*` refs
@@ -51,9 +54,10 @@ are refused — tracking a moving branch is disabled by design. To unpin:
 ## Verify what is actually running
 
 ```bash
-ssh kipclip 'cat /opt/tap/.version /opt/tap/.patches.sha256 /opt/tap/.binary.sha256'
+PROD_SSH='ssh -i /Users/tijs/.ssh/id_ed25519 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/Users/tijs/.ssh/known_hosts root@178.104.156.35'
+$PROD_SSH 'cat /opt/tap/.version /opt/tap/.patches.sha256 /opt/tap/.binary.sha256'
 # source sha (must be the reviewed base) / patch-set fingerprint / binary sha
-ssh kipclip 'sha256sum /opt/tap/tap'          # must match .binary.sha256
+$PROD_SSH 'sha256sum /opt/tap/tap'                       # must match .binary.sha256
 ```
 
 Every update tick and every rollback re-records all three files, so the recorded
@@ -67,7 +71,8 @@ source + patches + binary sha after restart.
 health-check failure. Manual rollback to the previous build:
 
 ```bash
-ssh kipclip '
+PROD_SSH='ssh -i /Users/tijs/.ssh/id_ed25519 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/Users/tijs/.ssh/known_hosts root@178.104.156.35'
+$PROD_SSH '
   sudo mv /opt/tap/tap.prev /opt/tap/tap
   sudo mv /opt/tap/.version.prev /opt/tap/.version
   sudo mv /opt/tap/.patches.sha256.prev /opt/tap/.patches.sha256

@@ -25,6 +25,10 @@ Deno.test("didSuffix returns the last 12 chars, never the full DID", () => {
   assertEquals(didSuffix("not-a-did"), null);
   assertEquals(didSuffix(undefined), null);
   assertEquals(didSuffix(12345), null);
+  // Short DID-shaped strings must never leak the full identifier: a
+  // ≤12-char "DID" has no suffix — the last 12 chars ARE the whole DID.
+  assertEquals(didSuffix("did:plc:abc"), null);
+  assertEquals(didSuffix("did:plc:abcd"), null);
 });
 
 Deno.test("classifyMalformedEvent covers every malformed shape", () => {
@@ -51,6 +55,15 @@ Deno.test("classifyMalformedEvent covers every malformed shape", () => {
     classifyMalformedEvent({
       type: "record",
       record: { ...base.record, did: "" },
+    }),
+    "invalid-did",
+  );
+  // A short DID-shaped string has no suffix and must classify as invalid
+  // rather than carrying the full identifier into diagnostics.
+  assertEquals(
+    classifyMalformedEvent({
+      type: "record",
+      record: { ...base.record, did: "did:plc:xy" },
     }),
     "invalid-did",
   );
@@ -153,4 +166,18 @@ Deno.test("summarizeEvent redacts when the DID is invalid or absent", () => {
   assertStringIncludes(line, "class=invalid-did");
   assertStringIncludes(line, "did=invalid");
   assertEquals(line.includes("definitely-not-a-did"), false);
+  // A short DID-shaped identifier is redacted too — never the full DID.
+  const short = summarizeEvent({
+    id: 8,
+    type: "record",
+    record: {
+      did: "did:plc:xy",
+      collection: "com.kipclip.tag",
+      rkey: "x",
+      action: "create",
+    },
+  });
+  assertStringIncludes(short, "class=invalid-did");
+  assertStringIncludes(short, "did=invalid");
+  assertEquals(short.includes("did:plc:xy"), false);
 });

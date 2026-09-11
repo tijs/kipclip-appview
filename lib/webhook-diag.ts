@@ -52,7 +52,11 @@ export function didSuffix(did: unknown): string | null {
   // A real DID has at least `did:<method>:<identifier>`.
   const parts = did.split(":");
   if (parts.length < 3 || parts[2].length === 0) return null;
-  return did.length > 12 ? did.slice(-12) : did;
+  // A ≤12-char "DID" has no meaningful suffix: the last 12 chars ARE the
+  // whole identifier, so returning them would leak the full DID into
+  // diagnostics. Treat those shapes as invalid instead.
+  if (did.length <= 12) return null;
+  return did.slice(-12);
 }
 
 /**

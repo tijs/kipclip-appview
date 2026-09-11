@@ -9,7 +9,6 @@ import {
   forgetMissingRepo,
   isMissingRepo,
   listMissingRepos,
-  listMissingReposForRemoval,
   recordMissingRepo,
 } from "../lib/missing-repo.ts";
 
@@ -81,25 +80,37 @@ Deno.test("forgetMissingRepo removes the row", async () => {
   });
 });
 
-Deno.test("listMissingReposForRemoval only returns stale rows", async () => {
+Deno.test("recordMissingRepo bounds the persisted error (first line, capped)", async () => {
   await withClean(async () => {
-    const staleDid = "did:plc:stale";
-    const freshDid = "did:plc:fresh";
-    const now = Date.now();
+    const prefix = "listRecords community.lexicon.bookmarks.bookmark: 404 (";
+    const longError = `${prefix}${"x".repeat(500)})`;
+    await recordMissingRepo(DID, longError);
+    const rows = await listMissingRepos();
+    assertEquals(rows.length, 1);
+    // Stored = first line, capped to 200 chars with a trailing ellipsis.
+    const expected = `${prefix}${"x".repeat(200 - prefix.length - 1)}…`;
+    assertEquals(rows[0].last_error, expected);
+    assertEquals((rows[0].last_error ?? "").length, 200);
+  });
+});
 
-    await db.execute({
-      sql:
-        "INSERT INTO missing_repos (did, first_missing_at, last_missing_at) VALUES (?, ?, ?)",
-      args: [staleDid, now - 100_000, now - 100_000],
-    });
-    await db.execute({
-      sql:
-        "INSERT INTO missing_repos (did, first_missing_at, last_missing_at) VALUES (?, ?, ?)",
-      args: [freshDid, now - 1_000, now - 1_000],
-    });
+Deno.test("recordMissingRepo persists only the first line of a multiline error", async () => {
+  await withClean(async () => {
+    await recordMissingRepo(DID, "first line\nsecond line with\nmore lines");
+    const rows = await listMissingRepos();
+    assertEquals(rows[0].last_error, "first line");
+  });
+});
 
-    const removals = await listMissingReposForRemoval(50_000);
-    assertEquals(removals.length, 1);
-    assertEquals(removals[0].did, staleDid);
+Deno.test("recordMissingRepo stores null for absent or blank errors", async () => {
+  await withClean(async () => {
+    await recordMissingRepo(DID);
+    assertEquals((await listMissingRepos())[0].last_error, null);
+
+    await recordMissingRepo(DID, "");
+    assertEquals((await listMissingRepos())[0].last_error, null);
+
+    await recordMissingRepo(DID, "   \n\t\n");
+    assertEquals((await listMissingRepos())[0].last_error, null);
   });
 });

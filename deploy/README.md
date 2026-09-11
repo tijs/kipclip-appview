@@ -121,14 +121,14 @@ edits.
 
 ## Auto-update timers
 
-| Timer                       | When            | Action                                                                            |
-| --------------------------- | --------------- | --------------------------------------------------------------------------------- |
-| `kipclip-release.timer`     | Every 60s       | Pulls latest `v*` tag merged into `main`, builds, atomic-swaps, restarts.         |
-| `tap-update.timer`          | Sun 04:00 UTC   | Rebuilds TAP from indigo `main` on the box, restarts.                             |
-| `deno-update.timer`         | Sun 04:30 UTC   | Pulls latest stable Deno from `dl.deno.land`, sha-verifies, restarts.             |
-| `restic-backup.timer`       | Daily 04:00 UTC | Snapshots `mirror.db` to B2.                                                      |
-| `kipclip-drift-alert.timer` | Daily 05:00 UTC | Audits mirror vs PDS, re-enrolls TAP gaps, and removes repos missing for 60 days. |
-| `unattended-upgrades`       | Daily (Debian)  | Debian security packages only.                                                    |
+| Timer                       | When            | Action                                                                                                |
+| --------------------------- | --------------- | ----------------------------------------------------------------------------------------------------- |
+| `kipclip-release.timer`     | Every 60s       | Pulls latest `v*` tag merged into `main`, builds, atomic-swaps, restarts.                             |
+| `tap-update.timer`          | Sun 04:00 UTC   | Rebuilds TAP from a pinned immutable indigo base + reviewed patch set.                                |
+| `deno-update.timer`         | Sun 04:30 UTC   | Pulls latest stable Deno from `dl.deno.land`, sha-verifies, restarts.                                 |
+| `restic-backup.timer`       | Daily 04:00 UTC | Snapshots `mirror.db` to B2.                                                                          |
+| `kipclip-drift-alert.timer` | Daily 05:00 UTC | Audits mirror vs PDS, re-enrolls TAP gaps, quarantines confirmed-missing repos (TAP enrollment only). |
+| `unattended-upgrades`       | Daily (Debian)  | Debian security packages only.                                                                        |
 
 All update timers have rollback paths on health-check failure. Pin overrides
 documented in `deploy/release/README.md`.
@@ -149,8 +149,11 @@ sudo journalctl --disk-usage               # current journal size
 ```
 
 Drift-alert suppresses PDS checks for repos that return `RepoNotFound` during a
-7-day cooldown, then removes them from `tracked_dids` and TAP after 60 days.
-Mirror data is kept in case the account returns.
+7-day cooldown, then QUARANTINES confirmed-missing repos: only their TAP
+enrollment is removed, while `tracked_dids`, mirror rows, and missing-repo
+retention evidence are kept (`tracked_dids` removal is an approval-gated
+operator action via `scripts/tap-only-cleanup.ts`). There is no automatic
+deletion of tracked users.
 
 ## Rollback paths
 
