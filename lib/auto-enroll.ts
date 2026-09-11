@@ -128,7 +128,12 @@ export async function runBackfill(
  *
  * The one remaining leak window is a failure between TAP enroll success and
  * the tracked_dids INSERT (DB hiccup or process crash). That is compensated
- * in the catch below via a best-effort TAP /repos/remove.
+ * in the catch below via a best-effort TAP /repos/remove — but ONLY when the
+ * INSERT itself failed. A failure AFTER the row landed (e.g.
+ * forgetMissingRepo) must NOT de-enroll: the DID is now tracked, and
+ * removing its TAP enrollment would leak the mirror-direction of the same
+ * bug (a tracked DID with no live TAP sync). The trackedRowInserted flag
+ * distinguishes the two.
  */
 async function runEnrollment(did: string, pdsUrl: string): Promise<void> {
   // Already enrolled? Short-circuit before the expensive PDS backfill.
@@ -151,6 +156,11 @@ async function runEnrollment(did: string, pdsUrl: string): Promise<void> {
   let canonicalPdsConfirmed = false;
   let tapEnrolled = false;
   let stage: "backfill" | "tapEnroll" | "trackedDids" = "backfill";
+  // True only AFTER the tracked_dids INSERT/UPDATE committed. Compensation
+  // must key off this, not off `stage`: a post-insert cleanup failure
+  // (forgetMissingRepo) also lands in stage "trackedDids", but the row
+  // exists then, so de-enrolling would orphan the tracked DID from TAP.
+  let trackedRowInserted = false;
   try {
     console.log(`[auto-enroll] starting for ${did}`);
     const resolved = await resolveCurrentPds(did);
@@ -177,6 +187,7 @@ async function runEnrollment(did: string, pdsUrl: string): Promise<void> {
       `,
       args: [did, enrollmentPdsUrl, now, now, now],
     });
+    trackedRowInserted = true;
     await forgetMissingRepo(did);
     retryAfter.delete(did);
     console.log(`[auto-enroll] complete for ${did}`);
@@ -186,11 +197,17 @@ async function runEnrollment(did: string, pdsUrl: string): Promise<void> {
     if (canonicalRepoMissing) {
       await recordMissingRepo(did, String(err));
     }
-    // TAP accepted the DID but the tracked_dids row never landed. Compensate
-    // by removing the TAP enrollment so the abandoned enrollment cannot leak
-    // a TAP-only row. Best-effort: if TAP is down the retry loop re-attempts
-    // enrollment from scratch (backfill-first), which is safe either way.
-    if (tapEnrolled && stage === "trackedDids") {
+    // TAP accepted the DID but the tracked_dids row never landed (the
+    // INSERT/UPDATE failed). Compensate by removing the TAP enrollment so
+    // the abandoned enrollment cannot leak a TAP-only row. Best-effort: if
+    // TAP is down the retry loop re-attempts enrollment from scratch
+    // (backfill-first), which is safe either way.
+    //
+    // Deliberately NOT compensated when trackedRowInserted is true: a
+    // failure after the row committed (forgetMissingRepo hiccup) leaves a
+    // fully tracked DID, and de-enrolling would orphan it from live TAP
+    // sync — the mirror-direction leak.
+    if (tapEnrolled && !trackedRowInserted) {
       try {
         await tapDeenroll(did);
       } catch {

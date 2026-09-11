@@ -33,6 +33,24 @@ now_monotonic_usec() {
   awk '{printf "%d\n", $1 * 1000000}' /proc/uptime
 }
 
+# Pure-uint check so systemd's nonnumeric values (empty, "infinity") never
+# reach arithmetic — `$(( infinity - now ))` is a hard "operand expected"
+# error that would abort the surrounding line of the report.
+is_uint() { [[ "$1" =~ ^[0-9]+$ ]]; }
+
+# Seconds until the next monotonic tick, or "-" when systemd reports a
+# nonnumeric/zero/absent value (e.g. "infinity" for a timer without a
+# monotonic next-elapse). Fail-safe by construction: it never emits an
+# arithmetic error, and callers always get something greppable.
+fresh_seconds() {
+  local next_mono="$1" now="$2"
+  if is_uint "$next_mono" && is_uint "$now" && [[ "$next_mono" != "0" ]]; then
+    echo "$(( (next_mono - now) / 1000000 ))"
+  else
+    echo "-"
+  fi
+}
+
 echo "== units =="
 for u in kipclip.service tap.service kipclip-release.service kipclip-drift-alert.service kipclip-reconcile.service tap-update.service deno-update.service; do
   ActiveState="$(systemctl show "$u" -p ActiveState --value 2>/dev/null)"
@@ -54,7 +72,7 @@ for t in kipclip-release.timer tap-update.timer deno-update.timer kipclip-drift-
   NextWall="$(systemctl show "$t" -p NextElapseUSecRealtime --value 2>/dev/null)"
   LastTrig="$(systemctl show "$t" -p LastTriggerUSec --value 2>/dev/null)"
   if [[ -n "$NextMono" && "$NextMono" != "0" && -n "$_now" ]]; then
-    Fresh="$(( (NextMono - _now) / 1000000 ))"
+    Fresh="$(fresh_seconds "$NextMono" "$_now")"
   else
     Fresh="-"
   fi

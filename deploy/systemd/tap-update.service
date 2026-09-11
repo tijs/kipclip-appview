@@ -1,5 +1,5 @@
 [Unit]
-Description=TAP weekly auto-update (build from indigo origin/main)
+Description=TAP weekly auto-update (immutable pinned base sha + kipclip downstream patches)
 After=network.target tap.service
 Wants=network-online.target
 

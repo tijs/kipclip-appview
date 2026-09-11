@@ -479,3 +479,108 @@ Deno.test("unconfirmed missing repo remains an error", async () => {
     );
   });
 });
+
+Deno.test("forgetMissingRepo failure after the INSERT keeps the TAP enrollment", async () => {
+  // Regression (release blocker): the compensating /repos/remove used to
+  // fire for ANY failure in stage "trackedDids" — including a
+  // forgetMissingRepo hiccup AFTER the tracked_dids INSERT landed. That
+  // de-enrolled a fully tracked DID, leaking the mirror-direction of the
+  // same bug (tracked locally, no live TAP sync). Once the row exists,
+  // compensation must NOT run.
+  await withClean(async () => {
+    const stub = installFetchStub((call) => {
+      if (call.url.endsWith("/repos/add")) {
+        return new Response("", { status: 200 });
+      }
+      if (call.url.endsWith("/repos/remove")) {
+        return new Response("", { status: 200 });
+      }
+      if (call.url.startsWith("https://plc.directory/")) {
+        return new Response("Not found", { status: 404 });
+      }
+      return new Response(emptyListRecordsBody(), { status: 200 });
+    });
+    const origExecute = db.execute.bind(db);
+    db.execute = ((query: { sql?: string; args?: unknown[] }) => {
+      if (query?.sql?.includes("DELETE FROM missing_repos")) {
+        throw new Error("db hiccup in forgetMissingRepo");
+      }
+      return origExecute(query as never);
+    }) as typeof db.execute;
+    try {
+      await _runEnrollmentForTest(DID, PDS);
+    } finally {
+      db.execute = origExecute;
+      stub.restore();
+    }
+
+    // The tracked row landed, so the TAP enrollment must be RETAINED.
+    const tracked = await db.execute({
+      sql: "SELECT COUNT(*) FROM tracked_dids WHERE did = ?",
+      args: [DID],
+    });
+    assertEquals(Number(tracked.rows[0][0]), 1);
+
+    const removeCalls = stub.calls.filter((c) =>
+      c.url.endsWith("/repos/remove")
+    );
+    assertEquals(
+      removeCalls.length,
+      0,
+      "a committed tracked row must NOT be compensated away",
+    );
+    const addCalls = stub.calls.filter((c) => c.url.endsWith("/repos/add"));
+    assertEquals(addCalls.length, 1);
+  });
+});
+
+Deno.test("tracked_dids INSERT failure compensates the TAP enrollment", async () => {
+  // The leak window the compensation exists for: TAP accepted the DID but
+  // the tracked_dids INSERT itself failed, so no tracked row exists. The
+  // best-effort /repos/remove must still run — an abandoned enrollment
+  // must not keep TAP resync workers busy on a TAP-only repo.
+  await withClean(async () => {
+    const stub = installFetchStub((call) => {
+      if (call.url.endsWith("/repos/add")) {
+        return new Response("", { status: 200 });
+      }
+      if (call.url.endsWith("/repos/remove")) {
+        return new Response("", { status: 200 });
+      }
+      if (call.url.startsWith("https://plc.directory/")) {
+        return new Response("Not found", { status: 404 });
+      }
+      return new Response(emptyListRecordsBody(), { status: 200 });
+    });
+    const origExecute = db.execute.bind(db);
+    db.execute = ((query: { sql?: string; args?: unknown[] }) => {
+      if (query?.sql?.includes("INSERT INTO tracked_dids")) {
+        throw new Error("db hiccup in tracked_dids INSERT");
+      }
+      return origExecute(query as never);
+    }) as typeof db.execute;
+    try {
+      await _runEnrollmentForTest(DID, PDS);
+    } finally {
+      db.execute = origExecute;
+      stub.restore();
+    }
+
+    // No tracked row was created...
+    const tracked = await db.execute({
+      sql: "SELECT COUNT(*) FROM tracked_dids WHERE did = ?",
+      args: [DID],
+    });
+    assertEquals(Number(tracked.rows[0][0]), 0);
+
+    // ...so the compensating removal is issued exactly once.
+    const removeCalls = stub.calls.filter((c) =>
+      c.url.endsWith("/repos/remove")
+    );
+    assertEquals(
+      removeCalls.length,
+      1,
+      "failed INSERT must trigger compensating /repos/remove",
+    );
+  });
+});

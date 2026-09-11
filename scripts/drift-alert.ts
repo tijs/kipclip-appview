@@ -47,11 +47,11 @@ import {
 } from "../lib/forwarding-audit.ts";
 import { captureMessage, Sentry } from "../lib/sentry.ts";
 import { listMissingRepos } from "../lib/missing-repo.ts";
+import { deleteTapRepoRows, type TapDeleteResult } from "../lib/tap-delete.ts";
 import {
   listQuarantineCandidates,
   listTapRepoStates,
 } from "../lib/tap-repo-state.ts";
-import { withTapDb } from "../lib/tap-db.ts";
 
 const RECOVERABLE_SAMPLE_CAP = 20;
 
@@ -73,26 +73,6 @@ function summarizeSkipped(rows: DriftRow[]): Array<Record<string, unknown>> {
   }));
 }
 
-function placeholders(n: number): string {
-  return Array.from({ length: n }, () => "?").join(",");
-}
-
-async function removeFromTapRepos(dids: string[]): Promise<boolean> {
-  if (dids.length === 0) return true;
-  try {
-    await withTapDb(undefined, async (tapClient) => {
-      await tapClient.execute({
-        sql: `DELETE FROM repos WHERE did IN (${placeholders(dids.length)})`,
-        args: dids,
-      });
-    });
-    return true;
-  } catch (err) {
-    console.error(`[drift-alert] failed to remove DIDs from TAP repos: ${err}`);
-    return false;
-  }
-}
-
 /**
  * Quarantine confirmed-missing repos: remove ONLY their TAP enrollment so
  * they stop occupying TAP resync workers. Explicitly does NOT delete
@@ -100,26 +80,39 @@ async function removeFromTapRepos(dids: string[]): Promise<boolean> {
  * never touches unavailable-PDS rows. TAP-only repos (no tracked_dids row)
  * are excluded here by listQuarantineCandidates — cleaning those up is an
  * approval-gated operator action (scripts/tap-only-cleanup.ts).
+ *
+ * The deletion goes through deleteTapRepoRows, which reads back the exact
+ * target after the DELETE: a quarantine that did not actually remove a row
+ * is reported as a failure and left for retry, never logged as success.
  */
 async function quarantineMissingRepos(): Promise<number> {
   const candidates = await listQuarantineCandidates();
   if (candidates.length === 0) return 0;
 
   const dids = candidates.map((r) => r.did);
-  const removedFromTap = await removeFromTapRepos(dids);
-  if (!removedFromTap) {
+  let deleted: TapDeleteResult;
+  try {
+    deleted = await deleteTapRepoRows(dids);
+  } catch (err) {
     console.error(
-      `[drift-alert] TAP quarantine failed; leaving ${dids.length} confirmed-missing repos for retry`,
+      `[drift-alert] TAP quarantine FAILED (read-back not confirmed); leaving ${dids.length} confirmed-missing repos for retry: ${err}`,
     );
     return 0;
   }
-  // Quarantine is complete: the DID is out of TAP but stays tracked
-  // locally with its mirror data and missing-repo evidence intact.
+  // Quarantine is complete only for DIDs whose TAP row is verified gone.
   for (const c of candidates) {
+    const wasRemoved = deleted.removed.includes(c.did);
     console.log(
-      `[drift-alert] quarantined (TAP enrollment removed, local state kept): ${c.did} (first seen ${
+      `[drift-alert] quarantined (TAP enrollment ${
+        wasRemoved ? "removed + verified absent" : "was already absent"
+      }, local state kept): ${c.did} (first seen ${
         new Date(c.firstSeenAt).toISOString()
       }, ${c.failureCount} confirmations)`,
+    );
+  }
+  if (deleted.alreadyAbsent.length > 0) {
+    console.log(
+      `[drift-alert] TAP quarantine: ${deleted.alreadyAbsent.length} candidate(s) had no TAP row (idempotent no-op)`,
     );
   }
   return dids.length;

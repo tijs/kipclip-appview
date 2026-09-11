@@ -34,8 +34,9 @@
 #   7. Save /opt/tap/tap + the sha/version files as .prev (rollback target).
 #   8. Atomic-rename tap.new -> tap. Write .version/.patches.sha256/
 #      .binary.sha256. Restart tap.service.
-#   9. Health-check 127.0.0.1:2480. On failure, restore the previous
-#      binary AND the previous sha/version files, restart, re-check.
+#   9. Health-check 127.0.0.1:2480. On failure — a FAILED restart counts
+#      too, not just a bad health check — restore the previous binary AND
+#      the previous sha/version files, restart, re-check.
 #
 # Env knobs (rare, mostly for staging dry-runs):
 #   TAP_UPDATE_REPO_URL    override indigo remote (default upstream)
@@ -57,15 +58,18 @@ PIN_FILE="${TAP_UPDATE_PIN_FILE:-/etc/tap/tap-version}"
 # the patch against the new base.
 TAP_DEFAULT_BASE_SHA="41278964ec8e3253e70d4e919dfb8e34211c543d"
 
-BUILD_DIR="/var/lib/tap/build/indigo"
-TAP_BIN_DIR="/opt/tap"
+# Paths are env-overridable so staging dry-runs (and the regression tests)
+# can exercise the full flow without touching /var/lib/tap or /opt/tap.
+# Production (systemd unit) sets none of these and uses the defaults.
+BUILD_DIR="${TAP_UPDATE_BUILD_DIR:-/var/lib/tap/build/indigo}"
+TAP_BIN_DIR="${TAP_UPDATE_TAP_BIN_DIR:-/opt/tap}"
 TAP_BIN="${TAP_BIN_DIR}/tap"
 TAP_NEW="${TAP_BIN_DIR}/tap.new"
 TAP_PREV="${TAP_BIN_DIR}/tap.prev"
 TAP_VERSION_FILE="${TAP_BIN_DIR}/.version"
 TAP_PATCHES_SHA_FILE="${TAP_BIN_DIR}/.patches.sha256"
 TAP_BINARY_SHA_FILE="${TAP_BIN_DIR}/.binary.sha256"
-LOCK_FILE="/var/lib/tap/.tap-update-lock"
+LOCK_FILE="${TAP_UPDATE_LOCK_FILE:-/var/lib/tap/.tap-update-lock}"
 
 # kipclip's own appview checkout on the box holds the downstream patches.
 PATCH_DIR="${TAP_UPDATE_PATCH_DIR:-/var/lib/kipclip/source/deploy/tap/patches}"
@@ -104,6 +108,10 @@ sha256_file() {
 # Resolve the desired ref to an IMMUTABLE commit sha. Branch names and
 # origin/* refs are refused: rebuilding a moving default is the failure
 # mode this script exists to prevent.
+#
+# IMPORTANT: the caller captures THIS FUNCTION'S STDOUT as the ref
+# (`DESIRED_REF="$(resolve_ref)"`) — so the sha is the ONLY thing this
+# function prints on stdout. All diagnostics go to stderr.
 resolve_ref() {
   local pin=""
   if [[ -s "$PIN_FILE" ]]; then
@@ -113,13 +121,13 @@ resolve_ref() {
   local desired
   if [[ -n "$pin" ]]; then
     desired="$pin"
-    log "Pin file present: $pin"
+    log "Pin file present: $pin" >&2
   elif [[ -n "${TAP_UPDATE_DEFAULT_REF:-}" ]]; then
     desired="$TAP_UPDATE_DEFAULT_REF"
-    log "TAP_UPDATE_DEFAULT_REF override: ${TAP_UPDATE_DEFAULT_REF}"
+    log "TAP_UPDATE_DEFAULT_REF override: ${TAP_UPDATE_DEFAULT_REF}" >&2
   else
     desired="$TAP_DEFAULT_BASE_SHA"
-    log "Default immutable base: $TAP_DEFAULT_BASE_SHA"
+    log "Default immutable base: $TAP_DEFAULT_BASE_SHA" >&2
   fi
 
   if [[ ! "$desired" =~ ^[0-9a-f]{40}$ ]]; then
@@ -139,7 +147,11 @@ apply_patches() {
     exit 1
   fi
   local patches
-  mapfile -t patches < <(find "$PATCH_DIR" -maxdepth 1 -name '*.patch' -type f | sort)
+  # bash 3.2-compatible (no mapfile): an empty patch set is refused below.
+  patches=()
+  while IFS= read -r p; do
+    patches+=("$p")
+  done < <(find "$PATCH_DIR" -maxdepth 1 -name '*.patch' -type f | sort)
   if [[ ${#patches[@]} -eq 0 ]]; then
     err "no patches found in $PATCH_DIR — refusing to build unpatched TAP"
     exit 1
@@ -258,7 +270,10 @@ main() {
   log "Installed source=$DESIRED_SHA patches=$(echo "$PATCHES_FP" | cut -c1-16)… binary=$(cat "$TAP_BINARY_SHA_FILE")"
 
   log "Restarting tap.service"
-  systemctl restart tap
+  if ! systemctl restart tap; then
+    err "systemctl restart tap FAILED — entering rollback"
+    rollback_tap
+  fi
 
   log "Health-checking $HEALTH_URL"
   HEALTH_OK=0
@@ -274,25 +289,37 @@ main() {
 
   if [[ "$HEALTH_OK" != "1" ]]; then
     err "TAP failed health check on $DESIRED_SHORT"
-    if [[ -x "$TAP_PREV" ]]; then
-      err "rolling back to previous binary"
-      mv "$TAP_PREV" "$TAP_BIN"
-      if [[ -s "${TAP_VERSION_FILE}.prev" ]]; then
-        mv "${TAP_VERSION_FILE}.prev" "$TAP_VERSION_FILE"
-      else
-        rm -f "$TAP_VERSION_FILE"
-      fi
-      if [[ -s "${TAP_PATCHES_SHA_FILE}.prev" ]]; then
-        mv "${TAP_PATCHES_SHA_FILE}.prev" "$TAP_PATCHES_SHA_FILE"
-      else
-        rm -f "$TAP_PATCHES_SHA_FILE"
-      fi
-      if [[ -s "${TAP_BINARY_SHA_FILE}.prev" ]]; then
-        mv "${TAP_BINARY_SHA_FILE}.prev" "$TAP_BINARY_SHA_FILE"
-      else
-        rm -f "$TAP_BINARY_SHA_FILE"
-      fi
-      systemctl restart tap
+    rollback_tap
+  fi
+
+  log "✅ TAP updated source=$DESIRED_SHA binary=$(cat "$TAP_BINARY_SHA_FILE")"
+  log "post-deploy: verify retry_counts stop accelerating — journalctl -u tap --since '10 minutes ago' | grep -c 'retry'"
+}
+
+# Restore the previous binary, the recorded sha/version files, restart, and
+# re-check health. Runs on restart OR health-check failure — a failed
+# `systemctl restart tap` must NOT skip rollback, so both call sites guard
+# the restart below instead of letting `set -e` exit the script first.
+rollback_tap() {
+  if [[ -x "$TAP_PREV" ]]; then
+    err "rolling back to previous binary"
+    mv "$TAP_PREV" "$TAP_BIN"
+    if [[ -s "${TAP_VERSION_FILE}.prev" ]]; then
+      mv "${TAP_VERSION_FILE}.prev" "$TAP_VERSION_FILE"
+    else
+      rm -f "$TAP_VERSION_FILE"
+    fi
+    if [[ -s "${TAP_PATCHES_SHA_FILE}.prev" ]]; then
+      mv "${TAP_PATCHES_SHA_FILE}.prev" "$TAP_PATCHES_SHA_FILE"
+    else
+      rm -f "$TAP_PATCHES_SHA_FILE"
+    fi
+    if [[ -s "${TAP_BINARY_SHA_FILE}.prev" ]]; then
+      mv "${TAP_BINARY_SHA_FILE}.prev" "$TAP_BINARY_SHA_FILE"
+    else
+      rm -f "$TAP_BINARY_SHA_FILE"
+    fi
+    if systemctl restart tap; then
       sleep 2
       if health_ok; then
         err "rollback restored TAP successfully: source=$(cat "$TAP_VERSION_FILE") binary=$(cat "$TAP_BINARY_SHA_FILE")"
@@ -300,14 +327,13 @@ main() {
         err "rollback ALSO failed health check — manual recovery required"
       fi
     else
-      err "no previous binary to roll back to; manual recovery required"
+      err "rollback restart FAILED — manual recovery required"
     fi
-    err "check: journalctl -u tap -n 50"
-    exit 1
+  else
+    err "no previous binary to roll back to; manual recovery required"
   fi
-
-  log "✅ TAP updated source=$DESIRED_SHA binary=$(cat "$TAP_BINARY_SHA_FILE")"
-  log "post-deploy: verify retry_counts stop accelerating — journalctl -u tap --since '10 minutes ago' | grep -c 'retry'"
+  err "check: journalctl -u tap -n 50"
+  exit 1
 }
 
 main "$@"

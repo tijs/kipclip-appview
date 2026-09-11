@@ -33,6 +33,7 @@ import { resolveDid } from "../lib/plc-resolver.ts";
 import { listAll } from "../lib/mirror-sync.ts";
 import { classifyPdsError, type PdsErrorClass } from "../lib/pds-error.ts";
 import { isRepoNotFoundError } from "../lib/missing-repo.ts";
+import { deleteTapRepoRows } from "../lib/tap-delete.ts";
 import {
   classifyTapOnlyDid,
   decideTapOnlyRemoval,
@@ -134,13 +135,14 @@ function printRow(r: Awaited<ReturnType<typeof classifyOne>>): void {
   );
 }
 
-async function removeTapEnrollment(did: string): Promise<void> {
-  await withTapDb(undefined, async (tapClient) => {
-    await tapClient.execute({
-      sql: "DELETE FROM repos WHERE did = ?",
-      args: [did],
-    });
-  });
+async function removeTapEnrollment(
+  did: string,
+): Promise<{ removed: boolean }> {
+  // Goes through deleteTapRepoRows, which READS BACK the exact target after
+  // the DELETE: the row must be verified gone before this resolves — a
+  // survival is thrown and reported, never logged as a successful removal.
+  const result = await deleteTapRepoRows([did]);
+  return { removed: result.removed.length === 1 };
 }
 
 async function main(): Promise<void> {
@@ -226,8 +228,12 @@ async function main(): Promise<void> {
     `[tap-only-cleanup] REMOVING ${toRemove.length} TAP enrollment(s):`,
   );
   for (const r of toRemove) {
-    await removeTapEnrollment(r.did);
-    console.log(`  removed TAP repo row: ${r.did}`);
+    const { removed } = await removeTapEnrollment(r.did);
+    console.log(
+      removed
+        ? `  removed TAP repo row (read-back verified absent): ${r.did}`
+        : `  TAP repo row already absent (read-back verified): ${r.did}`,
+    );
   }
   console.log(
     "[tap-only-cleanup] tracked_dids / missing_repos / mirror rows untouched.",

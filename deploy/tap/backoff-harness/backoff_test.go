@@ -76,13 +76,20 @@ func TestBackoffNeverBelowOneSecond(t *testing.T) {
 	}
 }
 
-func TestBackoffExtremeMaxParameter(t *testing.T) {
-	// max is a call-site constant but guard the arithmetic anyway: a huge
-	// max must still never overflow to a negative duration.
-	for _, retries := range []int{0, 30, 60, 63, 1000} {
-		base := fixedBase(retries, int(^uint(0)>>1))
+func TestBackoffExtremeRetryCountsWithinEnvelope(t *testing.T) {
+	// The old "extreme MaxInt envelope" case was invalid: with max = MaxInt
+	// and retries >= 60, 1<<60 seconds converted to nanoseconds overflows
+	// time.Duration to a negative value, so the test itself could never
+	// pass on the Go box. The deployment envelope caps max at 60 seconds;
+	// what must be guarded is that extreme RETRY COUNTS inside that real
+	// envelope saturate to the cap and never overflow.
+	for _, retries := range []int{0, 30, 60, 63, 1000, 162_000} {
+		base := fixedBase(retries, maxBaseSeconds)
 		if base < minBaseSeconds*time.Second {
-			t.Fatalf("retries=%d base %v below 1s with extreme max", retries, base)
+			t.Fatalf("retries=%d base %v below 1s", retries, base)
+		}
+		if base > maxBaseSeconds*time.Second {
+			t.Fatalf("retries=%d base %v exceeds the %ds cap", retries, base, maxBaseSeconds)
 		}
 	}
 }

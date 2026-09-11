@@ -13,10 +13,15 @@ All notable changes to kipclip are documented in this file.
   backoff exponent before shifting — retry delays stay in the intended 1–60
   minute range instead of overflowing to a near-now busy loop. The build no
   longer silently tracks `origin/main`; source, patch-set, and binary SHAs are
-  recorded and rollback-restored. See `deploy/tap/README.md`.
+  recorded and rollback-restored. A failed `systemctl restart tap` now enters
+  the rollback path instead of exiting under `set -e`; the downstream patch is
+  normalized so `git diff --check` passes while `git apply --check` still
+  succeeds on the immutable base. See `deploy/tap/README.md`.
 - Auto-enrollment now backfills the PDS FIRST and only then enrolls TAP, so an
   abandoned enrollment (e.g. a missing repo) can no longer leave a stale
-  TAP-only row behind.
+  TAP-only row behind. The compensating `/repos/remove` fires only when the
+  `tracked_dids` INSERT itself failed — a failure after the row landed no longer
+  de-enrolls a tracked user.
 
 ### Added
 
@@ -25,7 +30,9 @@ All notable changes to kipclip are documented in this file.
   enrollment is removed while `tracked_dids`, mirror rows, and missing-repo
   evidence are all preserved. Unavailable PDSes (DNS/refused/ timeout/5xx) get a
   persisted 24-hour cooldown with a recheck schedule and are never treated as
-  deletion.
+  deletion. Every destructive TAP-side operator (quarantine batch, tap-only
+  cleanup) reads back the exact target after deletion and reports failure
+  instead of claiming success.
 - Approval-gated TAP-only cleanup (`scripts/tap-only-cleanup.ts`): dry-run by
   DID showing PLC/PDS status and local evidence; an explicit full-DID
   confirmation token is required to remove a stale TAP enrollment, and
@@ -37,7 +44,8 @@ All notable changes to kipclip are documented in this file.
 - Bounded diagnostics for malformed webhook events (DID suffix, action, relay
   sequence, error class only — never raw payloads), and improved weekly
   housekeeping reporting (ExecMainStatus vs systemd Result, journal retention
-  horizon, monotonic timer freshness).
+  horizon, monotonic timer freshness that fails safe to `-` on nonnumeric
+  systemd values instead of emitting arithmetic errors).
 
 ### Changed
 
