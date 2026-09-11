@@ -18,6 +18,7 @@
 
 import { captureError } from "../lib/sentry.ts";
 import { db } from "../lib/db.ts";
+import { classifyMalformedEvent, summarizeEvent } from "../lib/webhook-diag.ts";
 import {
   deleteAnnotation,
   deleteBookmark,
@@ -220,8 +221,13 @@ export async function handleWebhookRequest(req: Request): Promise<Response> {
     // event loss on Deno crash is acceptable since owner can re-track.
     queueMicrotask(() => {
       processEvent(body).catch((err) => {
-        console.error("[webhook] async dispatch error", err);
-        captureError(err as Error, { event: body });
+        console.error(
+          "[webhook] async dispatch error",
+          err,
+          summarizeEvent(body),
+        );
+        // Bounded diagnostics only — never the raw event payload.
+        captureError(err as Error, { event: summarizeEvent(body) });
       });
     });
     return Response.json({ id: body.id, type: body.type, applied: true });
@@ -231,8 +237,12 @@ export async function handleWebhookRequest(req: Request): Promise<Response> {
     const result = await processEvent(body);
     return Response.json(result);
   } catch (err) {
-    console.error("[webhook] dispatch error", err);
-    captureError(err as Error, { event: body });
+    console.error(
+      "[webhook] dispatch error",
+      err,
+      summarizeEvent(body),
+    );
+    captureError(err as Error, { event: summarizeEvent(body) });
     // Return 500 so TAP retries the event with backoff.
     return Response.json(
       { error: err instanceof Error ? err.message : String(err) },
@@ -266,8 +276,19 @@ export async function processEvent(
 
 async function processRecordEvent(r: RecordEvt): Promise<void> {
   const { did, collection, rkey, action, cid, record } = r;
-  if (!did?.startsWith("did:")) throw new Error(`Invalid did: ${did}`);
-  if (!collection || !rkey) return;
+  if (classifyMalformedEvent({ type: "record", record: r }) === "invalid-did") {
+    // Bounded: no raw DID in the exception (it is returned to TAP in the
+    // 500 body and lands in journals); classify via the event summary.
+    throw new Error("Invalid did in record event");
+  }
+  if (!collection || !rkey) {
+    if (classifyMalformedEvent({ type: "record", record: r }) !== "ok") {
+      // Never raw payloads — bounded one-liner, once per shape per process
+      // so a misbehaving relay cannot spam the journal.
+      logMalformedOnce(r, "record");
+    }
+    return;
+  }
 
   const uri = `at://${did}/${collection}/${rkey}`;
 
@@ -280,13 +301,21 @@ async function processRecordEvent(r: RecordEvt): Promise<void> {
       await deleteTag(uri, did);
     } else if (collection === PREFERENCES_COLLECTION) {
       await deletePreferences(did);
+    } else {
+      logMalformedOnce(r, collection);
     }
     await touchTracked(did, r);
     return;
   }
 
-  if (action !== "create" && action !== "update") return;
-  if (!cid || !record) return;
+  if (action !== "create" && action !== "update") {
+    logMalformedOnce(r, collection);
+    return;
+  }
+  if (!cid || !record) {
+    logMalformedOnce(r, collection);
+    return;
+  }
 
   if (collection === BOOKMARK_COLLECTION) {
     const subject = stringField(record, "subject");
@@ -384,6 +413,25 @@ function stringField(
   if (!obj) return null;
   const v = obj[key];
   return typeof v === "string" ? v : null;
+}
+
+// Per-process dedupe so a misbehaving relay can't spam the journal with
+// per-event malformed warnings: one bounded line per (class, collection).
+const malformedWarned = new Set<string>();
+
+function logMalformedOnce(r: RecordEvt, bucket: string): void {
+  const cls = classifyMalformedEvent({ type: "record", record: r });
+  const key = `${cls}:${bucket}`;
+  if (malformedWarned.has(key)) return;
+  malformedWarned.add(key);
+  console.warn(
+    `[webhook] dropped malformed record event ${
+      summarizeEvent({
+        type: "record",
+        record: r,
+      })
+    } bucket=${bucket}`,
+  );
 }
 
 function arrayOfStrings(v: unknown): string[] {

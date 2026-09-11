@@ -18,10 +18,15 @@ ProtectHome=true
 PrivateTmp=true
 ReadWritePaths=/var/lib/kipclip
 
-# Drift-detected exit (1) is the expected signal path, not a service failure.
-# Audit-failed exit (2) is the only condition that should mark the unit failed
-# and trigger journald-level attention.
-SuccessExitStatus=0 1
+# Drift / PDS errors are signals, not successes. Since v0.24.38:
+#   exit 0 = clean run
+#   exit 1 = recoverable drift detected (must be REPORTED as non-clean)
+#   exit 2 = audit failed entirely
+#   exit 3 = classified PDS errors present (nothing auto-repaired)
+# Only exit 0 counts as a successful clean run — drift (1) and PDS errors (3)
+# must surface in `systemctl status`/`Result=failed` + ExecMainStatus, and
+# the weekly report reads ExecMainStatus, never Result alone.
+SuccessExitStatus=0
 
 [Install]
 WantedBy=multi-user.target

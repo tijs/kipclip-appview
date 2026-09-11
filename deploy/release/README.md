@@ -173,11 +173,20 @@ dropping `kipclip` group access. Fix:
 The box also runs three weekly auto-update timers, independent of the kipclip
 release flow above:
 
-| Timer                       | When           | Updates                                           | Rollback path                                      |
-| --------------------------- | -------------- | ------------------------------------------------- | -------------------------------------------------- |
-| `tap-update.timer`          | Sun 04:00 UTC  | TAP binary (rebuild from indigo `main`)           | `/opt/tap/tap.prev` if health fails                |
-| `deno-update.timer`         | Sun 04:30 UTC  | Deno runtime at `/opt/deno/bin/deno` (patch only) | `/opt/deno/bin/deno.prev` on `/api/health` failure |
-| `unattended-upgrades.timer` | Daily (Debian) | Debian security packages                          | `apt-get install <pkg>=<oldver>`                   |
+| Timer                       | When           | Updates                                               | Rollback path                                                                                      |
+| --------------------------- | -------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `tap-update.timer`          | Sun 04:00 UTC  | TAP binary (pinned immutable base + downstream patch) | `/opt/tap/tap.prev` + `.version.prev`/`.patches.sha256.prev`/`.binary.sha256.prev` if health fails |
+| `deno-update.timer`         | Sun 04:30 UTC  | Deno runtime at `/opt/deno/bin/deno` (patch only)     | `/opt/deno/bin/deno.prev` on `/api/health` failure                                                 |
+| `unattended-upgrades.timer` | Daily (Debian) | Debian security packages                              | `apt-get install <pkg>=<oldver>`                                                                   |
+
+> **TAP builds are pinned since v0.24.38.** `tap-update.sh` no longer tracks
+> `origin/main`. It builds an immutable documented base sha
+> (`41278964ec8e3253e70d4e919dfb8e34211c543d`) plus the kipclip-owned downstream
+> patches in `deploy/tap/patches/`, refuses branch refs, fails loudly when a
+> patch stops applying cleanly, and records `.version` (source sha) +
+> `.patches.sha256` + `.binary.sha256` for the running binary — rollback
+> restores all three. Full runbook, rollback and post-deploy measurements:
+> **`deploy/tap/README.md`**.
 
 `deno-update.timer` only auto-applies **patch** releases (e.g.
 `v2.8.0 → v2.8.1`). Cross-minor and cross-major jumps refuse to run without a
@@ -190,7 +199,8 @@ manually.
 Both kipclip-managed timers (`tap-update`, `deno-update`) honour pin files for
 operator override:
 
-- TAP pin: `echo <commit-sha> | sudo tee /etc/tap/tap-version`
+- TAP pin: `echo <commit-sha> | sudo tee /etc/tap/tap-version` — commit shas
+  ONLY; branch refs / `origin/*` are refused.
 - Deno pin: `echo v2.8.0 | sudo tee /etc/kipclip/deno-version` (required for any
   minor or major bump; clear the file once the box is stable on the new line to
   resume patch-tick auto-updates)
@@ -212,6 +222,35 @@ sudo systemctl disable --now tap-update.timer deno-update.timer
 Logs go to the journal (`journalctl -u tap-update.service -f`,
 `-u deno-update.service -f`). On failure, both scripts auto-rollback before
 exiting non-zero — re-running after the rollback succeeds is safe.
+
+## Weekly reporting semantics (read `ExecMainStatus`, not `Result`)
+
+`Result=success/failed` collides exit codes: drift-alert exits 1 (drift) and 3
+(PDS errors) on purpose, and the unit row then says `Result=failed` — which is
+exactly the signal you want, not a crash. The weekly housekeeping report MUST
+read `ExecMainStatus` and interpret it, never report `Result=success` as "no
+drift":
+
+| ExecMainStatus (drift-alert) | Meaning                                               |
+| ---------------------------- | ----------------------------------------------------- |
+| 0                            | clean run                                             |
+| 1                            | recoverable drift detected                            |
+| 2                            | audit failed entirely                                 |
+| 3                            | classified PDS errors present (nothing auto-repaired) |
+
+Run the canonical read-only report on the box:
+
+```bash
+ssh kipclip "sudo bash /var/lib/kipclip/source/deploy/release/box-report.sh"
+```
+
+It emits per-unit `exec_main_status` + `result` + `last_run` (with a
+`drift_kind` interpretation for drift-alert), monotonic timer freshness (seconds
+until next `kipclip-release.timer` tick from the MONOTONIC clock, immune to
+wall-clock skew), journal oldest/newest timestamps + disk usage + retention
+config, and release provenance (app release, TAP source/binary/patch SHAs,
+pins). Reporting changes to journald limits to hide log growth is forbidden —
+fix the source of the log volume.
 
 ## Third-party advisories
 

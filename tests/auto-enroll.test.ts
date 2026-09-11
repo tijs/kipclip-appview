@@ -21,6 +21,7 @@ import { assertEquals, assertExists, assertStringIncludes } from "@std/assert";
 import {
   _resetAutoEnrollState,
   _runEnrollmentForTest,
+  tapDeenroll,
 } from "../lib/auto-enroll.ts";
 
 const DID = "did:plc:test123";
@@ -108,7 +109,9 @@ Deno.test("tapEnroll non-2xx aborts enrollment — no tracked_dids row", async (
       if (call.url.endsWith("/repos/add")) {
         return new Response("Unauthorized", { status: 401 });
       }
-      // listRecords should never run if TAP fails first
+      // Backfill runs BEFORE TAP enroll (backfill-first ordering), so
+      // listRecords legitimately happens; the DID stays untracked because
+      // the TAP enroll itself failed.
       return new Response(emptyListRecordsBody(), { status: 200 });
     });
     try {
@@ -123,9 +126,13 @@ Deno.test("tapEnroll non-2xx aborts enrollment — no tracked_dids row", async (
     });
     assertEquals(Number(row.rows[0][0]), 0);
 
-    // Backfill must not have run.
-    const listCalls = stub.calls.filter((c) => c.url.includes("listRecords"));
-    assertEquals(listCalls.length, 0);
+    // A failed TAP enroll must not trigger a compensating /repos/remove —
+    // nothing was enrolled, so nothing to clean up (avoids double-side
+    // churn when TAP is merely rejecting auth).
+    const removeCalls = stub.calls.filter((c) =>
+      c.url.endsWith("/repos/remove")
+    );
+    assertEquals(removeCalls.length, 0);
   });
 });
 
@@ -232,10 +239,12 @@ Deno.test("already-tracked DID short-circuits — no TAP call, no backfill", asy
   });
 });
 
-Deno.test("listRecords non-2xx leaves tracked_dids empty (TAP enrolled, backfill failed)", async () => {
+Deno.test("listRecords non-2xx leaves tracked_dids empty and TAP never enrolled (backfill-first)", async () => {
   await withClean(async () => {
     const stub = installFetchStub((call) => {
-      if (call.url.endsWith("/repos/add")) {
+      if (
+        call.url.endsWith("/repos/add") || call.url.endsWith("/repos/remove")
+      ) {
         return new Response("", { status: 200 });
       }
       return new Response("PDS unavailable", { status: 503 });
@@ -252,9 +261,37 @@ Deno.test("listRecords non-2xx leaves tracked_dids empty (TAP enrolled, backfill
     });
     assertEquals(Number(row.rows[0][0]), 0);
 
-    // TAP add was attempted, then aborted on listRecords failure.
-    const tapCalls = stub.calls.filter((c) => c.url.endsWith("/repos/add"));
-    assertEquals(tapCalls.length, 1);
+    // Backfill failed first => neither enroll nor compensating de-enroll.
+    const tapCalls = stub.calls.filter((c) =>
+      c.url.endsWith("/repos/add") || c.url.endsWith("/repos/remove")
+    );
+    assertEquals(tapCalls.length, 0);
+  });
+});
+
+Deno.test("tapDeenroll sends Basic auth to /repos/remove with the did", async () => {
+  await withClean(async () => {
+    const stub = installFetchStub((call) => {
+      if (call.url.endsWith("/repos/remove")) {
+        return new Response("", { status: 200 });
+      }
+      return new Response(emptyListRecordsBody(), { status: 200 });
+    });
+    try {
+      await tapDeenroll(DID);
+    } finally {
+      stub.restore();
+    }
+
+    const removeCall = stub.calls.find((c) => c.url.endsWith("/repos/remove"));
+    assertExists(removeCall, "expected POST to /repos/remove");
+    const headers = new Headers(removeCall.init.headers ?? {});
+    const auth = headers.get("Authorization") ?? "";
+    assertEquals(auth, "Basic " + btoa(`admin:${TEST_SECRET}`));
+    assertStringIncludes(
+      String(removeCall.init.body),
+      `"dids":["${DID}"]`,
+    );
   });
 });
 
@@ -348,6 +385,66 @@ Deno.test("canonical missing repo is a detailed warning and stays untracked", as
       String((warning[2] as { error: string }).error),
       "InvalidRequest: Could not find repo",
     );
+  });
+});
+
+Deno.test("abandoned enrollment cannot leave a TAP-only row (backfill-first ordering)", async () => {
+  // Regression (weekly-drift plan): enrollment used to call TAP /repos/add
+  // BEFORE the PDS backfill. A backfill that fails — RepoNotFound on the
+  // canonical PDS being the observed production case — left a TAP repo row
+  // with no tracked_dids row: the "TAP-only" stale enrollment that keeps TAP
+  // resync workers busy forever. TAP must not be enrolled unless the PDS
+  // backfill already succeeded, so an abandoned enrollment cannot leak.
+  await withClean(async () => {
+    const stub = installFetchStub((call) => {
+      if (call.url.endsWith("/repos/add")) {
+        return new Response("", { status: 200 });
+      }
+      if (call.url.startsWith("https://plc.directory/")) {
+        return Response.json({
+          id: DID,
+          service: [
+            {
+              id: "#atproto_pds",
+              type: "AtprotoPersonalDataServer",
+              serviceEndpoint: PDS,
+            },
+          ],
+        });
+      }
+      // Canonical PDS: repo does not exist.
+      return Response.json(
+        { error: "InvalidRequest", message: `Could not find repo: ${DID}` },
+        { status: 400 },
+      );
+    });
+    try {
+      await _runEnrollmentForTest(DID, PDS);
+    } finally {
+      stub.restore();
+    }
+
+    // No TAP enrollment call was ever made -> no TAP-only row can exist.
+    const tapCalls = stub.calls.filter((c) =>
+      c.url.endsWith("/repos/add") || c.url.endsWith("/repos/remove")
+    );
+    assertEquals(
+      tapCalls.length,
+      0,
+      "TAP must not be enrolled before backfill",
+    );
+
+    // tracked_dids stays empty and the canonical absence is recorded.
+    const tracked = await db.execute({
+      sql: "SELECT COUNT(*) FROM tracked_dids WHERE did = ?",
+      args: [DID],
+    });
+    assertEquals(Number(tracked.rows[0][0]), 0);
+    const missing = await db.execute({
+      sql: "SELECT COUNT(*) FROM missing_repos WHERE did = ?",
+      args: [DID],
+    });
+    assertEquals(Number(missing.rows[0][0]), 1);
   });
 });
 

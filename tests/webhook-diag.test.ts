@@ -1,0 +1,156 @@
+/**
+ * Tests for lib/webhook-diag.ts — bounded malformed-repoOp diagnostics.
+ *
+ * The 44 malformed repoOp/parse/handler events observed in the weekly-drift
+ * window must produce bounded, classifiable diagnostics: DID suffix, action,
+ * relay sequence, error class — never raw payloads, full DIDs, or record
+ * bodies.
+ */
+
+import "./test-setup.ts";
+import { assertEquals, assertStringIncludes } from "@std/assert";
+
+import {
+  classifyMalformedEvent,
+  diagnoseEvent,
+  didSuffix,
+  summarizeEvent,
+  type WebhookEvtShape,
+} from "../lib/webhook-diag.ts";
+
+const FULL_DID = "did:plc:abcdefghijklmnopqrstuvwxyz0123456789";
+
+Deno.test("didSuffix returns the last 12 chars, never the full DID", () => {
+  assertEquals(didSuffix(FULL_DID), FULL_DID.slice(-12));
+  assertEquals(didSuffix("not-a-did"), null);
+  assertEquals(didSuffix(undefined), null);
+  assertEquals(didSuffix(12345), null);
+});
+
+Deno.test("classifyMalformedEvent covers every malformed shape", () => {
+  const base = {
+    type: "record",
+    record: {
+      did: FULL_DID,
+      collection: "community.lexicon.bookmarks.bookmark",
+      rkey: "abc",
+      action: "create",
+      cid: "bafy",
+      record: {},
+    },
+  };
+  assertEquals(classifyMalformedEvent(base), "ok");
+  assertEquals(
+    classifyMalformedEvent({
+      type: "record",
+      record: { ...base.record, did: "did:nope" },
+    }),
+    "invalid-did",
+  );
+  assertEquals(
+    classifyMalformedEvent({
+      type: "record",
+      record: { ...base.record, did: "" },
+    }),
+    "invalid-did",
+  );
+  const noDidRecord = { ...base.record };
+  delete (noDidRecord as { did?: string }).did;
+  assertEquals(
+    classifyMalformedEvent({ type: "record", record: noDidRecord }),
+    "invalid-did",
+  );
+  assertEquals(
+    classifyMalformedEvent({
+      type: "record",
+      record: { ...base.record, collection: "" },
+    }),
+    "missing-collection",
+  );
+  assertEquals(
+    classifyMalformedEvent({
+      type: "record",
+      record: { ...base.record, rkey: "" },
+    }),
+    "missing-rkey",
+  );
+  assertEquals(
+    classifyMalformedEvent({
+      type: "record",
+      record: { ...base.record, action: "explode" },
+    }),
+    "unknown-action",
+  );
+  assertEquals(
+    classifyMalformedEvent({
+      type: "record",
+      record: { ...base.record, action: "delete" },
+    }),
+    "ok",
+  );
+  assertEquals(
+    classifyMalformedEvent({
+      type: "record",
+      record: { ...base.record, record: undefined, cid: "bafy" },
+    }),
+    "missing-record",
+  );
+  assertEquals(classifyMalformedEvent({ type: "record" }), "missing-record");
+  assertEquals(
+    classifyMalformedEvent({ type: "identity", identity: {} }),
+    "unconsumed",
+  );
+  assertEquals(classifyMalformedEvent({ type: "weird" }), "unconsumed");
+});
+
+Deno.test("diagnoseEvent keeps only bounded fields from the fixture event", async () => {
+  const fixture = JSON.parse(
+    await Deno.readTextFile(
+      "tests/fixtures/tap-events/malformed-record.json",
+    ),
+  ) as WebhookEvtShape;
+
+  const diag = diagnoseEvent(fixture);
+  assertEquals(diag.class, "unknown-action");
+  assertEquals(diag.seq, 92837);
+  assertEquals(diag.type, "record");
+  assertEquals(diag.didSuffix, FULL_DID.slice(-12));
+  // Never the full DID, never the record body.
+  assertStringIncludes(diag.didSuffix ?? "", "0123456789");
+  assertEquals(diag.didSuffix === FULL_DID, false);
+  // Collection is namespace-summarized.
+  assertEquals(diag.collection, "community.lexicon.*");
+});
+
+Deno.test("summarizeEvent is one bounded line with no raw payload", async () => {
+  const fixture = JSON.parse(
+    await Deno.readTextFile(
+      "tests/fixtures/tap-events/malformed-record.json",
+    ),
+  ) as WebhookEvtShape;
+  const line = summarizeEvent(fixture);
+
+  assertStringIncludes(line, "seq=92837");
+  assertStringIncludes(line, "class=unknown-action");
+  assertStringIncludes(line, "community.lexicon.*");
+  // The payload's subject URL must never appear.
+  assertEquals(line.includes("secret-content"), false);
+  assertEquals(line.includes(FULL_DID), false);
+  assertEquals(line.length < 160, true);
+});
+
+Deno.test("summarizeEvent redacts when the DID is invalid or absent", () => {
+  const line = summarizeEvent({
+    id: 7,
+    type: "record",
+    record: {
+      did: "definitely-not-a-did",
+      collection: "com.kipclip.tag",
+      rkey: "x",
+      action: "create",
+    },
+  });
+  assertStringIncludes(line, "class=invalid-did");
+  assertStringIncludes(line, "did=invalid");
+  assertEquals(line.includes("definitely-not-a-did"), false);
+});

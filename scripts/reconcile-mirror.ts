@@ -43,6 +43,15 @@ interface Target {
   pdsUrl: string | null;
 }
 
+interface TargetResolution {
+  targets: Target[];
+  /** Tracked DIDs excluded from this run, with their classification. These
+   * are the rows that previously collapsed into `checked=0`. */
+  skipped: Array<
+    { did: string; pdsError: string | null; pdsErrorClass: string | null }
+  >;
+}
+
 async function mirrorCounts(did: string): Promise<ReconcileCounts> {
   const res = await db.execute({
     sql: `
@@ -97,7 +106,7 @@ async function reconcileWithResolve(
   }
 }
 
-async function resolveTargets(args: string[]): Promise<Target[]> {
+async function resolveTargets(args: string[]): Promise<TargetResolution> {
   const didIdx = args.indexOf("--did");
   if (didIdx >= 0) {
     const did = args[didIdx + 1];
@@ -105,7 +114,10 @@ async function resolveTargets(args: string[]): Promise<Target[]> {
       console.error("[reconcile] --did requires a DID argument");
       Deno.exit(2);
     }
-    return [{ did, pdsUrl: await storedPdsUrl(did) }];
+    return {
+      targets: [{ did, pdsUrl: await storedPdsUrl(did) }],
+      skipped: [],
+    };
   }
 
   if (args.includes("--all")) {
@@ -113,19 +125,30 @@ async function resolveTargets(args: string[]): Promise<Target[]> {
       sql: "SELECT did, pds_url FROM tracked_dids ORDER BY added_at ASC",
       args: [],
     });
-    return res.rows.map((r) => ({
-      did: String(r[0]),
-      pdsUrl: (r[1] as string | undefined) ?? null,
-    }));
+    return {
+      targets: res.rows.map((r) => ({
+        did: String(r[0]),
+        pdsUrl: (r[1] as string | undefined) ?? null,
+      })),
+      skipped: [],
+    };
   }
 
   // Default: audit first, reconcile only divergent DIDs (either direction).
   const audit = await auditTrackedDrift();
-  if (audit.errors.length) {
+  if (audit.errors.length || audit.skipped.length) {
     console.warn(
-      `[reconcile] ${audit.errors.length} DID(s) had PDS errors during audit ` +
-        `— skipping this run, will retry next time`,
+      `[reconcile] ${audit.errors.length} DID(s) had PDS errors and ` +
+        `${audit.skipped.length} were skipped (cooldown) during audit — ` +
+        `excluded from this run:`,
     );
+    for (const d of [...audit.errors, ...audit.skipped]) {
+      console.warn(
+        `  ${d.did}  skipped=${d.skipped} class=${d.pdsErrorClass ?? "?"} ${
+          d.pdsError ?? ""
+        }`,
+      );
+    }
   }
 
   const targets = new Map<string, Target>();
@@ -149,7 +172,14 @@ async function resolveTargets(args: string[]): Promise<Target[]> {
     }
   }
 
-  return [...targets.values()];
+  return {
+    targets: [...targets.values()],
+    skipped: [...audit.errors, ...audit.skipped].map((d) => ({
+      did: d.did,
+      pdsError: d.pdsError,
+      pdsErrorClass: d.pdsErrorClass,
+    })),
+  };
 }
 
 function countTotal(c: ReconcileCounts): number {
@@ -164,18 +194,22 @@ async function main() {
   const args = Deno.args;
   const dryRun = args.includes("--dry-run");
 
-  let targets: Target[];
+  let resolution: TargetResolution;
   try {
-    targets = await resolveTargets(args);
+    resolution = await resolveTargets(args);
   } catch (err) {
     console.error(`[reconcile] could not determine targets: ${err}`);
     Deno.exit(2);
   }
+  const { targets, skipped } = resolution;
 
   console.log(
     `[reconcile] ${
       dryRun ? "DRY RUN — " : ""
-    }${targets.length} DID(s) to check`,
+    }${targets.length} DID(s) to check` +
+      (skipped.length > 0
+        ? `, ${skipped.length} excluded (PDS errors/cooldown — see below)`
+        : ""),
   );
 
   let changed = 0;
@@ -215,7 +249,15 @@ async function main() {
 
   console.log(
     `[reconcile] done — checked=${targets.length} changed=${changed} ` +
-      `failed=${failures}${dryRun ? " (dry run, no writes)" : ""}`,
+      `failed=${failures} skipped=${skipped.length}` +
+      (skipped.length > 0
+        ? " (excluded: " +
+          skipped
+            .map((s) => `${s.did}#${s.pdsErrorClass ?? "?"}`)
+            .join(" ")
+        : "") +
+      (skipped.length > 0 ? ")" : "") +
+      `${dryRun ? " (dry run, no writes)" : ""}`,
   );
 
   // Surface a repair summary to Sentry when we actually changed data, so the

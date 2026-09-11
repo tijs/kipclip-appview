@@ -4,6 +4,46 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.38] - 2026-09-11
+
+### Fixed
+
+- Stopped the TAP resync retry storm. On the box, TAP is now built from a pinned
+  immutable upstream base plus a reviewed downstream patch that saturates the
+  backoff exponent before shifting — retry delays stay in the intended 1–60
+  minute range instead of overflowing to a near-now busy loop. The build no
+  longer silently tracks `origin/main`; source, patch-set, and binary SHAs are
+  recorded and rollback-restored. See `deploy/tap/README.md`.
+- Auto-enrollment now backfills the PDS FIRST and only then enrolls TAP, so an
+  abandoned enrollment (e.g. a missing repo) can no longer leave a stale
+  TAP-only row behind.
+
+### Added
+
+- Explicit TAP-repo classification and quarantine. Confirmed missing repos
+  (RepoNotFound on a healthy PDS) stop occupying TAP resync workers — their TAP
+  enrollment is removed while `tracked_dids`, mirror rows, and missing-repo
+  evidence are all preserved. Unavailable PDSes (DNS/refused/ timeout/5xx) get a
+  persisted 24-hour cooldown with a recheck schedule and are never treated as
+  deletion.
+- Approval-gated TAP-only cleanup (`scripts/tap-only-cleanup.ts`): dry-run by
+  DID showing PLC/PDS status and local evidence; an explicit full-DID
+  confirmation token is required to remove a stale TAP enrollment, and
+  unavailable/healthy/unresolved repos are never removed.
+- PDS errors are now classified by type and reported explicitly (drift-alert
+  exits 3 for PDS errors; reconcile prints excluded targets instead of
+  `checked=0`), and drift detection is a non-success status instead of a clean
+  run.
+- Bounded diagnostics for malformed webhook events (DID suffix, action, relay
+  sequence, error class only — never raw payloads), and improved weekly
+  housekeeping reporting (ExecMainStatus vs systemd Result, journal retention
+  horizon, monotonic timer freshness).
+
+### Changed
+
+- Weekly automation now uses the canonical checkouts `kipclip-appview-release`
+  and `kipclip-cli-git`.
+
 ## [0.24.37] - 2026-09-04
 
 ### Fixed

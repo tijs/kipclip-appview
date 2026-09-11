@@ -7,16 +7,31 @@
  * Also compares kipclip's tracked_dids count against TAP's repo-count
  * to detect enrollment drift (DIDs tracked locally but missing from TAP).
  *
+ * Since v0.24.38 this also:
+ *   - classifies every PDS failure (RepoNotFound vs DNS/refused/timeout/5xx)
+ *     and persists it to tap_repo_state ('missing' quarantine candidates vs
+ *     'unavailable' with a cooldown + recheck schedule);
+ *   - QUARANTINES confirmed-missing repos by removing only their TAP
+ *     enrollment — tracked_dids, mirror rows, and missing_repos retention
+ *     evidence are never touched, and unavailable-PDS rows are never
+ *     quarantined. There is no automatic deletion of tracked users here.
+ *   - reports cooldown-skips in a separate `skipped` bucket so a run with
+ *     known errors is never presented as `checked=0` clean.
+ *
  * Designed as a systemd `Type=oneshot` daily timer. Output goes to
  * journald via stdout/stderr; Sentry capture is optional (skipped when
  * `SENTRY_DSN` is unset). Exit codes:
  *
- *   0  no drift
+ *   0  no drift, no PDS errors
  *   1  drift detected (recoverable rows present)
  *   2  audit failed entirely (e.g. DB unavailable)
+ *   3  PDS errors present (classified; nothing repaired automatically)
  *
  * Exit 1 lets operators chain the alert with `OnFailure=` or a watchdog
- * without needing to parse output.
+ * without needing to parse output. IMPORTANT: since v0.24.38 the systemd
+ * unit only marks exit 0 successful — exit 1 (drift) and exit 3 (PDS
+ * errors) must be REPORTED as non-clean, not swallowed by
+ * `SuccessExitStatus=1`.
  *
  * Usage (run on the box):
  *
@@ -31,12 +46,11 @@ import {
   auditTapEnrollments,
 } from "../lib/forwarding-audit.ts";
 import { captureMessage, Sentry } from "../lib/sentry.ts";
-import { db } from "../lib/db.ts";
+import { listMissingRepos } from "../lib/missing-repo.ts";
 import {
-  listMissingRepos,
-  listMissingReposForRemoval,
-  MISSING_REPO_REMOVAL_THRESHOLD_MS,
-} from "../lib/missing-repo.ts";
+  listQuarantineCandidates,
+  listTapRepoStates,
+} from "../lib/tap-repo-state.ts";
 import { withTapDb } from "../lib/tap-db.ts";
 
 const RECOVERABLE_SAMPLE_CAP = 20;
@@ -48,6 +62,14 @@ function summarize(rows: DriftRow[]): Array<Record<string, unknown>> {
     mirror: r.mirror,
     pds: r.pds,
     diff: (r.pds ?? 0) - r.mirror,
+  }));
+}
+
+function summarizeSkipped(rows: DriftRow[]): Array<Record<string, unknown>> {
+  return rows.slice(0, RECOVERABLE_SAMPLE_CAP).map((r) => ({
+    did: r.did,
+    class: r.pdsErrorClass,
+    reason: r.pdsError,
   }));
 }
 
@@ -71,33 +93,34 @@ async function removeFromTapRepos(dids: string[]): Promise<boolean> {
   }
 }
 
-async function cleanupStaleMissingRepos(): Promise<number> {
-  const toRemove = await listMissingReposForRemoval(
-    MISSING_REPO_REMOVAL_THRESHOLD_MS,
-  );
-  if (toRemove.length === 0) return 0;
+/**
+ * Quarantine confirmed-missing repos: remove ONLY their TAP enrollment so
+ * they stop occupying TAP resync workers. Explicitly does NOT delete
+ * tracked_dids, mirror rows, or missing_repos retention evidence, and
+ * never touches unavailable-PDS rows. TAP-only repos (no tracked_dids row)
+ * are excluded here by listQuarantineCandidates — cleaning those up is an
+ * approval-gated operator action (scripts/tap-only-cleanup.ts).
+ */
+async function quarantineMissingRepos(): Promise<number> {
+  const candidates = await listQuarantineCandidates();
+  if (candidates.length === 0) return 0;
 
-  const dids = toRemove.map((r) => r.did);
+  const dids = candidates.map((r) => r.did);
   const removedFromTap = await removeFromTapRepos(dids);
   if (!removedFromTap) {
     console.error(
-      `[drift-alert] TAP cleanup failed; leaving ${dids.length} stale missing repos for retry`,
+      `[drift-alert] TAP quarantine failed; leaving ${dids.length} confirmed-missing repos for retry`,
     );
     return 0;
   }
-  await db.execute({
-    sql: `DELETE FROM tracked_dids WHERE did IN (${placeholders(dids.length)})`,
-    args: dids,
-  });
-  await db.execute({
-    sql: `DELETE FROM missing_repos WHERE did IN (${
-      placeholders(dids.length)
-    })`,
-    args: dids,
-  });
-
-  for (const did of dids) {
-    console.log(`[drift-alert] removed stale missing repo: ${did}`);
+  // Quarantine is complete: the DID is out of TAP but stays tracked
+  // locally with its mirror data and missing-repo evidence intact.
+  for (const c of candidates) {
+    console.log(
+      `[drift-alert] quarantined (TAP enrollment removed, local state kept): ${c.did} (first seen ${
+        new Date(c.firstSeenAt).toISOString()
+      }, ${c.failureCount} confirmations)`,
+    );
   }
   return dids.length;
 }
@@ -113,7 +136,9 @@ async function main() {
     result = await auditTrackedDrift((row, i, total) => {
       if (quiet) return;
       const tag = row.pdsError
-        ? `ERROR ${row.pdsError}`
+        ? `${row.skipped ? "SKIP" : "ERROR"} [${
+          row.pdsErrorClass ?? "?"
+        }] ${row.pdsError}`
         : `mirror=${row.mirror} pds=${row.pds} diff=${
           (row.pds ?? 0) - row.mirror
         }`;
@@ -126,14 +151,43 @@ async function main() {
     Deno.exit(2);
   }
 
-  const { rows, recoverable, ahead, errors } = result;
+  const { rows, recoverable, ahead, errors, skipped } = result;
   const migrated = rows.filter((r) => r.pdsMigrated);
   let driftDetected = false;
 
   console.log(
     `[drift-alert] tracked=${rows.length} recoverable=${recoverable.length} ` +
-      `ahead=${ahead.length} errors=${errors.length} migrated=${migrated.length}`,
+      `ahead=${ahead.length} errors=${errors.length} skipped=${skipped.length} ` +
+      `migrated=${migrated.length}`,
   );
+
+  // Explicit per-class error breakdown — errors must never hide behind
+  // checked=0. Bounded: class + did suffix only.
+  if (errors.length > 0) {
+    const byClass = new Map<string, number>();
+    for (const r of errors) {
+      const cls = r.pdsErrorClass ?? "unknown";
+      byClass.set(cls, (byClass.get(cls) ?? 0) + 1);
+    }
+    console.log(
+      "[drift-alert] PDS errors by class: " +
+        [...byClass.entries()].map(([c, n]) => `${c}=${n}`).join(" "),
+    );
+    for (const r of errors.slice(0, RECOVERABLE_SAMPLE_CAP)) {
+      console.error(
+        `[drift-alert] error ${r.did} class=${
+          r.pdsErrorClass ?? "?"
+        } ${r.pdsError}`,
+      );
+    }
+  }
+  if (skipped.length > 0) {
+    console.log(
+      `[drift-alert] skipped (cooldown, not probed): ${
+        skipped.map((r) => `${r.did}#${r.pdsErrorClass}`).join(" ")
+      }`,
+    );
+  }
 
   if (migrated.length > 0) {
     console.log(
@@ -144,21 +198,30 @@ async function main() {
     }
   }
 
-  const removed = await cleanupStaleMissingRepos();
+  const quarantined = await quarantineMissingRepos();
   const missingAfter = await listMissingRepos();
   const newlyConfirmed = missingAfter.filter(
     (r) => !missingBeforeSet.has(r.did),
   ).length;
   console.log(
     `[drift-alert] missing_repos=${missingAfter.length} ` +
-      `(checked ${missingBefore.length}, newly confirmed ${newlyConfirmed}, stale removals ${removed})`,
+      `(checked ${missingBefore.length}, newly confirmed ${newlyConfirmed}, quarantined ${quarantined})`,
   );
+
+  const states = await listTapRepoStates();
+  const unavailableCount =
+    states.filter((s) => s.state === "unavailable").length;
+  if (unavailableCount > 0) {
+    console.log(
+      `[drift-alert] unavailable-PDS cooldowns active=${unavailableCount} (recheck scheduled; none deleted)`,
+    );
+  }
 
   const enrollment = await auditTapEnrollments();
   if (!enrollment.skipped) {
     const missingSet = new Set(missingAfter.map((r) => r.did));
-    // Re-enrolling a known-missing DID just re-adds it to TAP's retry loop.
-    // Treat those as accounted-for until the cleanup threshold removes them.
+    // Re-enrolling a known-missing DID just re-adds it to TAP's retry loop
+    // (and undoes quarantine). Treat those as accounted-for.
     const kipclipOnlyActionable = enrollment.kipclipOnly.filter(
       (did) => !missingSet.has(did),
     );
@@ -181,7 +244,8 @@ async function main() {
       }
 
       // A local-only DID was fully enrolled before, so TAP's idempotent add is
-      // sufficient to restore live sync. The opposite direction needs a PDS
+      // sufficient to restore live sync. The opposite direction (tap-only)
+      // needs operator approval (scripts/tap-only-cleanup.ts) and a PDS
       // backfill before a tracked_dids row can safely be created, so leave it
       // for operator recovery instead of creating an empty mirror cohort.
       const reenrollment = await Promise.allSettled(
@@ -281,6 +345,7 @@ async function main() {
         recoverable: recoverable.length,
         ahead: ahead.length,
         errors: errors.length,
+        skippedSamples: summarizeSkipped(skipped),
         sample,
       },
     );
@@ -288,6 +353,10 @@ async function main() {
   }
 
   await Sentry.flush(2000).catch(() => {});
+  // exit 3 = classified PDS errors present (non-clean, nothing repaired
+  // automatically). Reported separately from drift so operators can
+  // distinguish "mirror behind" (1) from "PDS unreachable/absent" (3).
+  if (errors.length > 0) Deno.exit(3);
   Deno.exit(driftDetected ? 1 : 0);
 }
 

@@ -2,34 +2,60 @@
 # Pull-based TAP update for kipclip's Hetzner box.
 #
 # TAP (`bluesky-social/indigo` `cmd/tap`) is the firehose subscriber that
-# feeds /api/sync/hook on the box. Upstream has no release cadence — it
-# tracks `main`. This script keeps our box ~weekly fresh while leaving an
-# operator-controlled override and a rollback path on health failure.
+# feeds /api/sync/hook on the box. Upstream has no release cadence and no
+# fixed backoff bug, so this script builds an EXPLICIT, IMMUTABLE base
+# revision plus the kipclip-owned downstream patch — NEVER a silently
+# moving `origin/main`.
 #
-# Polled by tap-update.timer weekly. Each tick:
+# Since v0.24.38 (see deploy/tap/README.md):
+#   - Default build source is the documented, immutable upstream base
+#     revision TAP_DEFAULT_BASE_SHA + the patches in PATCH_DIR. The pin
+#     file (/etc/tap/tap-version) may override with ANOTHER COMMIT SHA only.
+#     Branch names and `origin/*` refs are refused — pinning a moving ref
+#     is how the retry-storm build silently changed under us.
+#   - The patch must apply cleanly on the checked-out base, or the build
+#     FAILS (source drift is loud, never silently rebuilt).
+#   - .version records the SOURCE base sha; .patches.sha256 records the
+#     applied patches; .binary.sha256 records the installed binary sha.
+#     Every tick and every rollback re-records all three. Health checks and
+#     logs always name source + patch + binary sha so an operator can
+#     compare what is actually running against what was reviewed.
+#
+# Polled by tap-update.timer weekly (Sun 04:00 UTC). Each tick:
 #   1. Acquire the build lock (non-blocking — skip if a prior tick is
-#      still building, e.g. on a slow disk).
-#   2. Resolve the desired indigo ref. Pin file overrides "origin/main".
-#   3. Fetch + reset the existing indigo clone in /var/lib/tap/build.
-#   4. If the resolved commit matches /opt/tap/.version, exit 0.
-#   5. Build cmd/tap into /opt/tap/tap.new.
-#   6. Save /opt/tap/tap as /opt/tap/tap.prev (rollback target).
-#   7. Atomic-rename tap.new -> tap. Restart tap.service.
-#   8. Health-check 127.0.0.1:2480 (any HTTP response — TAP returns 401
-#      without auth which is a sufficient liveness signal). On failure,
-#      restore tap.prev and restart.
+#      still building).
+#   2. Resolve the desired ref: pin file > TAP_UPDATE_DEFAULT_REF (sha
+#      required) > $TAP_DEFAULT_BASE_SHA. Refuse branch refs / origin/*.
+#   3. Fetch + checkout the immutable base sha in /var/lib/tap/build.
+#   4. Apply every patch in PATCH_DIR with `git apply --check` then apply.
+#   5. If the resolved commit matches /opt/tap/.version AND the patch set
+#      matches .patches.sha256, exit 0.
+#   6. Build cmd/tap into /opt/tap/tap.new.
+#   7. Save /opt/tap/tap + the sha/version files as .prev (rollback target).
+#   8. Atomic-rename tap.new -> tap. Write .version/.patches.sha256/
+#      .binary.sha256. Restart tap.service.
+#   9. Health-check 127.0.0.1:2480. On failure, restore the previous
+#      binary AND the previous sha/version files, restart, re-check.
 #
 # Env knobs (rare, mostly for staging dry-runs):
-#   TAP_UPDATE_REPO_URL  override indigo remote (default upstream)
-#   TAP_UPDATE_BRANCH    default "main"
-#   TAP_UPDATE_PIN_FILE  default /etc/tap/tap-version  (commit sha or branch)
+#   TAP_UPDATE_REPO_URL    override indigo remote (default upstream)
+#   TAP_UPDATE_PIN_FILE    default /etc/tap/tap-version (commit sha ONLY)
+#   TAP_UPDATE_DEFAULT_REF an alternate immutable commit sha (sha ONLY)
+#   TAP_UPDATE_PATCH_DIR   default /var/lib/kipclip/source/deploy/tap/patches
 #
-# Required tools on PATH: git, go, systemctl, curl, flock, install.
+# Required tools on PATH: git, go, systemctl, curl, flock, install, sha256sum.
 set -euo pipefail
 
 REPO_URL="${TAP_UPDATE_REPO_URL:-https://github.com/bluesky-social/indigo.git}"
-BRANCH="${TAP_UPDATE_BRANCH:-main}"
 PIN_FILE="${TAP_UPDATE_PIN_FILE:-/etc/tap/tap-version}"
+
+# The reviewed, immutable upstream base for the kipclip downstream patch
+# (verified byte-identical at patch time; see deploy/tap/patches/*.patch):
+#   cmd/tap/util.go backoff() overflow fix, base = upstream main
+#   41278964ec8e3253e70d4e919dfb8e34211c543d (2026-09-03).
+# Upstream has no fix as of 2026-09-11; do not bump without re-reviewing
+# the patch against the new base.
+TAP_DEFAULT_BASE_SHA="41278964ec8e3253e70d4e919dfb8e34211c543d"
 
 BUILD_DIR="/var/lib/tap/build/indigo"
 TAP_BIN_DIR="/opt/tap"
@@ -37,7 +63,12 @@ TAP_BIN="${TAP_BIN_DIR}/tap"
 TAP_NEW="${TAP_BIN_DIR}/tap.new"
 TAP_PREV="${TAP_BIN_DIR}/tap.prev"
 TAP_VERSION_FILE="${TAP_BIN_DIR}/.version"
+TAP_PATCHES_SHA_FILE="${TAP_BIN_DIR}/.patches.sha256"
+TAP_BINARY_SHA_FILE="${TAP_BIN_DIR}/.binary.sha256"
 LOCK_FILE="/var/lib/tap/.tap-update-lock"
+
+# kipclip's own appview checkout on the box holds the downstream patches.
+PATCH_DIR="${TAP_UPDATE_PATCH_DIR:-/var/lib/kipclip/source/deploy/tap/patches}"
 
 # tap user owns the build dir + go cache. Only the install step needs root.
 TAP_USER="tap"
@@ -66,6 +97,68 @@ health_ok() {
   [[ "$code" =~ ^[2345][0-9][0-9]$ ]]
 }
 
+sha256_file() {
+  sha256sum "$1" | awk '{print $1}'
+}
+
+# Resolve the desired ref to an IMMUTABLE commit sha. Branch names and
+# origin/* refs are refused: rebuilding a moving default is the failure
+# mode this script exists to prevent.
+resolve_ref() {
+  local pin=""
+  if [[ -s "$PIN_FILE" ]]; then
+    pin="$(tr -d '[:space:]' < "$PIN_FILE")"
+  fi
+
+  local desired
+  if [[ -n "$pin" ]]; then
+    desired="$pin"
+    log "Pin file present: $pin"
+  elif [[ -n "${TAP_UPDATE_DEFAULT_REF:-}" ]]; then
+    desired="$TAP_UPDATE_DEFAULT_REF"
+    log "TAP_UPDATE_DEFAULT_REF override: ${TAP_UPDATE_DEFAULT_REF}"
+  else
+    desired="$TAP_DEFAULT_BASE_SHA"
+    log "Default immutable base: $TAP_DEFAULT_BASE_SHA"
+  fi
+
+  if [[ ! "$desired" =~ ^[0-9a-f]{40}$ ]]; then
+    err "ref '$desired' is not a 40-hex commit sha. Tracking moving refs " \
+      "(branches like origin/main) is DISABLED — pin an immutable commit."
+    exit 1
+  fi
+  echo "$desired"
+}
+
+# Apply every downstream patch in PATCH_DIR onto the checked-out base.
+# Fail loudly if any patch does not apply: a clean-apply failure means the
+# reviewed source changed and the build must not silently proceed.
+apply_patches() {
+  if [[ ! -d "$PATCH_DIR" ]]; then
+    err "patch dir missing at $PATCH_DIR — refusing to build unpatched TAP"
+    exit 1
+  fi
+  local patches
+  mapfile -t patches < <(find "$PATCH_DIR" -maxdepth 1 -name '*.patch' -type f | sort)
+  if [[ ${#patches[@]} -eq 0 ]]; then
+    err "no patches found in $PATCH_DIR — refusing to build unpatched TAP"
+    exit 1
+  fi
+  local p
+  for p in "${patches[@]}"; do
+    sublog "applying $(basename "$p")"
+    if ! sudo -u "$TAP_USER" git -C "$BUILD_DIR" apply --check "$p" 2>/dev/null; then
+      err "patch $(basename "$p") does NOT apply cleanly on $(git -C "$BUILD_DIR" rev-parse HEAD) — base drift; re-review against a new base instead of building blind"
+      exit 1
+    fi
+    sudo -u "$TAP_USER" git -C "$BUILD_DIR" apply "$p"
+  done
+  # Record the patch set fingerprint for .patches.sha256.
+  ( cd "$PATCH_DIR" && sha256sum ./*.patch ) | sort -k2 > /tmp/tap-patches.sha256
+  mv /tmp/tap-patches.sha256 "${TAP_BIN_DIR}/.patches.sha256.new"
+  chown "${TAP_USER}:${TAP_GROUP}" "${TAP_BIN_DIR}/.patches.sha256.new"
+}
+
 main() {
   require_tool git
   require_tool go
@@ -73,6 +166,7 @@ main() {
   require_tool flock
   require_tool systemctl
   require_tool install
+  require_tool sha256sum
   [[ -d "$BUILD_DIR/.git" ]] || {
     err "indigo clone missing at $BUILD_DIR — bootstrap TAP first"
     exit 1
@@ -87,27 +181,15 @@ main() {
     exit 0
   fi
 
-  # Resolve desired ref. Pin file wins.
-  PIN=""
-  if [[ -s "$PIN_FILE" ]]; then
-    PIN="$(tr -d '[:space:]' < "$PIN_FILE")"
-  fi
+  local DESIRED_REF
+  DESIRED_REF="$(resolve_ref)"
 
   log "Fetching $REPO_URL"
-  # Unshallow if needed — shallow clones silently skip remote-tracking ref
-  # updates on `git fetch origin <branch>`, leaving origin/main stale.
   if sudo -u "$TAP_USER" git -C "$BUILD_DIR" rev-parse --is-shallow-repository 2>/dev/null | grep -q true; then
     log "Unshallowing clone"
-    sudo -u "$TAP_USER" git -C "$BUILD_DIR" fetch --unshallow origin "$BRANCH" >/dev/null 2>&1 || true
+    sudo -u "$TAP_USER" git -C "$BUILD_DIR" fetch --unshallow origin "$DESIRED_REF" >/dev/null 2>&1 || true
   fi
-  sudo -u "$TAP_USER" git -C "$BUILD_DIR" fetch --prune origin "$BRANCH" >/dev/null
-
-  if [[ -n "$PIN" ]]; then
-    DESIRED_REF="$PIN"
-    log "Pin file present: $PIN"
-  else
-    DESIRED_REF="origin/${BRANCH}"
-  fi
+  sudo -u "$TAP_USER" git -C "$BUILD_DIR" fetch --prune origin "$DESIRED_REF" >/dev/null
 
   if ! DESIRED_SHA="$(sudo -u "$TAP_USER" git -C "$BUILD_DIR" rev-parse --verify "${DESIRED_REF}^{commit}" 2>/dev/null)"; then
     err "cannot resolve $DESIRED_REF in $BUILD_DIR"
@@ -119,14 +201,28 @@ main() {
   if [[ -s "$TAP_VERSION_FILE" ]]; then
     CURRENT_SHA="$(tr -d '[:space:]' < "$TAP_VERSION_FILE")"
   fi
-
-  if [[ "$CURRENT_SHA" == "$DESIRED_SHA" ]]; then
-    sublog "Already on ${DESIRED_SHORT}; nothing to do"
-    exit 0
+  CURRENT_PATCHES=""
+  if [[ -s "$TAP_PATCHES_SHA_FILE" ]]; then
+    CURRENT_PATCHES="$(tr -d '[:space:]' < "$TAP_PATCHES_SHA_FILE")"
   fi
 
   log "Building TAP $DESIRED_SHORT (was: ${CURRENT_SHA:0:12})"
   sudo -u "$TAP_USER" git -C "$BUILD_DIR" checkout --quiet "$DESIRED_SHA"
+
+  apply_patches
+
+  # Compute the patch fingerprint now so the already-on-this-build short
+  # circuit can compare apples to apples.
+  local PATCHES_FP=""
+  if [[ -f "${TAP_BIN_DIR}/.patches.sha256.new" ]]; then
+    PATCHES_FP="$(tr -d '[:space:]' < "${TAP_BIN_DIR}/.patches.sha256.new")"
+    rm -f "${TAP_BIN_DIR}/.patches.sha256.new"
+  fi
+
+  if [[ "$CURRENT_SHA" == "$DESIRED_SHA" && "$CURRENT_PATCHES" == "$PATCHES_FP" ]]; then
+    sublog "Already on ${DESIRED_SHORT} with the reviewed patch set; nothing to do"
+    exit 0
+  fi
 
   # Build as tap user so go module + build cache stay tap-owned. Output
   # to a tap-writable temp path; root moves it into /opt/tap below.
@@ -145,15 +241,21 @@ main() {
   install -m 0755 "$BUILD_OUT" "$TAP_NEW"
   rm -f "$BUILD_OUT"
 
-  # Save current as prev for rollback. First-run case (no current)
-  # leaves TAP_PREV absent, which the rollback path handles.
+  # Save current binary + recorded SHAs for rollback. First-run leaves
+  # .prev absent, which the rollback path handles.
   if [[ -x "$TAP_BIN" ]]; then
     cp -p "$TAP_BIN" "$TAP_PREV"
+    cp -p "$TAP_VERSION_FILE" "${TAP_VERSION_FILE}.prev" 2>/dev/null || true
+    cp -p "$TAP_PATCHES_SHA_FILE" "${TAP_PATCHES_SHA_FILE}.prev" 2>/dev/null || true
+    cp -p "$TAP_BINARY_SHA_FILE" "${TAP_BINARY_SHA_FILE}.prev" 2>/dev/null || true
   fi
 
   # Atomic rename — same filesystem.
   mv "$TAP_NEW" "$TAP_BIN"
   echo "$DESIRED_SHA" > "$TAP_VERSION_FILE"
+  echo "$PATCHES_FP" > "$TAP_PATCHES_SHA_FILE"
+  echo "$(sha256_file "$TAP_BIN")" > "$TAP_BINARY_SHA_FILE"
+  log "Installed source=$DESIRED_SHA patches=$(echo "$PATCHES_FP" | cut -c1-16)… binary=$(cat "$TAP_BINARY_SHA_FILE")"
 
   log "Restarting tap.service"
   systemctl restart tap
@@ -175,11 +277,25 @@ main() {
     if [[ -x "$TAP_PREV" ]]; then
       err "rolling back to previous binary"
       mv "$TAP_PREV" "$TAP_BIN"
-      echo "${CURRENT_SHA}" > "$TAP_VERSION_FILE"
+      if [[ -s "${TAP_VERSION_FILE}.prev" ]]; then
+        mv "${TAP_VERSION_FILE}.prev" "$TAP_VERSION_FILE"
+      else
+        rm -f "$TAP_VERSION_FILE"
+      fi
+      if [[ -s "${TAP_PATCHES_SHA_FILE}.prev" ]]; then
+        mv "${TAP_PATCHES_SHA_FILE}.prev" "$TAP_PATCHES_SHA_FILE"
+      else
+        rm -f "$TAP_PATCHES_SHA_FILE"
+      fi
+      if [[ -s "${TAP_BINARY_SHA_FILE}.prev" ]]; then
+        mv "${TAP_BINARY_SHA_FILE}.prev" "$TAP_BINARY_SHA_FILE"
+      else
+        rm -f "$TAP_BINARY_SHA_FILE"
+      fi
       systemctl restart tap
       sleep 2
       if health_ok; then
-        err "rollback restored TAP successfully"
+        err "rollback restored TAP successfully: source=$(cat "$TAP_VERSION_FILE") binary=$(cat "$TAP_BINARY_SHA_FILE")"
       else
         err "rollback ALSO failed health check — manual recovery required"
       fi
@@ -190,7 +306,8 @@ main() {
     exit 1
   fi
 
-  log "✅ TAP updated to $DESIRED_SHORT"
+  log "✅ TAP updated source=$DESIRED_SHA binary=$(cat "$TAP_BINARY_SHA_FILE")"
+  log "post-deploy: verify retry_counts stop accelerating — journalctl -u tap --since '10 minutes ago' | grep -c 'retry'"
 }
 
 main "$@"

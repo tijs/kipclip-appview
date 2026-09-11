@@ -73,6 +73,32 @@ export async function tapEnroll(did: string): Promise<void> {
 }
 
 /**
+ * Remove a TAP enrollment (POST /repos/remove). Idempotent: removing a DID
+ * that is not enrolled returns success. Used to compensate an abandoned
+ * enrollment — if TAP accepted the DID but the local tracked_dids row never
+ * landed, the TAP-side repo row is removed so no TAP-only enrollment leaks.
+ */
+export async function tapDeenroll(did: string): Promise<void> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  const secret = tapAdminPassword();
+  if (secret) {
+    headers.Authorization = "Basic " + btoa(`admin:${secret}`);
+  }
+  const r = await fetchWithTimeout(
+    `${TAP_CONTROL_URL}/repos/remove`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ dids: [did] }),
+    },
+    TAP_FETCH_TIMEOUT_MS,
+  );
+  if (!r.ok) throw new Error(`TAP /repos/remove returned ${r.status}`);
+}
+
+/**
  * Enroll-time backfill: fetch every tracked collection from the PDS and
  * upsert it into the mirror. Upsert-only — it never removes mirror rows, so
  * it heals missing records but not stale ones. The reconciling sync
@@ -89,12 +115,20 @@ export async function runBackfill(
 }
 
 /**
- * Run a single enrollment cycle: TAP enroll → backfill → mark tracked.
+ * Run a single enrollment cycle: backfill → TAP enroll → mark tracked.
  * `stage` tags the captured error so operators can tell which step failed.
- * TAP-enrolled-but-backfill-failed is a recoverable state — TAP relays
- * live events for the DID; the next call beyond the cooldown retries from
- * tapEnroll (idempotent) and listRecords re-upserts any orphan rows the
- * webhook wrote in the meantime (upserts are ON CONFLICT idempotent too).
+ *
+ * Ordering is deliberate (backfill FIRST): if the PDS backfill fails — the
+ * observed production case being RepoNotFound on the canonical PDS — TAP is
+ * never enrolled, so an abandoned enrollment cannot leave a TAP-only row
+ * (a TAP repo with no tracked_dids row) that would keep TAP resync workers
+ * busy forever. The backfill itself fetches the full current PDS state, so
+ * live events that arrive before TAP enrollment lands are covered by the
+ * sweep, and TAP's later replay is idempotent against the mirror upserts.
+ *
+ * The one remaining leak window is a failure between TAP enroll success and
+ * the tracked_dids INSERT (DB hiccup or process crash). That is compensated
+ * in the catch below via a best-effort TAP /repos/remove.
  */
 async function runEnrollment(did: string, pdsUrl: string): Promise<void> {
   // Already enrolled? Short-circuit before the expensive PDS backfill.
@@ -115,10 +149,10 @@ async function runEnrollment(did: string, pdsUrl: string): Promise<void> {
 
   let enrollmentPdsUrl = pdsUrl;
   let canonicalPdsConfirmed = false;
-  let stage: "tapEnroll" | "backfill" | "trackedDids" = "tapEnroll";
+  let tapEnrolled = false;
+  let stage: "backfill" | "tapEnroll" | "trackedDids" = "backfill";
   try {
     console.log(`[auto-enroll] starting for ${did}`);
-    await tapEnroll(did);
     const resolved = await resolveCurrentPds(did);
     if (resolved?.pdsUrl) {
       enrollmentPdsUrl = resolved.pdsUrl;
@@ -126,6 +160,9 @@ async function runEnrollment(did: string, pdsUrl: string): Promise<void> {
     }
     stage = "backfill";
     await runBackfill(did, enrollmentPdsUrl);
+    stage = "tapEnroll";
+    await tapEnroll(did);
+    tapEnrolled = true;
     stage = "trackedDids";
     const now = Date.now();
     await db.execute({
@@ -148,6 +185,18 @@ async function runEnrollment(did: string, pdsUrl: string): Promise<void> {
       isRepoNotFoundError(err);
     if (canonicalRepoMissing) {
       await recordMissingRepo(did, String(err));
+    }
+    // TAP accepted the DID but the tracked_dids row never landed. Compensate
+    // by removing the TAP enrollment so the abandoned enrollment cannot leak
+    // a TAP-only row. Best-effort: if TAP is down the retry loop re-attempts
+    // enrollment from scratch (backfill-first), which is safe either way.
+    if (tapEnrolled && stage === "trackedDids") {
+      try {
+        await tapDeenroll(did);
+      } catch {
+        // Compensating removal is best-effort; the enrollment retry loop
+        // restarts from the backfill and will re-add only on success.
+      }
     }
     retryAfter.set(
       did,

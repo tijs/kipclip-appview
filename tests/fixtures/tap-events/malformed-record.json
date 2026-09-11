@@ -1,0 +1,17 @@
+{
+  "id": 92837,
+  "type": "record",
+  "record": {
+    "live": false,
+    "did": "did:plc:abcdefghijklmnopqrstuvwxyz0123456789",
+    "collection": "community.lexicon.bookmarks.bookmark",
+    "rkey": "3kz4",
+    "action": "unknown-payload-variant",
+    "cid": "",
+    "record": {
+      "$type": "community.lexicon.bookmarks.bookmark",
+      "subject": "https://example.com/secret-content",
+      "createdAt": "2026-09-01T00:00:00.000Z"
+    }
+  }
+}

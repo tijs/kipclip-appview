@@ -219,4 +219,23 @@ export const MIRROR_MIGRATIONS: MigrationEntry[] = [
         ON missing_repos(first_missing_at)
     `,
   },
+  {
+    version: "014",
+    description:
+      "Persisted TAP-repo classification: confirmed missing vs unavailable PDS with cooldown",
+    sql: `
+      CREATE TABLE IF NOT EXISTS tap_repo_state (
+        did TEXT PRIMARY KEY,
+        state TEXT NOT NULL,
+        first_seen_at INTEGER NOT NULL,
+        last_checked_at INTEGER NOT NULL,
+        next_check_at INTEGER NOT NULL,
+        failure_count INTEGER NOT NULL DEFAULT 1,
+        last_error_class TEXT,
+        last_error TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_tap_repo_state_state_next_check
+        ON tap_repo_state(state, next_check_at)
+    `,
+  },
 ];

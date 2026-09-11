@@ -1,0 +1,58 @@
+From: kipclip ops <ops@kipclip.com>
+Subject: [PATCH] cmd/tap: saturate backoff exponent before shifting
+
+The TAP resync backoff computed `1 << retries` BEFORE applying the cap.
+For large retry counts the integer shift overflows (on 64-bit ints,
+shifts >= 63 produce 0 or negative values), which collapses the intended
+1-60 minute backoff into a near-now retry storm — the observed
+production failure: retry counts of 15k-162k with retry timestamps only
+seconds in the future.
+
+Fix: cap the exponent at 60 before shifting, then apply the cap. The
+base delay stays within [1, max] seconds plus <=1s jitter, and
+retry_after can never drop below ~1s.
+
+BASE: 41278964ec8e3253e70d4e919dfb8e34211c543d (upstream main,
+      2026-09-03 — the file on which this patch applies, verified
+      byte-identical at patch time; upstream has NO fix for this as of
+      2026-09-11: the last commit touching cmd/tap/util.go is
+      1d6a130c35cd, 2026-02-03).
+
+STATUS: downstream patch owned by this repository. NOT an upstream
+Indigo commit and never pushed to bluesky-social/indigo. Re-apply with
+`git apply <patch>` after checkout of BASE; verify clean apply before
+building.
+
+---
+ cmd/tap/util.go | 19 +++++++++++++------
+ 1 file changed, 13 insertions(+), 6 deletions(-)
+
+diff --git a/cmd/tap/util.go b/cmd/tap/util.go
+index 4d1d08ff..a1a0f2ff 100644
+--- a/cmd/tap/util.go
++++ b/cmd/tap/util.go
+@@ -22,10 +22,19 @@
+ }
+ 
+ func backoff(retries int, max int) time.Duration {
+-	dur := 1 << retries
+-	if dur > max {
+-		dur = max
++	// Cap the exponent BEFORE shifting: `1 << retries` overflows for large
++	// retry counts (on 64-bit ints, shifts >= 63 produce 0 or negative values),
++	// which collapsed the intended backoff into a near-now retry storm. With
++	// the exponent capped at 60, the base delay stays within [1, max] seconds
++	// plus <=1s jitter, and retry_after can never drop below ~1s.
++	exp := retries
++	if exp > 60 {
++		exp = 60
+ 	}
++	dur := int64(1) << exp
++	if dur > int64(max) {
++		dur = int64(max)
++	}
+ 
+ 	jitter := time.Millisecond * time.Duration(rand.Intn(1000))
+ 	return time.Second*time.Duration(dur) + jitter
+-- 
+2.39.2
