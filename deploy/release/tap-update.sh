@@ -33,7 +33,10 @@
 #   3. Fetch, then hard-reset + clean the build tree to the immutable base
 #      sha (a previous tick's applied patch must never survive into the
 #      next — reset/clean is what makes consecutive runs reproducible).
-#   4. Apply every patch in PATCH_DIR with `git apply --check` then apply.
+#   4. Stage a tap-readable private copy of every patch (fresh mktemp
+#      dir, tap:tap 0700, files 0600 — the root-owned source tree is
+#      unreadable by tap) and apply each staged copy with `git apply
+#      --check` then apply.
 #   5. If the resolved commit matches /opt/tap/.version AND the patch set
 #      matches .patches.sha256, exit 0.
 #   6. Build cmd/tap into /opt/tap/tap.new.
@@ -84,6 +87,8 @@ LOCK_FILE="${TAP_UPDATE_LOCK_FILE:-/var/lib/tap/.tap-update-lock}"
 TAP_DB="${TAP_UPDATE_TAP_DB_PATH:-/var/lib/tap/tap.db}"
 
 # kipclip's own appview checkout on the box holds the downstream patches.
+# It is root-owned and not traversable by tap, so apply_patches stages a
+# tap-readable private copy per tick instead of broadening its permissions.
 PATCH_DIR="${TAP_UPDATE_PATCH_DIR:-/var/lib/kipclip/source/deploy/tap/patches}"
 
 # tap user owns the build dir + go cache; only the install step needs root.
@@ -154,6 +159,48 @@ resolve_ref() {
   echo "$desired"
 }
 
+# EXIT-trap cleanup for the patch staging handoff (see apply_patches). A
+# RETURN trap does NOT fire when a function exits the shell (set -e
+# failure or explicit `exit 1`) — only the EXIT trap does — so this
+# covers every failure path plus the success path (cleared after success).
+# Both variables are script-global (declared below) because the trap
+# fires after the function frame is popped; the `${var:-}` guards keep
+# them ref-safe under `set -u`.
+cleanup_patch_staging() {
+  [[ -n "${PATCH_STAGE_DIR:-}" ]] && rm -rf -- "$PATCH_STAGE_DIR"
+  [[ -n "${FP_TMP:-}" ]] && rm -f -- "$FP_TMP"
+}
+
+# Stage every patch in PATCH_DIR as a tap-readable private copy inside a
+# fresh, unpredictable mktemp dir ($PATCH_STAGE_DIR). The patch SOURCE
+# (/var/lib/kipclip/source/deploy/tap/patches on the box) is root-owned
+# and intentionally NOT traversable by the tap user, so running git as
+# tap on a source path fails with `error: can't open patch ... Permission
+# denied` — the v0.24.39 production blocker. The source tree is NEVER
+# broadened (no chown/chmod on PATCH_DIR, no safe.directory, no global
+# git config): each tick copies the patches byte-identical into a dir
+# owned tap:tap mode 0700 with 0600 files — git-as-tap reads the copy and
+# nobody else can. The caller installs cleanup_patch_staging as an EXIT
+# trap BEFORE calling this, so mktemp/chown/cp failures clean up too.
+stage_tap_readable_patches() {
+  PATCH_STAGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/tap-patches.XXXXXX")" || {
+    err "mktemp -d failed — cannot stage a tap-readable copy of the patch set"
+    exit 1
+  }
+  chown "${TAP_USER}:${TAP_GROUP}" "$PATCH_STAGE_DIR"
+  chmod 0700 "$PATCH_STAGE_DIR"
+  local p
+  while IFS= read -r p; do
+    cp -- "$p" "$PATCH_STAGE_DIR/" || {
+      err "cannot stage $(basename "$p") into the tap-readable staging dir — patch source unreadable?"
+      exit 1
+    }
+  done < <(find "$PATCH_DIR" -maxdepth 1 -name '*.patch' -type f | sort)
+  chown -R "${TAP_USER}:${TAP_GROUP}" "$PATCH_STAGE_DIR"
+  chmod 0600 "$PATCH_STAGE_DIR"/*
+  sublog "staged tap-readable patch copies in $PATCH_STAGE_DIR (${TAP_USER}:${TAP_GROUP}, 0700/0600)"
+}
+
 # Apply every downstream patch in PATCH_DIR onto the checked-out base.
 # Fail loudly if any patch does not apply: a clean-apply failure means the
 # reviewed source changed and the build must not silently proceed.
@@ -172,42 +219,54 @@ apply_patches() {
     err "no patches found in $PATCH_DIR — refusing to build unpatched TAP"
     exit 1
   fi
+  # git apply runs as the tap user, which cannot read the root-owned
+  # source dir: stage tap-readable private copies first. The EXIT trap
+  # removes the staging handoff on EVERY exit path (set -e failure,
+  # explicit exit, or normal return); it is cleared only after the staged
+  # copies and the fingerprint temp are consumed.
+  trap cleanup_patch_staging EXIT
+  stage_tap_readable_patches
   local p
   for p in "${patches[@]}"; do
     sublog "applying $(basename "$p")"
-    if ! sudo -u "$TAP_USER" git -C "$BUILD_DIR" apply --check "$p" 2>/dev/null; then
-      err "patch $(basename "$p") does NOT apply cleanly on $(git -C "$BUILD_DIR" rev-parse HEAD) — base drift; re-review against a new base instead of building blind"
+    if ! sudo -u "$TAP_USER" git -C "$BUILD_DIR" apply --check "$PATCH_STAGE_DIR/$(basename "$p")" 2>/dev/null; then
+      # Resolve HEAD as TAP for the diagnostic: the build tree is
+      # tap:tap-owned, so a root `git rev-parse` here would emit git's
+      # `detected dubious ownership` fatal instead of the sha.
+      err "patch $(basename "$p") does NOT apply cleanly on $(sudo -u "$TAP_USER" git -C "$BUILD_DIR" rev-parse HEAD 2>/dev/null || printf 'unknown') — base drift; re-review against a new base instead of building blind"
       exit 1
     fi
-    sudo -u "$TAP_USER" git -C "$BUILD_DIR" apply "$p"
+    sudo -u "$TAP_USER" git -C "$BUILD_DIR" apply "$PATCH_STAGE_DIR/$(basename "$p")"
   done
-  # Record the patch set fingerprint for .patches.sha256. Stage it through a
-  # root-owned mktemp file and atomic-rename into place — a PREDICTABLE
+  # Record the patch set fingerprint for .patches.sha256 from the
+  # byte-identical staged copies. Stage it through a root-owned mktemp
+  # file and atomic-rename into place — a PREDICTABLE
   # /tmp/tap-patches.sha256 written via `>` as root is a symlink-clobber
   # primitive (a local attacker could pre-create the path pointing at any
-  # root-writable victim). Cleanup: the temp name is gone after the mv; a
-  # RETURN trap drops it if the pipeline fails first. FP_TMP is script-global
-  # because bash's RETURN trap fires AFTER the function frame (and its
-  # locals) is popped — a local would be "unbound variable" under set -u.
-  FP_TMP="$(mktemp "${TMPDIR:-/tmp}/tap-patches.XXXXXX")" || {
+  # root-writable victim). FP_TMP is script-global because the cleanup
+  # EXIT trap fires after the function frame (and its locals) is popped —
+  # a local would be "unbound variable" under set -u.
+  FP_TMP="$(mktemp "${TMPDIR:-/tmp}/tap-patches-fp.XXXXXX")" || {
     err "mktemp failed — cannot stage patch fingerprint"
     exit 1
   }
-  trap 'rm -f -- "$FP_TMP"' RETURN
-  ( cd "$PATCH_DIR" && sha256sum ./*.patch ) | sort -k2 > "$FP_TMP"
+  ( cd "$PATCH_STAGE_DIR" && sha256sum ./*.patch ) | sort -k2 > "$FP_TMP"
   mv "$FP_TMP" "${TAP_BIN_DIR}/.patches.sha256.new"
-  # Atomic staging is done — FP_TMP no longer exists (mv consumed it), so the
-  # cleanup trap is now a no-op. Drop it so a stale RETURN trap doesn't linger
-  # across later function returns. This changes no failure-handling behavior:
-  # any failure BEFORE the mv still exits under set -e with FP_TMP in place,
-  # and after the mv there is no temp file left to clean.
-  trap - RETURN
   chown "${TAP_USER}:${TAP_GROUP}" "${TAP_BIN_DIR}/.patches.sha256.new"
+  # Success — both staging artifacts are consumed (dir now unused, temp
+  # moved into place): remove the dir and drop the EXIT trap so it cannot
+  # linger for the rest of the script.
+  rm -rf -- "$PATCH_STAGE_DIR"
+  trap - EXIT
 }
 
-# Staging path for the patch fingerprint (see apply_patches). Script-global
-# so the RETURN trap can reference it after the function frame is popped.
+# Staging handoff for apply_patches: $PATCH_STAGE_DIR is the tap-readable
+# private copy of the patch set, $FP_TMP the fingerprint temp. Both are
+# script-global so the cleanup EXIT trap (cleanup_patch_staging) can
+# reference them after the function frame is popped — locals would be
+# "unbound variable" under set -u.
 FP_TMP=""
+PATCH_STAGE_DIR=""
 
 # drift-alert (kipclip user, SupplementaryGroups=tap) deletes quarantined TAP
 # repo rows directly in tap.db. Enforce the group-write layout idempotently

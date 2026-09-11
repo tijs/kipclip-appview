@@ -20,6 +20,12 @@
 #      resolve_ref AND must never reach checkout/reset).
 #   7. An empty patch set is refused loudly — the script cannot silently
 #      build an unpatched tree.
+#   8. Patches reach `git apply` ONLY through a fresh mktemp staging copy
+#      that tap can read (dir 0700, files 0600, tap:tap-owned): the source
+#      PATCH_DIR is root-owned and unreadable by tap (`git apply` dies
+#      with `error: can't open patch ... Permission denied`), and the
+#      source tree is never chown'd/chmod'd (no permission broadening,
+#      no safe.directory, no global git config).
 #
 # Run: bash tests/shell/tap-update.test.sh   (any bash >= 3.2)
 set -u
@@ -810,6 +816,225 @@ STUB
   ok "main(): root-owned tree repaired first, THEN patch refusal fires loudly (no unpatched build, no moving refs)"
 }
 t10
+
+# ---- main() stages a tap-readable private COPY of every patch before
+# ---- `sudo -u tap git apply`. The patch SOURCE ($PATCH_DIR; on the box
+# ---- /var/lib/kipclip/source/deploy/tap/patches) is root-owned and NOT
+# ---- traversable by tap, so git-as-tap dies on the source path with
+# ---- `error: can't open patch ... Permission denied` — the v0.24.39
+# ---- production blocker. The harness runs as one user, so the git stub
+# ---- models git's own access gate: a patch argument under the source
+# ---- PATCH_DIR is refused with git's exact production error + exit 128;
+# ---- any other path (the mktemp staging handoff) is readable and flows
+# ---- through the usual stateful apply/check behavior. The fixed script
+# ---- must stage a fresh mktemp-dir copy (chown'd tap:tap, dir 0700 /
+# ---- files 0600) and hand ONLY staged paths to git; the old script
+# ---- passed the source path straight through and goes RED here. Also
+# ---- asserts: staged copies preserve the source fingerprint
+# ---- byte-for-byte, staging is cleaned on success AND on the refusal
+# ---- failure path, and the source tree is never chown'd/chmod'd.
+# Git stub that models git's real access gate on the patch path: tap
+# cannot open the patch inside the root-owned source dir, so any apply
+# whose patch path lives under $TAP_UPDATE_PATCH_DIR is refused with the
+# exact production error + exit 128; staged copies (fresh mktemp handoff
+# dirs) are readable and get the standard stateful apply/check behavior.
+install_access_gated_git_stub() {
+  local TMP="$1"
+  cat > "$TMP/stubs/git" <<'STUB'
+#!/usr/bin/env bash
+GITSTATE="${GITSTATE:?}"
+log_line() { printf '%s\n' "$*" >> "$GITSTATE/gitlog"; }
+sub=""
+last=""
+skip=0
+for arg in "$@"; do
+  if [[ $skip -eq 1 ]]; then skip=0; continue; fi   # value of -C <dir>
+  if [[ -z "$sub" ]]; then
+    case "$arg" in
+      git) continue;;
+      -C) skip=1; continue;;
+      *) sub="$arg"; continue;;
+    esac
+  fi
+  last="$arg"
+done
+case "$sub" in
+  "rev-parse")
+    case "$*" in
+      *"--is-shallow-repository"*) echo false;;
+      *"--verify"*) echo "${FIXED_SHA:?}";;
+      *"HEAD"*) echo "${FIXED_SHA:?}";;
+    esac
+    exit 0;;
+  "fetch")
+    log_line "fetch"
+    exit 0;;
+  "reset")   # reset --hard --quiet <sha> — restore the pinned base
+    log_line "reset:$last"
+    rm -f "$GITSTATE/applied" "$GITSTATE/leftover"
+    exit 0;;
+  "clean")   # clean -fdx — drop untracked leftovers
+    log_line "clean"
+    rm -f "$GITSTATE/leftover"
+    exit 0;;
+  "checkout")   # same-sha checkout is a no-op: does NOT clear the patch
+    log_line "checkout:$last"
+    exit 0;;
+  "apply")
+    # tap cannot open the patch in the root-owned source dir: model git's
+    # real access gate with the exact production error + exit 128.
+    if [[ "$last" == "${TAP_UPDATE_PATCH_DIR:-}/"* ]]; then
+      log_line "apply-check:unreadable-source"
+      echo "error: can't open patch '$last': Permission denied" >&2
+      exit 128
+    fi
+    if [[ "$*" == *"--check"* ]]; then
+      log_line "apply-check"
+      if [[ -e "$GITSTATE/apply-check-fail" ]]; then
+        echo "stub: apply-check forced to fail (source drift)" >&2
+        exit 1
+      fi
+      exit 0
+    fi
+    log_line "apply"
+    touch "$GITSTATE/applied"
+    exit 0;;
+esac
+echo "git stub unhandled: $*" >&2
+exit 0
+STUB
+  chmod +x "$TMP/stubs/git"
+}
+
+t11() {
+  # Scenario A: unreadable patch source, one full successful tick via the
+  # staged copies (GREEN on the fixed script; RED on the old one, which
+  # hands git the unreadable source path directly).
+  local TA log rc
+  TA="$(mktemp -d)"
+  TMP="$TA"
+  mkdir -p "$TA/build/.git" "$TA/bin" "$TA/patches" "$TA/stubs" "$TA/gitstate" "$TA/tmpdir"
+  echo "dummy patch body" > "$TA/patches/0001-dummy.patch"
+  ( cd "$TA/gitstate" && : > gitlog )
+
+  install_common_stubs "$TA"
+  install_access_gated_git_stub "$TA"
+  # Logging chown/chmod stubs: permlog lives in gitstate (GITSTATE is
+  # exported by run_tap; the test env's TMP is not). chmod applies for
+  # real AND logs (the fake `go build` output must become executable).
+  cat > "$TA/stubs/chown" <<'STUB'
+#!/usr/bin/env bash
+echo "chown $*" >> "${GITSTATE:?}/permlog"
+exit 0
+STUB
+  cat > "$TA/stubs/chmod" <<'STUB'
+#!/usr/bin/env bash
+@REAL_CHMOD@ "$@" || exit 1
+echo "chmod $*" >> "${GITSTATE:?}/permlog"
+exit 0
+STUB
+  local REAL_CHMOD
+  REAL_CHMOD="$(command -v chmod)"
+  sed -i '' "s|@REAL_CHMOD@|$REAL_CHMOD|" "$TA/stubs/chmod"
+  chmod +x "$TA/stubs/git" "$TA/stubs/chown" "$TA/stubs/chmod"
+
+  log="$TA/run.log"
+  rc=0
+  TMPDIR="$TA/tmpdir" run_tap "$log" || rc=$?
+
+  [[ "$rc" -eq 0 ]] || fail "tick with unreadable patch source must succeed via staged copies, rc=$rc; log: $(cat "$log")"
+  grep -q "✅ TAP updated" "$log" || fail "full update must complete via staged patches; log: $(cat "$log")"
+  grep -q "apply-check:unreadable-source" "$TA/gitstate/gitlog" &&
+    fail "git must NEVER be handed a patch path from the unreadable source dir; gitlog: $(cat "$TA/gitstate/gitlog")"
+  grep -q "^apply-check$" "$TA/gitstate/gitlog" ||
+    fail "apply --check must run against the staged copy; gitlog: $(cat "$TA/gitstate/gitlog")"
+  grep -q "^apply$" "$TA/gitstate/gitlog" ||
+    fail "apply must run against the staged copy; gitlog: $(cat "$TA/gitstate/gitlog")"
+  # Fingerprint of the staged copies == fingerprint of the source patches.
+  # main() consumes .patches.sha256.new into the recorded .patches.sha256
+  # (whitespace-stripped — the file is an opaque fingerprint token), so
+  # assert the recorded file against the stripped reference (the .new
+  # staging file itself is covered by t7 at the apply_patches level).
+  local expected expected_ws
+  expected="$( ( cd "$TA/patches" && sha256sum ./*.patch ) | sort -k2 )"
+  expected_ws="$(printf '%s' "$expected" | tr -d '[:space:]')"
+  [[ -f "$TA/bin/.patches.sha256" ]] || fail ".patches.sha256 missing; log: $(cat "$log")"
+  [[ "$(cat "$TA/bin/.patches.sha256")" == "$expected_ws" ]] ||
+    fail "recorded .patches.sha256 must match the source fingerprint: got '$(cat "$TA/bin/.patches.sha256")' want '$expected_ws'"
+  # Restrictive handoff: staging dir chown'd tap:tap 0700, files 0600.
+  grep -qE "^chown (-R )?tap:tap .*tap-patches\." "$TA/gitstate/permlog" ||
+    fail "staging dir must be chown'd to tap:tap; permlog: $(cat "$TA/gitstate/permlog")"
+  grep -qE '^chmod 0700 .*tap-patches\.' "$TA/gitstate/permlog" ||
+    fail "staging dir must be chmod 0700; permlog: $(cat "$TA/gitstate/permlog")"
+  grep -qE '^chmod 0600 .*0001-dummy.patch$' "$TA/gitstate/permlog" ||
+    fail "staged patch files must be chmod 0600; permlog: $(cat "$TA/gitstate/permlog")"
+  # Source tree permissions must NOT be broadened: no chown/chmod touches
+  # PATCH_DIR, no safe.directory / global git config knobs.
+  grep -qE "^chown .*$TA/patches" "$TA/gitstate/permlog" &&
+    fail "source patch dir must never be chown'd: $(cat "$TA/gitstate/permlog")"
+  grep -qE "^chmod .*$TA/patches" "$TA/gitstate/permlog" &&
+    fail "source patch dir must never be chmod'd: $(cat "$TA/gitstate/permlog")"
+  grep -qi "safe.directory" "$log" && fail "safe.directory must never be used"
+  grep -qi "git config" "$log" && fail "no git config mutation allowed"
+  # Success-path cleanup: staging dir + fingerprint temp fully consumed.
+  [[ -z "$(ls -A "$TA/tmpdir" 2>/dev/null)" ]] ||
+    fail "staging artifacts must be cleaned after success; leftover: $(ls -A "$TA/tmpdir")"
+  rm -rf "$TA"
+  ok "main(): unreadable patch source staged into fresh tap:tap 0700/0600 mktemp copies (staged paths only, fingerprint identical, source untouched, cleaned on success)"
+
+  # Scenario B: the STAGED apply --check fails (base drift) — the refusal
+  # must fire loudly AND the staging dir must be cleaned on the failure
+  # path too (EXIT-trap cleanup).
+  local TB logB rcB
+  TB="$(mktemp -d)"
+  TMP="$TB"
+  mkdir -p "$TB/build/.git" "$TB/bin" "$TB/patches" "$TB/stubs" "$TB/gitstate" "$TB/tmpdir"
+  echo "dummy patch body" > "$TB/patches/0001-dummy.patch"
+  ( cd "$TB/gitstate" && : > gitlog )
+  touch "$TB/gitstate/apply-check-fail"
+
+  install_common_stubs "$TB"
+  install_access_gated_git_stub "$TB"
+  cat > "$TB/stubs/chown" <<'STUB'
+#!/usr/bin/env bash
+echo "chown $*" >> "${GITSTATE:?}/permlog"
+exit 0
+STUB
+  cat > "$TB/stubs/chmod" <<'STUB'
+#!/usr/bin/env bash
+@REAL_CHMOD@ "$@" || exit 1
+echo "chmod $*" >> "${GITSTATE:?}/permlog"
+exit 0
+STUB
+  REAL_CHMOD="$(command -v chmod)"
+  sed -i '' "s|@REAL_CHMOD@|$REAL_CHMOD|" "$TB/stubs/chmod"
+  chmod +x "$TB/stubs/git" "$TB/stubs/chown" "$TB/stubs/chmod"
+
+  logB="$TB/run.log"
+  rcB=0
+  TMPDIR="$TB/tmpdir" run_tap "$logB" || rcB=$?
+
+  [[ "$rcB" -eq 1 ]] || fail "staged apply failure must exit 1, rc=$rcB; log: $(cat "$logB")"
+  grep -q "does NOT apply cleanly" "$logB" ||
+    fail "base-drift refusal must fire loudly; log: $(cat "$logB")"
+  # The refusal diagnostic resolves HEAD as TAP (never root git, which
+  # would emit its own dubious-ownership fatal on a tap:tap tree) and
+  # names the concrete base sha.
+  grep -q "does NOT apply cleanly on $EXPECTED_DEFAULT_SHA" "$logB" ||
+    fail "refusal must name the base sha resolved as tap: $(cat "$logB")"
+  grep -qi "dubious ownership" "$logB" &&
+    fail "refusal diagnostic must never run root git rev-parse on the tap-owned tree: $(cat "$logB")"
+  grep -q "Installing" "$logB" && fail "must never install when the patch does not apply"
+  grep -q "apply-check:unreadable-source" "$TB/gitstate/gitlog" &&
+    fail "refusal path must stage first (never hand the source path to git); gitlog: $(cat "$TB/gitstate/gitlog")"
+  [[ -e "$TB/bin/.patches.sha256.new" ]] &&
+    fail "must not record a fingerprint when apply refused"
+  [[ -z "$(ls -A "$TB/tmpdir" 2>/dev/null)" ]] ||
+    fail "staging artifacts must be cleaned on the refusal path too; leftover: $(ls -A "$TB/tmpdir")"
+  rm -rf "$TB"
+  ok "main(): staged apply-refusal fires loudly AND staging is cleaned on the failure path (EXIT trap)"
+}
+t11
 
 echo
 echo "ALL TAP-UPDATE SHELL TESTS PASSED (bash $BASH_MINOR)"
