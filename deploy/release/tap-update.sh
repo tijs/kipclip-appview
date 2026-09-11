@@ -22,6 +22,10 @@
 #     compare what is actually running against what was reviewed.
 #
 # Polled by tap-update.timer weekly (Sun 04:00 UTC). Each tick:
+#   0. Re-assert tap:tap ownership + owner-writability on the dedicated
+#      build tree ($BUILD_DIR) — a checkout that landed root-owned makes
+#      git refuse every tap-user op with "detected dubious ownership";
+#      git's safe.directory escape is NEVER used.
 #   1. Acquire the build lock (non-blocking — skip if a prior tick is
 #      still building).
 #   2. Resolve the desired ref: pin file > TAP_UPDATE_DEFAULT_REF (sha
@@ -82,7 +86,11 @@ TAP_DB="${TAP_UPDATE_TAP_DB_PATH:-/var/lib/tap/tap.db}"
 # kipclip's own appview checkout on the box holds the downstream patches.
 PATCH_DIR="${TAP_UPDATE_PATCH_DIR:-/var/lib/kipclip/source/deploy/tap/patches}"
 
-# tap user owns the build dir + go cache. Only the install step needs root.
+# tap user owns the build dir + go cache; only the install step needs root.
+# Ownership is NOT assumed from bootstrap: every tick re-asserts tap:tap
+# ownership + owner-writability on the dedicated build tree (a checkout
+# that landed root-owned makes git refuse every tap-user op with "detected
+# dubious ownership", and is unwritable by tap).
 TAP_USER="tap"
 TAP_GROUP="tap"
 
@@ -228,6 +236,27 @@ ensure_tap_db_group_write() {
   fi
 }
 
+# Make the DEDICATED build tree usable by the tap user, every tick, BEFORE
+# any `sudo -u tap git -C "$BUILD_DIR"` runs. Two independent failure modes
+# of a root-owned checkout:
+#   - git's own safety check: a repository not owned by the invoking user
+#     dies with `fatal: detected dubious ownership in repository at ...`
+#     (observed in production against /var/lib/tap/build/indigo) — and a
+#     matching `safe.directory` escape config is NOT an option (it would
+#     bless the path globally for every git user on the box);
+#   - even with that check disabled the tree would be unwritable by tap
+#     (fetch/reset/clean/apply all write into it).
+# Repair = chown -R tap:tap + chmod -R u+rwX, scoped EXACTLY to $BUILD_DIR:
+# chown -R operates in physical mode (symlinks are re-owned, never
+# followed) and u+rwX only ADDS owner read/write(+x on dirs) — it never
+# removes bits and never touches group/other, so this cannot weaken the
+# tree for anyone else. Idempotent: no-op cost on a correctly-owned tree.
+ensure_build_tree_owned() {
+  chown -R "${TAP_USER}:${TAP_GROUP}" "$BUILD_DIR"
+  chmod -R u+rwX "$BUILD_DIR"
+  sublog "build tree $BUILD_DIR is ${TAP_USER}:${TAP_GROUP}-owned and owner-writable"
+}
+
 main() {
   require_tool git
   require_tool go
@@ -247,9 +276,12 @@ main() {
     exit 1
   }
 
-  # Enforce the tap.db group-write layout BEFORE the lock/exits so the
-  # permission contract holds even when the tick short-circuits (lock
-  # contention, already-on).
+  # Enforce the TAP-side permission contracts BEFORE the lock/exits so they
+  # hold even when the tick short-circuits (lock contention, already-on):
+  #   1. build tree tap:tap-owned + owner-writable (git as tap refuses a
+  #      root-owned checkout: "detected dubious ownership"),
+  #   2. tap.db group-write layout.
+  ensure_build_tree_owned
   ensure_tap_db_group_write
 
   exec 9>"$LOCK_FILE"

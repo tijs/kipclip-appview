@@ -543,5 +543,273 @@ t9() {
 }
 t9
 
+# ---- main() repairs ownership of the DEDICATED build tree BEFORE any
+# ---- `sudo -u tap git -C $BUILD_DIR` operation. Real git refuses to run
+# ---- in a repository it does not own (`fatal: detected dubious ownership
+# ---- in repository at ...`) and a root-owned checkout is also unwritable
+# ---- by tap — the production tap-update failure that started this fix.
+# ---- The regression starts from a "root-owned" build tree. The harness
+# ---- runs as a non-root user (can't chown the fake tree for real), so the
+# ---- git stub models git's own safety gate: while the tree is marked
+# ---- root-owned it answers EVERY invocation with git's exact fatal error
+# ---- and exit 128, exactly like real git on a root-owned repo — no
+# ---- safe.directory/config weakening involved. The script must chown the
+# ---- tree to tap:tap (marker cleared by the chown stub) before any git
+# ---- op succeeds; the fake build dir is additionally seeded non-writable
+# ---- to prove the writability repair (chmod -R u+rwX) is emitted too.
+# ---- The immutable-sha pinning / no-moving-refs / patch-refusal guarantees
+# ---- from t5/t6 must all still hold on the repaired tree.
+t10() {
+  # Scenario A: one full tick from a root-owned build tree.
+  local TA log rc
+  TA="$(mktemp -d)"
+  TMP="$TA"
+  mkdir -p "$TA/build/.git" "$TA/bin" "$TA/patches" "$TA/stubs" "$TA/gitstate"
+  echo "dummy patch body" > "$TA/patches/0001-dummy.patch"
+  ( cd "$TA/gitstate" && : > gitlog )
+  # Simulated root-owned starting state. The real dir must stay writable —
+  # the fake `go build` stub writes tap-build-out into it as an unprivileged
+  # user — so the ownership contract lives in the git gate below (which
+  # models git's st_uid check, the only thing git itself consults); the
+  # chmod -R u+rwX writability repair is asserted via the permlog.
+  touch "$TA/gitstate/root-owned"
+
+  install_common_stubs "$TA"
+  # Overwrite the stateful git stub with an ownership-gated variant.
+  cat > "$TA/stubs/git" <<'STUB'
+#!/usr/bin/env bash
+GITSTATE="${GITSTATE:?}"
+# Model git's own safety gate exactly: while the build tree is still
+# root-owned, EVERY git invocation dies with git's real error + exit 128.
+if [[ -e "$GITSTATE/root-owned" ]]; then
+  echo "fatal: detected dubious ownership in repository at '${TAP_UPDATE_BUILD_DIR:-?}'" >&2
+  exit 128
+fi
+log_line() { printf '%s\n' "$*" >> "$GITSTATE/gitlog"; }
+sub=""
+last=""
+skip=0
+for arg in "$@"; do
+  if [[ $skip -eq 1 ]]; then skip=0; continue; fi
+  if [[ -z "$sub" ]]; then
+    case "$arg" in
+      git) continue;;
+      -C) skip=1; continue;;
+      *) sub="$arg"; continue;;
+    esac
+  fi
+  last="$arg"
+done
+case "$sub" in
+  "rev-parse")
+    case "$*" in
+      *"--is-shallow-repository"*) echo false;;
+      *"--verify"*) echo "${FIXED_SHA:?}";;
+      *"HEAD"*) echo "${FIXED_SHA:?}";;
+    esac
+    exit 0;;
+  "fetch")
+    log_line "fetch"
+    exit 0;;
+  "reset")
+    log_line "reset:$last"
+    rm -f "$GITSTATE/applied" "$GITSTATE/leftover"
+    exit 0;;
+  "clean")
+    log_line "clean"
+    rm -f "$GITSTATE/leftover"
+    exit 0;;
+  "checkout")
+    log_line "checkout:$last"
+    exit 0;;
+  "apply")
+    if [[ "$*" == *"--check"* ]]; then
+      log_line "apply-check"
+      if [[ -e "$GITSTATE/applied" ]]; then
+        echo "stub: patch already applied to worktree" >&2
+        exit 1
+      fi
+      if [[ -e "$GITSTATE/apply-check-fail" ]]; then
+        echo "stub: apply-check forced to fail (source drift)" >&2
+        exit 1
+      fi
+      exit 0
+    fi
+    log_line "apply"
+    touch "$GITSTATE/applied"
+    exit 0;;
+esac
+echo "git stub unhandled: $*" >&2
+exit 0
+STUB
+  # Ownership/writability repair stubs: log the exact chown/chmod lines and
+  # clear the root-owned gate ONLY when the DEDICATED build tree is chown'd
+  # (-R ... <dir> ending in /build) — the tap.db group-write chowns must
+  # never clear it. permlog lives in gitstate (GITSTATE is exported by
+  # run_tap; the test env's TMP is not).
+  cat > "$TA/stubs/chown" <<'STUB'
+#!/usr/bin/env bash
+echo "chown $*" >> "${GITSTATE:?}/permlog"
+if [[ "$1" == "-R" && "$*" == */build ]]; then
+  rm -f "$GITSTATE/root-owned"
+  touch "$GITSTATE/ownership-repaired"
+fi
+exit 0
+STUB
+  cat > "$TA/stubs/chmod" <<'STUB'
+#!/usr/bin/env bash
+# Apply for real (the fake `go build` output must become executable) AND
+# record the exact mode call for the permlog assertions. The stub dir is
+# first in PATH, so invoke the REAL chmod explicitly (@REAL_CHMOD@ is
+# substituted at stub-write time; an unqualified `chmod` here would recurse
+# into this stub until fork fails).
+@REAL_CHMOD@ "$@" || exit 1
+echo "chmod $*" >> "${GITSTATE:?}/permlog"
+exit 0
+STUB
+  # Resolve the real chmod from the HARNESS PATH (stubs not yet present)
+  # and substitute it into the stub body.
+  local REAL_CHMOD
+  REAL_CHMOD="$(command -v chmod)"
+  sed -i '' "s|@REAL_CHMOD@|$REAL_CHMOD|" "$TA/stubs/chmod"
+  chmod +x "$TA/stubs/git" "$TA/stubs/chown" "$TA/stubs/chmod"
+
+  log="$TA/run.log"
+  rc=0
+  run_tap "$log" || rc=$?
+
+  [[ "$rc" -eq 0 ]] || fail "tick from a root-owned build tree must repair ownership first and succeed, rc=$rc; log: $(cat "$log")"
+  grep -q "✅ TAP updated" "$log" || fail "full update should complete after ownership repair; log: $(cat "$log")"
+  grep -q "detected dubious ownership" "$log" &&
+    fail "no git op may run while the tree is still root-owned; log: $(cat "$log")"
+  [[ -e "$TA/gitstate/ownership-repaired" ]] ||
+    fail "script must chown the build tree to tap:tap before any git op (ownership-repaired marker missing); log: $(cat "$log")"
+  [[ ! -e "$TA/gitstate/root-owned" ]] ||
+    fail "root-owned gate must be cleared by the ownership repair; log: $(cat "$log")"
+  [[ "$(grep -c '^chown -R tap:tap '"$TA/build"'$' "$TA/gitstate/permlog")" -eq 1 ]] ||
+    fail "build tree must be chown -R'd to tap:tap: $(cat "$TA/gitstate/permlog")"
+  [[ "$(grep -c '^chmod -R u+rwX '"$TA/build"'$' "$TA/gitstate/permlog")" -eq 1 ]] ||
+    fail "build tree must be chmod -R u+rwX'd (owner-writable): $(cat "$TA/gitstate/permlog")"
+  # Ordering proof: the git gate hard-refuses every git op while root-owned,
+  # so the FIRST successful git op in the log can only exist AFTER the
+  # ownership repair — it must be the fetch, never a reset/apply.
+  [[ -s "$TA/gitstate/gitlog" ]] || fail "expected git ops after ownership repair; gitlog empty"
+  [[ "$(head -1 "$TA/gitstate/gitlog")" == "fetch" ]] ||
+    fail "first git op must come AFTER the ownership repair (fetch expected, got: $(head -1 "$TA/gitstate/gitlog")); gitlog: $(cat "$TA/gitstate/gitlog")"
+  # No-moving-refs / immutable-sha pinning on the repaired tree (t5 greps).
+  [[ "$(grep -c '^reset:'"$EXPECTED_DEFAULT_SHA"'$' "$TA/gitstate/gitlog")" -eq 1 ]] ||
+    fail "expected exactly 1 reset to the pinned base, gitlog: $(cat "$TA/gitstate/gitlog")"
+  [[ "$(grep -c '^reset:' "$TA/gitstate/gitlog")" -eq 1 ]] ||
+    fail "every reset must target the pinned sha, gitlog: $(cat "$TA/gitstate/gitlog")"
+  [[ "$(grep -c '^clean$' "$TA/gitstate/gitlog")" -eq 1 ]] ||
+    fail "expected 1 clean, gitlog: $(cat "$TA/gitstate/gitlog")"
+  [[ "$(grep -c '^apply-check$' "$TA/gitstate/gitlog")" -eq 1 ]] ||
+    fail "expected 1 apply --check (passing), gitlog: $(cat "$TA/gitstate/gitlog")"
+  [[ "$(grep -c '^checkout:' "$TA/gitstate/gitlog")" -eq 0 ]] ||
+    fail "the fixed script must reset/clean, not checkout; gitlog: $(cat "$TA/gitstate/gitlog")"
+  grep -q "origin" "$TA/gitstate/gitlog" && fail "moving refs must never reach git at all"
+  rm -rf "$TA"
+  ok "main(): root-owned build tree is chown'd to tap:tap before the first git op; full tick succeeds with pinned-sha reset/clean + patch apply, no moving refs"
+
+  # Scenario B: same root-owned start, but the patch does NOT apply on the
+  # (repaired) tree — the build must be REFUSED loudly, never silently
+  # unpatched, even after the ownership repair ran first.
+  local TB logB rcB
+  TB="$(mktemp -d)"
+  TMP="$TB"
+  mkdir -p "$TB/build/.git" "$TB/bin" "$TB/patches" "$TB/stubs" "$TB/gitstate"
+  echo "dummy patch body" > "$TB/patches/0001-dummy.patch"
+  ( cd "$TB/gitstate" && : > gitlog )
+  touch "$TB/gitstate/root-owned" "$TB/gitstate/apply-check-fail"
+
+  install_common_stubs "$TB"
+  # Overwrite with the ownership-gated git stub (refusal variant).
+  cat > "$TB/stubs/git" <<'STUB'
+#!/usr/bin/env bash
+GITSTATE="${GITSTATE:?}"
+if [[ -e "$GITSTATE/root-owned" ]]; then
+  echo "fatal: detected dubious ownership in repository at '${TAP_UPDATE_BUILD_DIR:-?}'" >&2
+  exit 128
+fi
+log_line() { printf '%s\n' "$*" >> "$GITSTATE/gitlog"; }
+sub=""
+last=""
+skip=0
+for arg in "$@"; do
+  if [[ $skip -eq 1 ]]; then skip=0; continue; fi
+  if [[ -z "$sub" ]]; then
+    case "$arg" in
+      git) continue;;
+      -C) skip=1; continue;;
+      *) sub="$arg"; continue;;
+    esac
+  fi
+  last="$arg"
+done
+case "$sub" in
+  "rev-parse")
+    case "$*" in
+      *"--is-shallow-repository"*) echo false;;
+      *"--verify"*) echo "${FIXED_SHA:?}";;
+      *"HEAD"*) echo "${FIXED_SHA:?}";;
+    esac
+    exit 0;;
+  "fetch")
+    log_line "fetch"
+    exit 0;;
+  "reset")
+    log_line "reset:$last"
+    exit 0;;
+  "clean")
+    log_line "clean"
+    exit 0;;
+  "checkout")
+    log_line "checkout:$last"
+    exit 0;;
+  "apply")
+    log_line "apply-check"
+    echo "stub: apply-check forced to fail (source drift)" >&2
+    exit 1;;
+esac
+echo "git stub unhandled: $*" >&2
+exit 0
+STUB
+  cat > "$TB/stubs/chown" <<'STUB'
+#!/usr/bin/env bash
+echo "chown $*" >> "${GITSTATE:?}/permlog"
+if [[ "$1" == "-R" && "$*" == */build ]]; then
+  rm -f "$GITSTATE/root-owned"
+  touch "$GITSTATE/ownership-repaired"
+fi
+exit 0
+STUB
+  cat > "$TB/stubs/chmod" <<'STUB'
+#!/usr/bin/env bash
+@REAL_CHMOD@ "$@" || exit 1
+echo "chmod $*" >> "${GITSTATE:?}/permlog"
+exit 0
+STUB
+  local REAL_CHMOD
+  REAL_CHMOD="$(command -v chmod)"
+  sed -i '' "s|@REAL_CHMOD@|$REAL_CHMOD|" "$TB/stubs/chmod"
+  chmod +x "$TB/stubs/git" "$TB/stubs/chown" "$TB/stubs/chmod"
+
+  logB="$TB/run.log"
+  rcB=0
+  run_tap "$logB" || rcB=$?
+
+  [[ "$rcB" -eq 1 ]] || fail "root-owned tree + non-applying patch must exit 1, rc=$rcB; log: $(cat "$logB")"
+  grep -q "does NOT apply cleanly" "$logB" ||
+    fail "patch refusal must still fire after ownership repair, log: $(cat "$logB")"
+  grep -q "Installing" "$logB" && fail "must never install when the patch does not apply"
+  [[ -e "$TB/gitstate/ownership-repaired" ]] ||
+    fail "ownership repair must run even when the patch later fails; log: $(cat "$logB")"
+  [[ "$(head -1 "$TB/gitstate/gitlog")" == "fetch" ]] ||
+    fail "ownership repair must precede git ops even on the refusal path; gitlog: $(cat "$TB/gitstate/gitlog")"
+  rm -rf "$TB"
+  ok "main(): root-owned tree repaired first, THEN patch refusal fires loudly (no unpatched build, no moving refs)"
+}
+t10
+
 echo
 echo "ALL TAP-UPDATE SHELL TESTS PASSED (bash $BASH_MINOR)"

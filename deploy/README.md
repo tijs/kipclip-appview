@@ -114,7 +114,12 @@ edits.
    `tap-update.service/timer` land on the box (bootstrap skips TAP units when
    `/opt/tap` doesn't exist yet). The first `tap-update.service` run also
    enforces the tap.db group-write layout; `tap.service` `UMask=0007` keeps
-   freshly created tap.db files group-writable.
+   freshly created tap.db files group-writable. `tap-update.service` also
+   re-asserts `tap:tap` ownership + owner-writability on
+   `/var/lib/tap/build/indigo` before every build, so a checkout that
+   accidentally landed root-owned self-heals on the next tick (git refuses
+   root-owned repos with "detected dubious ownership"; `safe.directory` is never
+   used).
 
 ## Backups
 

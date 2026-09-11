@@ -6,6 +6,16 @@ All notable changes to kipclip are documented in this file.
 
 ### Fixed
 
+- `tap-update.sh` re-asserts `tap:tap` ownership + owner-writability on the
+  dedicated build checkout (`$BUILD_DIR`) every tick, before any
+  `sudo -u tap git -C "$BUILD_DIR"` runs. A checkout that landed root-owned (the
+  production `/var/lib/tap/build/indigo` failure) makes git refuse every
+  tap-user op with `fatal: detected dubious ownership in repository at ...` and
+  is unwritable by tap. The fix is scoped exactly to the build tree
+  (`chown -R tap:tap` + `chmod -R u+rwX`, physical symlink mode, owner bits
+  only) — no `safe.directory` or global config weakening. New regression starts
+  from a root-owned fake build tree and proves repair-before-git while keeping
+  immutable-sha pinning, loud patch refusal, and no moving refs.
 - `check-env-perms.sh` compares octal modes numerically so real `stat -c %a`
   output (`660` for mode `0660`, no leading zero) matches the documented
   `tap:tap 0660` TAP DB contract — bootstrap no longer fails on a correctly
