@@ -2,6 +2,15 @@
 
 All notable changes to kipclip are documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- `tap-update.sh` stages downstream patches into a fresh private tap-readable
+  directory before `git apply`. This keeps the kipclip source checkout
+  inaccessible to the tap user while allowing the pinned build to apply the
+  reviewed patch set; staging is cleaned on both success and failure.
+
 ## [0.24.39] - 2026-09-11
 
 ### Fixed
