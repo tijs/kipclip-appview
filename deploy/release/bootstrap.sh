@@ -38,7 +38,7 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
-for tool in git systemctl caddy ln; do
+for tool in git systemctl caddy ln chgrp chmod; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     err "required tool not found on PATH: $tool"
     exit 1
@@ -111,6 +111,13 @@ install -m 0644 "${SOURCE_DIR}/deploy/release/kipclip-release.service" \
   /etc/systemd/system/kipclip-release.service
 install -m 0644 "${SOURCE_DIR}/deploy/release/kipclip-release.timer" \
   /etc/systemd/system/kipclip-release.timer
+# Daily mirror-drift alert (unit + timer): installed unconditionally — it is
+# a kipclip app unit, not TAP-dependent. Re-running bootstrap refreshes it,
+# so unit hardening changes in the repo reach the box via this path.
+install -m 0644 "${SOURCE_DIR}/deploy/systemd/kipclip-drift-alert.service" \
+  /etc/systemd/system/kipclip-drift-alert.service
+install -m 0644 "${SOURCE_DIR}/deploy/systemd/kipclip-drift-alert.timer" \
+  /etc/systemd/system/kipclip-drift-alert.timer
 
 # journald drop-in: bound on-disk log size. Restart journald so the new
 # limits apply immediately rather than at next boot.
@@ -120,10 +127,13 @@ install -m 0644 "${SOURCE_DIR}/deploy/systemd/journald-kipclip.conf" \
   /etc/systemd/journald.conf.d/kipclip.conf
 systemctl restart systemd-journald
 
-# TAP weekly auto-update timer. Only installed if /opt/tap exists
-# (boxes without TAP — e.g. staging — skip this).
+# TAP units. Only installed if /opt/tap exists (boxes without TAP — e.g.
+# staging — skip this). Re-run bootstrap after the one-off TAP install to
+# pick up tap.service + the timer(s).
 if [[ -d /opt/tap ]]; then
-  log "Installing TAP auto-update timer"
+  log "Installing TAP units"
+  install -m 0644 "${SOURCE_DIR}/deploy/systemd/tap.service" \
+    /etc/systemd/system/tap.service
   install -m 0644 "${SOURCE_DIR}/deploy/systemd/tap-update.service" \
     /etc/systemd/system/tap-update.service
   install -m 0644 "${SOURCE_DIR}/deploy/systemd/tap-update.timer" \
@@ -152,6 +162,24 @@ trap - EXIT
 
 systemctl daemon-reload
 systemctl enable --now kipclip-release.timer
+systemctl enable --now kipclip-drift-alert.timer
+
+# TAP DB group-write for drift-alert quarantine (idempotent). The daily
+# drift alert — kipclip user, SupplementaryGroups=tap — deletes quarantined
+# TAP repo rows in /var/lib/tap/tap.db, so the data dir must be tap:tap 2770
+# (setgid -> a recreated tap.db keeps group tap) and the db tap:tap 0660;
+# never any world bit. tap-update.sh re-asserts the same layout every weekly
+# tick (ensure_tap_db_group_write) and tap.service UMask=0007 covers files
+# created after this bootstrap run.
+if id -u tap >/dev/null 2>&1 && [[ -d /var/lib/tap ]]; then
+  log "Enforcing TAP DB group-write for drift-alert quarantine"
+  chgrp tap /var/lib/tap
+  chmod 2770 /var/lib/tap
+  if [[ -e /var/lib/tap/tap.db ]]; then
+    chgrp tap /var/lib/tap/tap.db
+    chmod 0660 /var/lib/tap/tap.db
+  fi
+fi
 
 # Enable TAP update timer (no-op if unit not installed — guard above).
 if [[ -f /etc/systemd/system/tap-update.timer ]]; then

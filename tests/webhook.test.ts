@@ -277,7 +277,63 @@ for (const tc of untrackedTests) {
   });
 }
 
-// --- Completion signal ---
+// --- Malformed-event log bounding (journal-injection + dedupe Set) ---
+
+Deno.test({
+  name:
+    "malformed-event warning is bounded: raw collection bucket never reaches the journal",
+  async fn() {
+    const originalWarn = console.warn;
+    const captured: string[] = [];
+    // Creator-controlled collection: newlines (journal injection) + a
+    // huge tail (unbounded dedupe-set key / log line).
+    const bucket = "evil\ninjected\r\nline" + "x".repeat(300);
+    const evt = {
+      id: 900,
+      type: "record",
+      record: {
+        live: true,
+        did: DID,
+        collection: bucket,
+        rkey: "r1",
+        action: "frobnicate", // unknown action -> logMalformedOnce
+      },
+    };
+    console.warn = (...args: unknown[]) => {
+      captured.push(args.map(String).join(" "));
+    };
+    try {
+      await processEvent(evt);
+      await processEvent(evt); // duplicate must dedupe to a single line
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    assertEquals(
+      captured.length,
+      1,
+      "duplicate malformed events log exactly once",
+    );
+    const line = captured[0];
+    assertEquals(
+      line.includes("\n"),
+      false,
+      "no newline injection into the journal",
+    );
+    assertEquals(line.includes("\r"), false);
+    assertEquals(
+      line.includes(bucket),
+      false,
+      "raw collection bucket must not appear",
+    );
+    assertEquals(line.includes(DID), false, "full DID must not appear");
+    assertEquals(
+      line.length < 300,
+      true,
+      `log line must stay bounded, got ${line.length}`,
+    );
+  },
+});
 
 Deno.test({
   name:

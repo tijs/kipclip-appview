@@ -376,5 +376,131 @@ t6() {
 }
 t6
 
+# ---- apply_patches: the patch fingerprint must be staged via mktemp (a
+# ---- predictable /tmp/tap-patches.sha256 written as ROOT is a symlink-
+# ---- clobber primitive), land in TAP_BIN_DIR/.patches.sha256.new with the
+# ---- exact sorted sha256sum content, and leave no temp litter behind ----
+t7() {
+  local TMP
+  TMP="$(mktemp -d)"
+  mkdir -p "$TMP/patches" "$TMP/bin" "$TMP/stubs" "$TMP/gitstate" "$TMP/tmpdir"
+  printf 'this is a fingerprinted patch body\n' > "$TMP/patches/0001-a.patch"
+  # Attack primitive: a pre-existing predictable /tmp/tap-patches.sha256
+  # symlink pointing at a root-writable victim file. A `>` redirect would
+  # follow it and clobber the victim; mktemp staging must not.
+  local victim
+  victim="$TMP/victim.txt"
+  echo "PRECIOUS" > "$victim"
+  ln -s "$victim" /tmp/tap-patches.sha256
+  install_stateful_git_stub "$TMP"
+  install_common_stubs "$TMP"
+
+  local log rc
+  log="$TMP/run.log"
+  rc=0
+  GITSTATE="$TMP/gitstate" \
+  FIXED_SHA="$EXPECTED_DEFAULT_SHA" \
+  TAP_UPDATE_BUILD_DIR="$TMP/build" \
+  TAP_UPDATE_TAP_BIN_DIR="$TMP/bin" \
+  TAP_UPDATE_PATCH_DIR="$TMP/patches" \
+  TMPDIR="$TMP/tmpdir" \
+  TAP_USER=tap TAP_GROUP=tap \
+  PATH="$TMP/stubs:$PATH" \
+  bash -c '
+    set -euo pipefail
+    source "$1"
+    apply_patches
+  ' _ "$defs" > "$log" 2>&1 || rc=$?
+
+  [[ "$rc" -eq 0 ]] || fail "apply_patches should succeed, rc=$rc; log: $(cat "$log")"
+  local expected
+  expected="$( ( cd "$TMP/patches" && sha256sum ./*.patch ) | sort -k2 )"
+  [[ -f "$TMP/bin/.patches.sha256.new" ]] ||
+    fail ".patches.sha256.new missing; log: $(cat "$log")"
+  [[ "$(cat "$TMP/bin/.patches.sha256.new")" == "$expected" ]] ||
+    fail ".patches.sha256.new fingerprint mismatch: got '$(cat "$TMP/bin/.patches.sha256.new")' want '$expected'"
+  [[ "$(cat "$victim")" != "PRECIOUS" ]] &&
+    fail "predictable /tmp/tap-patches.sha256 symlink was FOLLOWED (victim clobbered)"
+  # The planted symlink must still be the symlink — the fixed script never
+  # opens/moves the predictable path; mktemp stages elsewhere. (The old
+  # script's `>` followed it AND its `mv` consumed the symlink itself.)
+  [[ "$(readlink /tmp/tap-patches.sha256)" == "$victim" ]] ||
+    fail "predictable /tmp/tap-patches.sha256 was consumed by the script"
+  rm -f /tmp/tap-patches.sha256
+  [[ -z "$(ls -A "$TMP/tmpdir" 2>/dev/null)" ]] ||
+    fail "mktemp staging file must be consumed/cleaned; leftover: $(ls -A "$TMP/tmpdir")"
+  rm -rf "$TMP"
+  ok "apply_patches: fingerprint staged via mktemp (no predictable /tmp file), .new lands correctly, temp cleaned"
+}
+t7
+
+# ---- tap.db group-write: drift-alert (kipclip user, SupplementaryGroups=tap)
+# ---- deletes quarantined TAP repo rows in tap.db. tap-update must enforce
+# ---- tap:tap 2770 on the data dir (setgid -> a recreated tap.db keeps group
+# ---- tap) and 0660 on the db FILE — never any world bit — idempotently ----
+t8() {
+  local TMP
+  TMP="$(mktemp -d)"
+  mkdir -p "$TMP/stubs" "$TMP/tap"
+  echo "SQLITE" > "$TMP/tap/tap.db"
+  install_common_stubs "$TMP"
+
+  cat > "$TMP/stubs/chmod" <<'STUB'
+#!/usr/bin/env bash
+echo "chmod $*" >> "${TMP:?}/permlog"
+exit 0
+STUB
+  cat > "$TMP/stubs/chown" <<'STUB'
+#!/usr/bin/env bash
+echo "chown $*" >> "${TMP:?}/permlog"
+exit 0
+STUB
+  chmod +x "$TMP/stubs/chmod" "$TMP/stubs/chown"
+
+  run_ensure() {  # $1 = TAP_UPDATE_TAP_DB_PATH
+    local rc=0
+    TMP="$TMP" \
+    TAP_UPDATE_TAP_DB_PATH="$1" \
+    PATH="$TMP/stubs:$PATH" \
+    bash -c '
+      set -euo pipefail
+      source "$1"
+      ensure_tap_db_group_write
+      echo "rc=$?"
+    ' _ "$defs" >/dev/null 2>&1 || rc=$?
+    return "$rc"
+  }
+
+  run_ensure "$TMP/tap/tap.db" || fail "group-write enforcement should succeed"
+  [[ "$(grep -c '^chown tap:tap '"$TMP/tap"'$' "$TMP/permlog")" -eq 1 ]] ||
+    fail "data dir must be chown'd to tap:tap: $(cat "$TMP/permlog")"
+  [[ "$(grep -c '^chown tap:tap '"$TMP/tap/tap.db"'$' "$TMP/permlog")" -eq 1 ]] ||
+    fail "tap.db must be chown'd to tap:tap: $(cat "$TMP/permlog")"
+  [[ "$(grep -c '^chmod 2770 '"$TMP/tap"'$' "$TMP/permlog")" -eq 1 ]] ||
+    fail "data dir must be chmod 2770 (setgid + group rwx, no world): $(cat "$TMP/permlog")"
+  [[ "$(grep -c '^chmod 0660 '"$TMP/tap/tap.db"'$' "$TMP/permlog")" -eq 1 ]] ||
+    fail "tap.db must be chmod 0660 (group rw, no world): $(cat "$TMP/permlog")"
+  grep -qE '^chmod (0666|0777|1777|0644|0755|0664) ' "$TMP/permlog" &&
+    fail "forbidden world-visible mode used: $(cat "$TMP/permlog")"
+  grep -qE '^chown (root|nobody|daemon)' "$TMP/permlog" &&
+    fail "ownership must stay tap:tap: $(cat "$TMP/permlog")"
+
+  # Idempotent: a second pass re-asserts the same modes without error.
+  run_ensure "$TMP/tap/tap.db" || fail "second enforcement pass should succeed"
+  [[ "$(grep -c '^chmod 2770 '"$TMP/tap"'$' "$TMP/permlog")" -eq 2 ]] ||
+    fail "enforcement must be idempotent (dir chmod 2770 twice): $(cat "$TMP/permlog")"
+
+  # Missing data dir (fresh box before TAP first run): skip, exit 0, no chmod/chown.
+  local before
+  before="$(grep -c '^chmod ' "$TMP/permlog")"
+  run_ensure "$TMP/does-not-exist/tap.db" || fail "missing dir must skip cleanly"
+  [[ "$(grep -c '^chmod ' "$TMP/permlog")" == "$before" ]] ||
+    fail "missing dir must not chmod anything: $(cat "$TMP/permlog")"
+
+  rm -rf "$TMP"
+  ok "ensure_tap_db_group_write: tap:tap 2770 dir / 0660 db, never world-writable, idempotent, missing-dir skip"
+}
+t8
+
 echo
 echo "ALL TAP-UPDATE SHELL TESTS PASSED (bash $BASH_MINOR)"

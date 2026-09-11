@@ -24,7 +24,8 @@
  *
  *   0  no drift, no PDS errors
  *   1  drift detected (recoverable rows present)
- *   2  audit failed entirely (e.g. DB unavailable)
+ *   2  audit failed entirely (e.g. DB unavailable, or the TAP quarantine
+ *      deletion could not be verified — read-back not confirmed)
  *   3  PDS errors present (classified; nothing repaired automatically)
  *
  * Exit 1 lets operators chain the alert with `OnFailure=` or a watchdog
@@ -46,8 +47,9 @@ import {
   auditTapEnrollments,
 } from "../lib/forwarding-audit.ts";
 import { captureMessage, Sentry } from "../lib/sentry.ts";
+import { resolveDriftExit, runTapQuarantine } from "../lib/drift-quarantine.ts";
 import { listMissingRepos } from "../lib/missing-repo.ts";
-import { deleteTapRepoRows, type TapDeleteResult } from "../lib/tap-delete.ts";
+import { deleteTapRepoRows } from "../lib/tap-delete.ts";
 import {
   listQuarantineCandidates,
   listTapRepoStates,
@@ -84,38 +86,14 @@ function summarizeSkipped(rows: DriftRow[]): Array<Record<string, unknown>> {
  * The deletion goes through deleteTapRepoRows, which reads back the exact
  * target after the DELETE: a quarantine that did not actually remove a row
  * is reported as a failure and left for retry, never logged as success.
+ * Deletion FAILURE is surfaced as an audit failure (exit 2) by main() —
+ * never a clean exit — with bounded diagnostics.
  */
-async function quarantineMissingRepos(): Promise<number> {
-  const candidates = await listQuarantineCandidates();
-  if (candidates.length === 0) return 0;
-
-  const dids = candidates.map((r) => r.did);
-  let deleted: TapDeleteResult;
-  try {
-    deleted = await deleteTapRepoRows(dids);
-  } catch (err) {
-    console.error(
-      `[drift-alert] TAP quarantine FAILED (read-back not confirmed); leaving ${dids.length} confirmed-missing repos for retry: ${err}`,
-    );
-    return 0;
-  }
-  // Quarantine is complete only for DIDs whose TAP row is verified gone.
-  for (const c of candidates) {
-    const wasRemoved = deleted.removed.includes(c.did);
-    console.log(
-      `[drift-alert] quarantined (TAP enrollment ${
-        wasRemoved ? "removed + verified absent" : "was already absent"
-      }, local state kept): ${c.did} (first seen ${
-        new Date(c.firstSeenAt).toISOString()
-      }, ${c.failureCount} confirmations)`,
-    );
-  }
-  if (deleted.alreadyAbsent.length > 0) {
-    console.log(
-      `[drift-alert] TAP quarantine: ${deleted.alreadyAbsent.length} candidate(s) had no TAP row (idempotent no-op)`,
-    );
-  }
-  return dids.length;
+async function quarantineMissingRepos() {
+  return runTapQuarantine(
+    await listQuarantineCandidates(),
+    (dids) => deleteTapRepoRows(dids),
+  );
 }
 
 async function main() {
@@ -191,14 +169,32 @@ async function main() {
     }
   }
 
-  const quarantined = await quarantineMissingRepos();
+  const quarantine = await quarantineMissingRepos();
   const missingAfter = await listMissingRepos();
   const newlyConfirmed = missingAfter.filter(
     (r) => !missingBeforeSet.has(r.did),
   ).length;
+  if (quarantine.kind === "failed") {
+    // Bounded diagnostics + Sentry (counts + first-line reason, never full
+    // DID lists or payloads) — the destructive step could not be verified,
+    // so this run is an audit failure (exit 2), never a clean exit.
+    console.error(
+      `[drift-alert] TAP quarantine FAILED: ${quarantine.reason}`,
+    );
+    captureMessage(
+      "drift-alert TAP quarantine FAILED (read-back not confirmed)",
+      "error",
+      {
+        candidates: quarantine.candidateCount,
+        error: quarantine.reason,
+      },
+    );
+  }
   console.log(
     `[drift-alert] missing_repos=${missingAfter.length} ` +
-      `(checked ${missingBefore.length}, newly confirmed ${newlyConfirmed}, quarantined ${quarantined})`,
+      `(checked ${missingBefore.length}, newly confirmed ${newlyConfirmed}, quarantined ${
+        quarantine.kind === "done" ? quarantine.quarantined : 0
+      })`,
   );
 
   const states = await listTapRepoStates();
@@ -346,11 +342,21 @@ async function main() {
   }
 
   await Sentry.flush(2000).catch(() => {});
-  // exit 3 = classified PDS errors present (non-clean, nothing repaired
-  // automatically). Reported separately from drift so operators can
-  // distinguish "mirror behind" (1) from "PDS unreachable/absent" (3).
-  if (errors.length > 0) Deno.exit(3);
-  Deno.exit(driftDetected ? 1 : 0);
+  // Exit-code policy (see lib/drift-quarantine.ts resolveDriftExit):
+  //   - a FAILED quarantine (destructive delete not verified) -> 2, which
+  //     takes precedence over drift (1) and PDS errors (3) — an unverified
+  //     destructive step is the most severe signal;
+  //   - exit 3 = classified PDS errors present (non-clean, nothing repaired
+  //     automatically). Reported separately from drift so operators can
+  //     distinguish "mirror behind" (1) from "PDS unreachable/absent" (3);
+  //   - exit 1 = recoverable drift; exit 0 = clean.
+  Deno.exit(
+    resolveDriftExit({
+      quarantineFailed: quarantine.kind === "failed",
+      pdsErrorCount: errors.length,
+      driftDetected,
+    }),
+  );
 }
 
 await main();

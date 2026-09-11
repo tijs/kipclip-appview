@@ -73,6 +73,12 @@ TAP_PATCHES_SHA_FILE="${TAP_BIN_DIR}/.patches.sha256"
 TAP_BINARY_SHA_FILE="${TAP_BIN_DIR}/.binary.sha256"
 LOCK_FILE="${TAP_UPDATE_LOCK_FILE:-/var/lib/tap/.tap-update-lock}"
 
+# TAP's own SQLite db. drift-alert (kipclip user via SupplementaryGroups=tap)
+# deletes quarantined TAP repo rows directly in this file, so tap-update —
+# the root-owned TAP maintenance flow — enforces the group-write layout on it
+# every tick (see ensure_tap_db_group_write). Env-overridable for tests.
+TAP_DB="${TAP_UPDATE_TAP_DB_PATH:-/var/lib/tap/tap.db}"
+
 # kipclip's own appview checkout on the box holds the downstream patches.
 PATCH_DIR="${TAP_UPDATE_PATCH_DIR:-/var/lib/kipclip/source/deploy/tap/patches}"
 
@@ -167,10 +173,53 @@ apply_patches() {
     fi
     sudo -u "$TAP_USER" git -C "$BUILD_DIR" apply "$p"
   done
-  # Record the patch set fingerprint for .patches.sha256.
-  ( cd "$PATCH_DIR" && sha256sum ./*.patch ) | sort -k2 > /tmp/tap-patches.sha256
-  mv /tmp/tap-patches.sha256 "${TAP_BIN_DIR}/.patches.sha256.new"
+  # Record the patch set fingerprint for .patches.sha256. Stage it through a
+  # root-owned mktemp file and atomic-rename into place — a PREDICTABLE
+  # /tmp/tap-patches.sha256 written via `>` as root is a symlink-clobber
+  # primitive (a local attacker could pre-create the path pointing at any
+  # root-writable victim). Cleanup: the temp name is gone after the mv; a
+  # RETURN trap drops it if the pipeline fails first. FP_TMP is script-global
+  # because bash's RETURN trap fires AFTER the function frame (and its
+  # locals) is popped — a local would be "unbound variable" under set -u.
+  FP_TMP="$(mktemp "${TMPDIR:-/tmp}/tap-patches.XXXXXX")" || {
+    err "mktemp failed — cannot stage patch fingerprint"
+    exit 1
+  }
+  trap 'rm -f -- "$FP_TMP"' RETURN
+  ( cd "$PATCH_DIR" && sha256sum ./*.patch ) | sort -k2 > "$FP_TMP"
+  mv "$FP_TMP" "${TAP_BIN_DIR}/.patches.sha256.new"
   chown "${TAP_USER}:${TAP_GROUP}" "${TAP_BIN_DIR}/.patches.sha256.new"
+}
+
+# Staging path for the patch fingerprint (see apply_patches). Script-global
+# so the RETURN trap can reference it after the function frame is popped.
+FP_TMP=""
+
+# drift-alert (kipclip user, SupplementaryGroups=tap) deletes quarantined TAP
+# repo rows directly in tap.db. Enforce the group-write layout idempotently
+# every tick — never any world bit:
+#   dir  /var/lib/tap     tap:tap 2770 (setgid: a recreated tap.db still
+#                                       lands in group tap)
+#   file /var/lib/tap/tap.db  tap:tap 0660 (group rw, no world)
+# tap.service also runs with UMask=0007 so freshly created tap.db files start
+# 0660; this step repairs any pre-existing db (e.g. the current 0644 layout)
+# and re-asserts the dir. Missing data dir (fresh box before TAP first run):
+# skip cleanly.
+ensure_tap_db_group_write() {
+  local db_dir
+  db_dir="$(dirname "$TAP_DB")"
+  if [[ ! -d "$db_dir" ]]; then
+    log "TAP data dir $db_dir missing — skipping tap.db group-write step"
+    return 0
+  fi
+  chown "${TAP_USER}:${TAP_GROUP}" "$db_dir"
+  chmod 2770 "$db_dir"
+  if [[ -e "$TAP_DB" ]]; then
+    chown "${TAP_USER}:${TAP_GROUP}" "$TAP_DB"
+    chmod 0660 "$TAP_DB"
+  else
+    sublog "tap.db not created yet (first tap.service run creates it; setgid dir + UMask=0007 keep group tap)"
+  fi
 }
 
 main() {
@@ -181,6 +230,8 @@ main() {
   require_tool systemctl
   require_tool install
   require_tool sha256sum
+  require_tool chown
+  require_tool chmod
   [[ -d "$BUILD_DIR/.git" ]] || {
     err "indigo clone missing at $BUILD_DIR — bootstrap TAP first"
     exit 1
@@ -189,6 +240,11 @@ main() {
     err "tap install dir missing at $TAP_BIN_DIR"
     exit 1
   }
+
+  # Enforce the tap.db group-write layout BEFORE the lock/exits so the
+  # permission contract holds even when the tick short-circuits (lock
+  # contention, already-on).
+  ensure_tap_db_group_write
 
   exec 9>"$LOCK_FILE"
   if ! flock -n 9; then

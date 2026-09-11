@@ -11,6 +11,11 @@ EnvironmentFile=/etc/tap/env
 ExecStart=/opt/tap/tap run
 Restart=always
 RestartSec=5s
+# UMask=0007: a freshly created /var/lib/tap/tap.db lands as tap:tap 0660
+# (group-writable, never world) so drift-alert — kipclip user via
+# SupplementaryGroups=tap — can delete quarantined TAP repo rows without
+# broadening access. tap-update.sh re-asserts the layout weekly.
+UMask=0007
 
 # Hardening
 NoNewPrivileges=true

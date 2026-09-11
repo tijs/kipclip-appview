@@ -80,7 +80,12 @@ for t in kipclip-release.timer tap-update.timer deno-update.timer kipclip-drift-
 done
 
 echo "== journal =="
-oldest="$(journalctl --no-pager -o short-precise --reverse -n 1 2>/dev/null | head -1)"
+# Oldest-entry/retention-horizon probe: read the FIRST chronological journal
+# line. `--reverse -n 1` returns the NEWEST entry — the same as journal_newest
+# — so the oldest and newest fields would be indistinguishable. head -1 closes
+# the pipe after the first formatted entry, so this costs ~one entry even on a
+# 30-day journal, and an empty journal yields an empty field (no error).
+oldest="$(journalctl --no-pager -o short-precise 2>/dev/null | head -1)"
 newest="$(journalctl --no-pager -o short-precise -n 1 2>/dev/null | head -1)"
 usage="$(journalctl --disk-usage --no-pager 2>/dev/null | head -1)"
 echo "journal_oldest=${oldest:0:33}"

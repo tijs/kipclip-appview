@@ -231,12 +231,12 @@ exactly the signal you want, not a crash. The weekly housekeeping report MUST
 read `ExecMainStatus` and interpret it, never report `Result=success` as "no
 drift":
 
-| ExecMainStatus (drift-alert) | Meaning                                               |
-| ---------------------------- | ----------------------------------------------------- |
-| 0                            | clean run                                             |
-| 1                            | recoverable drift detected                            |
-| 2                            | audit failed entirely                                 |
-| 3                            | classified PDS errors present (nothing auto-repaired) |
+| ExecMainStatus (drift-alert) | Meaning                                                                   |
+| ---------------------------- | ------------------------------------------------------------------------- |
+| 0                            | clean run                                                                 |
+| 1                            | recoverable drift detected                                                |
+| 2                            | audit failed (e.g. DB unavailable, or TAP quarantine delete not verified) |
+| 3                            | classified PDS errors present (nothing auto-repaired)                     |
 
 Run the canonical read-only report on the box:
 

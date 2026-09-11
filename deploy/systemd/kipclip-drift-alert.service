@@ -7,25 +7,35 @@ Wants=network-online.target
 Type=oneshot
 User=kipclip
 Group=kipclip
+# kipclip needs GROUP access to tap.db (DAC layer) to delete quarantined TAP
+# repo rows: tap.service creates tap.db as tap:tap 0660 (UMask=0007), and
+# this unit adds the kipclip user to the tap group at runtime.
+SupplementaryGroups=tap
 WorkingDirectory=/var/lib/kipclip/current
 EnvironmentFile=/etc/kipclip/env
 ExecStart=/opt/deno/bin/deno run --allow-net --allow-env --allow-read --allow-write --allow-sys --allow-ffi scripts/drift-alert.ts --quiet
 
-# Hardening — script only reads tracked_dids + bookmarks and POSTs to PDS+Sentry.
+# Hardening — the script reads tracked_dids + bookmarks, POSTs to PDS+Sentry,
+# and for confirmed-missing repos deletes ONLY their TAP repo row in tap.db
+# (/var/lib/tap). ReadWritePaths grants exactly those two write roots to the
+# sandbox; extra users/groups is limited to the tap group via
+# SupplementaryGroups (never root, never world-writable).
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/var/lib/kipclip
+ReadWritePaths=/var/lib/kipclip /var/lib/tap
 
 # Drift / PDS errors are signals, not successes. Since v0.24.38:
 #   exit 0 = clean run
 #   exit 1 = recoverable drift detected (must be REPORTED as non-clean)
-#   exit 2 = audit failed entirely
+#   exit 2 = audit failed entirely (e.g. DB unavailable, or the TAP
+#            quarantine deletion could not be verified)
 #   exit 3 = classified PDS errors present (nothing auto-repaired)
-# Only exit 0 counts as a successful clean run — drift (1) and PDS errors (3)
-# must surface in `systemctl status`/`Result=failed` + ExecMainStatus, and
-# the weekly report reads ExecMainStatus, never Result alone.
+# Only exit 0 counts as a successful clean run — drift (1), audit failure (2)
+# and PDS errors (3) must surface in `systemctl status`/`Result=failed` +
+# ExecMainStatus, and the weekly report reads ExecMainStatus, never Result
+# alone.
 SuccessExitStatus=0
 
 [Install]

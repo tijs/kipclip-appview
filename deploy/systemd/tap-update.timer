@@ -1,8 +1,11 @@
 [Unit]
-Description=TAP weekly auto-update (Sun 04:00 UTC)
+Description=TAP weekly auto-update (immutable pinned base sha + reviewed kipclip downstream patches)
 
 [Timer]
-# Weekly cadence — TAP upstream tracks main with no release rhythm.
+# Weekly cadence — TAP is built from an immutable reviewed base sha plus the
+# kipclip-owned downstream patch set (deploy/tap/README.md): upstream has no
+# release rhythm, and origin/main is intentionally never tracked (pinning a
+# moving branch is how the retry-storm build silently changed under us).
 # Sunday 04:00 UTC is low-traffic for kipclip and gives a quiet window
 # for the rebuild + restart + health-check cycle.
 OnCalendar=Sun *-*-* 04:00:00 UTC

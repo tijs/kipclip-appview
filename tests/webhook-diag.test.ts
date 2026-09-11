@@ -14,6 +14,7 @@ import {
   classifyMalformedEvent,
   diagnoseEvent,
   didSuffix,
+  sanitizeLogToken,
   summarizeEvent,
   type WebhookEvtShape,
 } from "../lib/webhook-diag.ts";
@@ -180,4 +181,67 @@ Deno.test("summarizeEvent redacts when the DID is invalid or absent", () => {
   assertStringIncludes(short, "class=invalid-did");
   assertStringIncludes(short, "did=invalid");
   assertEquals(short.includes("did:plc:xy"), false);
+});
+
+Deno.test("sanitizeLogToken strips control chars/newlines and bounds length", () => {
+  // Journal injection: a bucket with a newline must become a single token.
+  const evil = "evil\nline2\r\nESC\u001b[31m";
+  const safe = sanitizeLogToken(evil);
+  assertEquals(safe.includes("\n"), false);
+  assertEquals(safe.includes("\r"), false);
+  assertEquals(safe.includes("\u001b"), false);
+  assertStringIncludes(safe, "evil");
+
+  // Unbounded creator-controlled text is truncated.
+  const long = "c".repeat(5000);
+  assertEquals(sanitizeLogToken(long).length <= 64, true);
+
+  // Default-length overview: a normal collection is unchanged.
+  assertEquals(
+    sanitizeLogToken("community.lexicon.bookmarks.bookmark"),
+    "community.lexicon.bookmarks.bookmark",
+  );
+  // Bounded key: two distinct-but-identically-truncated buckets dedupe.
+  assertEquals(sanitizeLogToken(long), sanitizeLogToken(long + "zzzz"));
+  // Empty / whitespace-only input collapses to a non-blank token so a
+  // dedupe-set key can never be empty.
+  assertEquals(sanitizeLogToken(""), "?");
+  assertEquals(sanitizeLogToken("   "), "?");
+  assertEquals(sanitizeLogToken("\n\n\n"), "?");
+});
+
+Deno.test("hostile creator-controlled collection stays bounded in diagnoseEvent/summarizeEvent", () => {
+  // A dot-less collection bypassed the old namespace-redaction (split(".")[0]
+  // was the whole raw string) and carried newlines + unbounded length into
+  // the journal via summarizeEvent.
+  const hostile = "evil\ninjected\r\nline" + "y".repeat(500);
+  const evt = {
+    id: 77,
+    type: "record",
+    record: {
+      did: FULL_DID,
+      collection: hostile,
+      rkey: "r",
+      action: "create",
+      cid: "bafy",
+      record: {},
+    },
+  };
+  const diag = diagnoseEvent(evt);
+  assertEquals(diag.collection?.includes("\n"), false);
+  assertEquals(diag.collection?.includes("\r"), false);
+  assertEquals((diag.collection ?? "").length <= 66, true); // 2*32 + "."
+  const line = summarizeEvent(evt);
+  assertEquals(line.includes("\n"), false, "summary must stay one line");
+  assertEquals(line.includes("\r"), false);
+  assertEquals(
+    line.includes(hostile),
+    false,
+    "raw collection must never appear",
+  );
+  assertEquals(
+    line.length < 200,
+    true,
+    `summary must stay bounded, got ${line.length}`,
+  );
 });

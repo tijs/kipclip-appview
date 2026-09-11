@@ -118,9 +118,11 @@ exit 0
 STUB
   cat > "$TMP/stubs/journalctl" <<'STUB'
 #!/usr/bin/env bash
+# $JOURNAL_LINES = chronological entries, one per line (empty = empty journal).
 case "$*" in
   *--disk-usage*) echo "Journals take up 1.2G on disk.";;
-  *) echo "Sep 01 04:00:00 host systemd[1]: Started.";;
+  *"-n 1"*) printf '%s\n' "$JOURNAL_LINES" | tail -1;;   # newest entry
+  *) printf '%s\n' "$JOURNAL_LINES";;                     # chronological: first line = oldest
 esac
 exit 0
 STUB
@@ -158,6 +160,90 @@ STUB
   ok "box-report end-to-end: 'infinity' -> '-', numeric values compute, no arithmetic errors"
 }
 f5
+
+# ---- journal oldest/newest: the oldest-entry/retention-horizon probe must
+# ---- read the FIRST chronological journal line, NOT `--reverse -n 1` (which
+# ---- returns the newest entry — same as journal_newest). Distinguishable
+# ---- oldest vs newest, plus empty-journal safety.
+f6() {
+  local TMP log err
+  TMP="$(mktemp -d)"
+  mkdir -p "$TMP/stubs"
+  cat > "$TMP/stubs/systemctl" <<'STUB'
+#!/usr/bin/env bash
+case "$1" in
+  show)
+    shift
+    unit="$1"; shift
+    prop=""
+    while [[ $# -gt 0 ]]; do
+      if [[ "$1" == "-p" ]]; then prop="$2"; shift 2; else shift; fi
+    done
+    case "$prop" in
+      ActiveState) echo "active";;
+      Result) echo "success";;
+      ExecMainStatus) echo "0";;
+      ExecMainStartTimestamp) echo "2026-09-01 04:00:00 UTC";;
+      NextElapseUSecMonotonic) echo "$MONO_VALUE";;
+      NextElapseUSecRealtime) echo "2026-09-08 04:00:00 UTC";;
+      LastTriggerUSec) echo "2026-09-01 04:00:00 UTC";;
+      *) echo "";;
+    esac
+    ;;
+  is-active) echo "active";;
+  cat) echo "SystemMaxUse=1G;MaxRetentionSec=1month;MaxFileSec=1week";;
+esac
+exit 0
+STUB
+  cat > "$TMP/stubs/journalctl" <<'STUB'
+#!/usr/bin/env bash
+# $JOURNAL_LINES = chronological entries; empty = empty journal.
+case "$*" in
+  *--disk-usage*) echo "Journals take up 1.2G on disk.";;
+  *"-n 1"*) printf '%s\n' "$JOURNAL_LINES" | tail -1;;
+  *) printf '%s\n' "$JOURNAL_LINES";;
+esac
+exit 0
+STUB
+  cat > "$TMP/stubs/awk" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+  *"/proc/uptime"*) echo "12345670000"; exit 0;;
+esac
+exec /usr/bin/awk "$@"
+STUB
+  cat > "$TMP/stubs/sha256sum" <<'STUB'
+#!/usr/bin/env bash
+for f in "$@"; do
+  echo "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  $f"
+done
+STUB
+  for s in "$TMP"/stubs/*; do chmod +x "$s"; done
+
+  log="$TMP/report.log"
+  err="$TMP/report.err"
+  MONO_VALUE=1234567890123 \
+  JOURNAL_LINES=$'Sep 01 04:00:15 host cron[111]: first-entry\nSep 08 04:00:30 host cron[222]: second-entry' \
+    PATH="$TMP/stubs:$PATH" bash "$SCRIPT" > "$log" 2> "$err"
+  grep -q "journal_oldest=Sep 01" "$log" ||
+    fail "journal_oldest must be the FIRST (oldest) journal entry: $(grep journal_ "$log")"
+  grep -q "journal_newest=Sep 08" "$log" ||
+    fail "journal_newest must be the LAST entry: $(grep journal_ "$log")"
+  [[ "$(grep '^journal_oldest=' "$log")" != "$(grep '^journal_newest=' "$log")" ]] ||
+    fail "journal_oldest and journal_newest must be distinguishable: $(grep journal_ "$log")"
+
+  # Empty journal: no entries, no crash, both fields empty and greppable.
+  JOURNAL_LINES="" MONO_VALUE=1234567890123 \
+    PATH="$TMP/stubs:$PATH" bash "$SCRIPT" > "$log" 2> "$err"
+  grep -q "^journal_oldest=$" "$log" || fail "empty journal must yield empty journal_oldest: $(grep journal_ "$log")"
+  grep -q "^journal_newest=$" "$log" || fail "empty journal must yield empty journal_newest: $(grep journal_ "$log")"
+  grep -qi "operand expected\|syntax error" "$err" &&
+    fail "empty-journal run emitted an error: $(cat "$err")"
+
+  rm -rf "$TMP"
+  ok "box-report journal: oldest = first entry, newest = last entry (distinguishable), empty journal safe"
+}
+f6
 
 echo
 echo "ALL BOX-REPORT SHELL TESTS PASSED"

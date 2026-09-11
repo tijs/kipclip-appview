@@ -18,7 +18,11 @@
 
 import { captureError } from "../lib/sentry.ts";
 import { db } from "../lib/db.ts";
-import { classifyMalformedEvent, summarizeEvent } from "../lib/webhook-diag.ts";
+import {
+  classifyMalformedEvent,
+  sanitizeLogToken,
+  summarizeEvent,
+} from "../lib/webhook-diag.ts";
 import {
   deleteAnnotation,
   deleteBookmark,
@@ -416,12 +420,17 @@ function stringField(
 }
 
 // Per-process dedupe so a misbehaving relay can't spam the journal with
-// per-event malformed warnings: one bounded line per (class, collection).
+// per-event malformed warnings: one bounded line per (class, sanitized
+// bucket). The bucket is creator-controlled collection text — it is
+// sanitized (newlines/control chars stripped, length-capped) BEFORE it
+// reaches either the dedupe key or the log line, so an attacker cannot
+// inject journal lines or grow the Set unboundedly.
 const malformedWarned = new Set<string>();
 
 function logMalformedOnce(r: RecordEvt, bucket: string): void {
   const cls = classifyMalformedEvent({ type: "record", record: r });
-  const key = `${cls}:${bucket}`;
+  const safeBucket = sanitizeLogToken(bucket);
+  const key = `${cls}:${safeBucket}`;
   if (malformedWarned.has(key)) return;
   malformedWarned.add(key);
   console.warn(
@@ -430,7 +439,7 @@ function logMalformedOnce(r: RecordEvt, bucket: string): void {
         type: "record",
         record: r,
       })
-    } bucket=${bucket}`,
+    } bucket=${safeBucket}`,
   );
 }
 

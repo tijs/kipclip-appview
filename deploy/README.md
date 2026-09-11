@@ -95,8 +95,11 @@ edits.
    sudo deploy/release/bootstrap.sh
    ```
 
-   Installs systemd units, sudoers, Caddyfile, journald cap, and enables every
-   timer. Triggers the first release synchronously so failure is loud.
+   Installs systemd units (kipclip, restic, release, drift-alert, and — when
+   `/opt/tap` exists — tap + tap-update), sudoers, Caddyfile, journald cap, and
+   enables every timer. Also enforces the TAP DB group-write layout for
+   drift-alert quarantine (`tap:tap` 2770 dir / 0660 db). Triggers the first
+   release synchronously so failure is loud.
 8. **TAP install** (one-off):
 
    ```bash
@@ -106,6 +109,12 @@ edits.
    sudo systemctl start tap-update.service   # builds + installs /opt/tap/tap
    sudo systemctl enable --now tap
    ```
+
+   Re-run `bootstrap.sh` after the TAP install so `tap.service` +
+   `tap-update.service/timer` land on the box (bootstrap skips TAP units when
+   `/opt/tap` doesn't exist yet). The first `tap-update.service` run also
+   enforces the tap.db group-write layout; `tap.service` `UMask=0007` keeps
+   freshly created tap.db files group-writable.
 
 ## Backups
 
@@ -153,7 +162,11 @@ Drift-alert suppresses PDS checks for repos that return `RepoNotFound` during a
 enrollment is removed, while `tracked_dids`, mirror rows, and missing-repo
 retention evidence are kept (`tracked_dids` removal is an approval-gated
 operator action via `scripts/tap-only-cleanup.ts`). There is no automatic
-deletion of tracked users.
+deletion of tracked users. The quarantine delete reads back the exact target,
+and a failed/unverifiable delete exits 2 (`AUDIT-FAILED`) — never a clean run.
+`/var/lib/tap/tap.db` is group-writable for the kipclip user
+(`SupplementaryGroups=tap`) so the delete can reach TAP's repo table without
+broadening access.
 
 ## Rollback paths
 
@@ -173,15 +186,16 @@ deletion of tracked users.
 
 ## File ownership reference
 
-| Path                         | Owner        | Notes                                                        |
-| ---------------------------- | ------------ | ------------------------------------------------------------ |
-| `/var/lib/kipclip/`          | kipclip      | App working tree, releases, mirror.db                        |
-| `/var/lib/kipclip/mirror.db` | kipclip      | Local libSQL primary (survives release swaps)                |
-| `/var/lib/tap/`              | tap          | TAP state, indigo build dir, go cache                        |
-| `/opt/tap/tap`               | root         | TAP binary (root-owned; `tap-update.sh` installs as root)    |
-| `/opt/deno/bin/deno`         | root         | Deno runtime (same)                                          |
-| `/etc/kipclip/env`           | root:kipclip | App env (0640)                                               |
-| `/etc/kipclip/restic.env`    | root:root    | Restic env (0600)                                            |
-| `/etc/tap/env`               | root:tap     | TAP env (0640)                                               |
-| `/etc/caddy/Caddyfile`       | root         | Bootstrap-managed                                            |
-| `/etc/sudoers.d/kipclip`     | root         | NOPASSWD scope: `systemctl restart kipclip`, `daemon-reload` |
+| Path                         | Owner        | Notes                                                                                                                                                         |
+| ---------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/var/lib/kipclip/`          | kipclip      | App working tree, releases, mirror.db                                                                                                                         |
+| `/var/lib/kipclip/mirror.db` | kipclip      | Local libSQL primary (survives release swaps)                                                                                                                 |
+| `/var/lib/tap/`              | tap          | TAP state, indigo build dir, go cache — 2770 (setgid) so drift-alert (kipclip, `SupplementaryGroups=tap`) can repair/write tap.db                             |
+| `/var/lib/tap/tap.db`        | tap:tap      | TAP repo DB — 0660 (group rw, never world). drift-alert deletes quarantined repo rows here; `tap.service` `UMask=0007`, enforced by tap-update.sh + bootstrap |
+| `/opt/tap/tap`               | root         | TAP binary (root-owned; `tap-update.sh` installs as root)                                                                                                     |
+| `/opt/deno/bin/deno`         | root         | Deno runtime (same)                                                                                                                                           |
+| `/etc/kipclip/env`           | root:kipclip | App env (0640)                                                                                                                                                |
+| `/etc/kipclip/restic.env`    | root:root    | Restic env (0600)                                                                                                                                             |
+| `/etc/tap/env`               | root:tap     | TAP env (0640)                                                                                                                                                |
+| `/etc/caddy/Caddyfile`       | root         | Bootstrap-managed                                                                                                                                             |
+| `/etc/sudoers.d/kipclip`     | root         | NOPASSWD scope: `systemctl restart kipclip`, `daemon-reload`                                                                                                  |

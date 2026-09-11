@@ -6,6 +6,37 @@ All notable changes to kipclip are documented in this file.
 
 ### Fixed
 
+- `box-report.sh` reads the journal OLDEST entry from the first chronological
+  line instead of `--reverse -n 1` (which returned the newest entry — identical
+  to `journal_newest`). The retention-horizon probe emits a distinguishable
+  `journal_oldest` vs `journal_newest`, and an empty journal stays safe.
+- `tap-update.sh` no longer writes the patch fingerprint through a predictable
+  `/tmp/tap-patches.sha256` as root (symlink-clobber primitive): it stages via a
+  root-owned `mktemp` file with cleanup, preserving the atomic
+  `.patches.sha256.new` install and fingerprint behavior.
+- `drift-alert.ts` no longer swallows TAP quarantine failures: a quarantine
+  whose delete (or read-back verification) fails logs a bounded diagnostic
+  (first line, ≤300 chars), captures a bounded Sentry error (candidate count
+  only), and exits 2 (`AUDIT-FAILED`) — never a clean exit. The quarantine
+  runner + exit-code policy live in the new tested `lib/drift-quarantine.ts`;
+  exit 3 stays reserved for classified PDS errors, exit 1 for drift.
+- The daily drift alert can now actually delete quarantined TAP repo rows:
+  `kipclip-drift-alert.service` adds `SupplementaryGroups=tap` and
+  `ReadWritePaths=/var/lib/tap`; `tap.service` runs with `UMask=0007` so a fresh
+  `tap.db` lands `tap:tap 0660`; `tap-update.sh` re-asserts the layout every
+  tick (`tap:tap` 2770 setgid dir / 0660 db, never world-writable);
+  `bootstrap.sh` installs the drift-alert + tap units (the supported
+  `/etc/systemd/system` path) and applies the permission layout idempotently.
+  `check-env-perms.sh` audits the TAP DB access layout.
+- Malformed-webhook diagnostics bound creator-controlled collection text: the
+  dedupe key and log line use a sanitized bucket (control chars/newlines
+  stripped, length-capped), and `diagnoseEvent` sanitizes each namespace token
+  (a dot-less hostile collection previously passed through unredacted and could
+  inject journal lines). No raw payloads or full DIDs are ever logged.
+- `tap-update.timer` description/comment now match the actual flow (immutable
+  pinned base sha + reviewed kipclip downstream patches; `origin/main` never
+  tracked), consistent with `deploy/tap/README.md`.
+
 - `tap-update.sh` ticks are idempotent: the dedicated build tree is hard-reset
   and cleaned to the pinned immutable base before the reviewed patch is
   re-applied, so two consecutive ticks against the same pin both succeed (the

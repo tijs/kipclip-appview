@@ -104,6 +104,32 @@ export function summarizeEvent(evt: WebhookEvtShape): string {
   return parts.join(" ");
 }
 
+/**
+ * Bound a creator-controlled token (e.g. a webhook collection string)
+ * before it reaches a log line or a dedupe-set key: trim, strip control
+ * characters / newlines (journal injection) and truncate (bounded line
+ * length + bounded Set growth). Whitespace/empty input collapses to "?"
+ * so a dedupe key can never be blank. Bounded diagnostics only — the
+ * token is treated as untrusted text, never embedded raw.
+ */
+export function sanitizeLogToken(token: string, maxLen = 64): string {
+  const trimmed = token.trim();
+  if (trimmed.length === 0) return "?";
+  const cleaned = trimmed.replace(CONTROL_CHARS_RE, "_").slice(0, maxLen);
+  return cleaned.length > 0 ? cleaned : "?";
+}
+
+// Control characters (U+0000–U+001F, U+007F) as a runtime-built regex:
+// the source file must not contain control-character regex escapes (deno
+// lint no-control-regex picks them up), and literal control chars in
+// source would be worse.
+const CONTROL_CHARS_RE = new RegExp(
+  `[${String.fromCharCode(0)}-${String.fromCharCode(31)}${
+    String.fromCharCode(127)
+  }]+`,
+  "g",
+);
+
 /** Classify + collect the bounded fields (pure, testable). */
 export function diagnoseEvent(evt: WebhookEvtShape): EventDiag {
   const diag: EventDiag = { class: classifyMalformedEvent(evt) };
@@ -115,12 +141,18 @@ export function diagnoseEvent(evt: WebhookEvtShape): EventDiag {
     if (suffix) diag.didSuffix = suffix;
     else if (r.did !== undefined) diag.didSuffix = "invalid";
     if (typeof r.action === "string") diag.action = r.action;
-    // Collection names are namespace identifiers (no user data); safe to
-    // include in bounded diagnostics. Redact everything past the final token.
+    // Collection names are namespace identifiers (no user data), so the
+    // first two tokens are safe to include in bounded diagnostics — but the
+    // string itself is creator-controlled: it can carry newlines (journal
+    // injection) and unbounded length, and a dot-less "collection" would
+    // otherwise pass through unredacted. Sanitize each token (control chars
+    // stripped, length-capped) and redact everything past the second one.
     if (typeof r.collection === "string") {
       const parts = r.collection.split(".");
-      diag.collection = parts.slice(0, 2).join(".") +
-        (parts.length > 2 ? ".*" : "");
+      const namespace = parts.slice(0, 2)
+        .map((p) => sanitizeLogToken(p, 32))
+        .join(".");
+      diag.collection = namespace + (parts.length > 2 ? ".*" : "");
     }
   }
   return diag;
