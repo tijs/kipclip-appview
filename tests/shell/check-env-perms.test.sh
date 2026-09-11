@@ -33,14 +33,16 @@ trap 'rm -rf "$TMP"; rm -f "$defs"' EXIT
 
 cat > "$TMP/stubs/stat" <<'STUB'
 #!/usr/bin/env bash
-# stat -c '%a %U %G' <path> — report the value the test injects.
+# Mimic real `stat -c '%a %U %G'` output: octal mode WITHOUT the leading
+# zero (0660 is reported as "660"). The audit must normalize so stat-style
+# "660 tap tap" matches the documented tap:tap 0660 contract.
 path="${@: -1}"
 if [[ "$path" == "$STAT_DIR" ]]; then
   echo "$STAT_DIR_VAL"
 elif [[ "$path" == "$STAT_DB" ]]; then
   echo "$STAT_DB_VAL"
 else
-  echo "0644 root root"
+  echo "644 root root"
 fi
 exit 0
 STUB
@@ -63,20 +65,24 @@ run_audit() {
 }
 
 t1() {
+  # Regression for the production bug: stat reports 0660 as "660" (no
+  # leading zero). A correct tap:tap 0660 layout must still pass.
   local out
-  out="$(run_audit "$TMP/tap" "$TMP/tap/tap.db" "2770 tap tap" "0660 tap tap")"
-  echo "$out" | grep -q "^errors=0$" || fail "correct layout must pass; got: $out"
+  out="$(run_audit "$TMP/tap" "$TMP/tap/tap.db" "2770 tap tap" "660 tap tap")"
+  echo "$out" | grep -q "^errors=0$" || fail "correct layout must pass (stat-style 660 == 0660); got: $out"
   echo "$out" | grep -q "OK .*$TMP/tap/tap.db" || fail "db verification line missing; got: $out"
-  ok "TAP DB audit: tap:tap 2770 dir + 0660 db passes"
+  ok "TAP DB audit: tap:tap 2770 dir + 0660 db passes with real stat-style output (660)"
 }
 t1
 
 t2() {
+  # World-writable db — stat would report mode 0666 as "666". Must be
+  # rejected after normalization, never accepted as 0660.
   local out
-  out="$(run_audit "$TMP/tap" "$TMP/tap/tap.db" "2770 tap tap" "0666 tap tap")"
+  out="$(run_audit "$TMP/tap" "$TMP/tap/tap.db" "2770 tap tap" "666 tap tap")"
   echo "$out" | grep -q "^errors=1$" || fail "world-writable db must be flagged; got: $out"
   echo "$out" | grep -q "FAIL" || fail "world-writable db must emit a FAIL line; got: $out"
-  ok "TAP DB audit: world-visible db (0666) flagged"
+  ok "TAP DB audit: world-visible db (stat-style 666 / 0666) flagged"
 }
 t2
 

@@ -77,13 +77,19 @@ check_perms() {
     fi
     return
   fi
-  # %a = octal mode without leading 0; %U = owner; %G = group.
+  # %a = octal mode without leading 0 (e.g. "660" for 0660); %U = owner;
+  # %G = group.
   if ! read -r got_mode got_owner got_group < <(stat -c '%a %U %G' "$path" 2>/dev/null); then
     fail "$path stat failed"
     errors=$((errors + 1))
     return
   fi
-  if [[ "$got_mode" != "$want_mode" ]] \
+  # Normalize modes as octal numbers: stat omits the leading 0 that the
+  # spec tables keep ("660" vs "0660" must compare equal), while a real
+  # mode difference is still an error. Never loosens the contract — an
+  # unsafe mode (e.g. world-writable 666) normalizes to a different value
+  # and still fails.
+  if (( 8#$got_mode != 8#$want_mode )) \
     || [[ "$got_owner" != "$want_owner" ]] \
     || [[ "$got_group" != "$want_group" ]]; then
     fail "$path has $got_mode $got_owner:$got_group (want $want_mode $want_owner:$want_group)"

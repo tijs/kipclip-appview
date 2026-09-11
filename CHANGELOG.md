@@ -6,6 +6,11 @@ All notable changes to kipclip are documented in this file.
 
 ### Fixed
 
+- `check-env-perms.sh` compares octal modes numerically so real `stat -c %a`
+  output (`660` for mode `0660`, no leading zero) matches the documented
+  `tap:tap 0660` TAP DB contract — bootstrap no longer fails on a correctly
+  laid-out box. Unsafe modes (e.g. world-writable `666`) still fail; the
+  permission contract is unchanged.
 - `drift-alert.ts` surfaces a failure to even LIST quarantine candidates as a
   bounded `{kind:"failed", candidateCount:0, reason}` outcome resolving to exit
   2 (`AUDIT-FAILED`) — previously an uncaught throw from the listing (e.g. DB
