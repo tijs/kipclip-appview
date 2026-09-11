@@ -11,7 +11,9 @@
 //
 // To keep the fixture honest, this file must stay byte-identical to the
 // patched function: update it only together with the .patch file, and run
-//   ./verify.sh
+//
+//	./verify.sh
+//
 // after any change (and on the box: go test -C /var/lib/kipclip/source/deploy/tap/backoff-harness ./...).
 package backoff
 
