@@ -188,6 +188,12 @@ apply_patches() {
   trap 'rm -f -- "$FP_TMP"' RETURN
   ( cd "$PATCH_DIR" && sha256sum ./*.patch ) | sort -k2 > "$FP_TMP"
   mv "$FP_TMP" "${TAP_BIN_DIR}/.patches.sha256.new"
+  # Atomic staging is done — FP_TMP no longer exists (mv consumed it), so the
+  # cleanup trap is now a no-op. Drop it so a stale RETURN trap doesn't linger
+  # across later function returns. This changes no failure-handling behavior:
+  # any failure BEFORE the mv still exits under set -e with FP_TMP in place,
+  # and after the mv there is no temp file left to clean.
+  trap - RETURN
   chown "${TAP_USER}:${TAP_GROUP}" "${TAP_BIN_DIR}/.patches.sha256.new"
 }
 

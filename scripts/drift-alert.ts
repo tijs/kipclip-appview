@@ -47,7 +47,7 @@ import {
   auditTapEnrollments,
 } from "../lib/forwarding-audit.ts";
 import { captureMessage, Sentry } from "../lib/sentry.ts";
-import { resolveDriftExit, runTapQuarantine } from "../lib/drift-quarantine.ts";
+import { resolveDriftExit, runQuarantine } from "../lib/drift-quarantine.ts";
 import { listMissingRepos } from "../lib/missing-repo.ts";
 import { deleteTapRepoRows } from "../lib/tap-delete.ts";
 import {
@@ -83,15 +83,17 @@ function summarizeSkipped(rows: DriftRow[]): Array<Record<string, unknown>> {
  * are excluded here by listQuarantineCandidates — cleaning those up is an
  * approval-gated operator action (scripts/tap-only-cleanup.ts).
  *
- * The deletion goes through deleteTapRepoRows, which reads back the exact
- * target after the DELETE: a quarantine that did not actually remove a row
- * is reported as a failure and left for retry, never logged as success.
- * Deletion FAILURE is surfaced as an audit failure (exit 2) by main() —
- * never a clean exit — with bounded diagnostics.
+ * The listing and the deletion go through runQuarantine: a candidate-listing
+ * failure (e.g. DB unavailable) surfaces as a failed outcome with count 0 —
+ * never an uncaught throw. The deletion goes through deleteTapRepoRows,
+ * which reads back the exact target after the DELETE: a quarantine that did
+ * not actually remove a row is reported as a failure and left for retry,
+ * never logged as success. Deletion FAILURE is surfaced as an audit failure
+ * (exit 2) by main() — never a clean exit — with bounded diagnostics.
  */
-async function quarantineMissingRepos() {
-  return runTapQuarantine(
-    await listQuarantineCandidates(),
+function quarantineMissingRepos() {
+  return runQuarantine(
+    () => listQuarantineCandidates(),
     (dids) => deleteTapRepoRows(dids),
   );
 }

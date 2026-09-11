@@ -6,6 +6,17 @@ All notable changes to kipclip are documented in this file.
 
 ### Fixed
 
+- `drift-alert.ts` surfaces a failure to even LIST quarantine candidates as a
+  bounded `{kind:"failed", candidateCount:0, reason}` outcome resolving to exit
+  2 (`AUDIT-FAILED`) — previously an uncaught throw from the listing (e.g. DB
+  unavailable) before the quarantine delete ran killed the process with exit 1,
+  violating the documented exit policy. The listing+delete boundary lives in the
+  tested `runQuarantine` (`lib/drift-quarantine.ts`); candidates are unknown on
+  listing failure, so no count is claimed and no delete is attempted.
+- `tap-update.sh` `apply_patches` clears its temporary-file `RETURN` trap after
+  atomic staging (`mv` already consumed the temp file, so the trap was a
+  harmless no-op) — no stale trap fires on later function returns; failure
+  handling before the `mv` is unchanged.
 - `box-report.sh` reads the journal OLDEST entry from the first chronological
   line instead of `--reverse -n 1` (which returned the newest entry — identical
   to `journal_newest`). The retention-horizon probe emits a distinguishable

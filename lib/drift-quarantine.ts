@@ -82,6 +82,35 @@ export async function runTapQuarantine(
 }
 
 /**
+ * Full quarantine boundary: list the candidates, then run the delete batch.
+ * A throw from the candidate LISTING (e.g. the DB is unavailable) happens
+ * BEFORE runTapQuarantine is ever invoked — if it escaped, main() would die
+ * on an uncaught error (Deno exits 1) instead of the documented audit
+ * failure (exit 2). Surface it as a bounded `{kind:"failed",
+ * candidateCount:0, reason}`: the candidates are UNKNOWN, so no count may be
+ * claimed and no delete may be attempted; the caller's exit policy still
+ * resolves to exit 2.
+ */
+export async function runQuarantine(
+  listCandidates: () => Promise<readonly QuarantineCandidate[]>,
+  deleteRows: (dids: string[]) => Promise<TapDeleteResult>,
+  log: (line: string) => void = console.log,
+  logError: (line: string) => void = console.error,
+): Promise<QuarantineOutcome> {
+  let candidates: readonly QuarantineCandidate[];
+  try {
+    candidates = await listCandidates();
+  } catch (err) {
+    const reason = boundedReason(err);
+    logError(
+      `[drift-alert] TAP quarantine FAILED (candidate listing failed; nothing deleted), leaving confirmed-missing repos for retry: ${reason}`,
+    );
+    return { kind: "failed", candidateCount: 0, reason };
+  }
+  return runTapQuarantine(candidates, deleteRows, log, logError);
+}
+
+/**
  * Final drift-alert exit-code policy. A failed quarantine is an INTERNAL
  * audit failure and surfaces as exit 2 (audit failed) — it takes precedence
  * over recoverable drift (1) and classified PDS errors (3), because a

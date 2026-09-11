@@ -502,5 +502,46 @@ STUB
 }
 t8
 
+# ---- apply_patches: after atomic staging the temporary-file RETURN trap must
+# ---- be cleared. The temp name is consumed by the mv, so a stale
+# ---- `trap 'rm -f -- "$FP_TMP"' RETURN` left installed would fire as a
+# ---- harmless no-op on every later function return — still a stale trap.
+t9() {
+  local TMP
+  TMP="$(mktemp -d)"
+  mkdir -p "$TMP/patches" "$TMP/bin" "$TMP/stubs" "$TMP/gitstate" "$TMP/tmpdir"
+  printf 'fingerprinted patch body\n' > "$TMP/patches/0001-a.patch"
+  install_stateful_git_stub "$TMP"
+  install_common_stubs "$TMP"
+
+  local log rc
+  log="$TMP/run.log"
+  rc=0
+  GITSTATE="$TMP/gitstate" \
+  FIXED_SHA="$EXPECTED_DEFAULT_SHA" \
+  TAP_UPDATE_BUILD_DIR="$TMP/build" \
+  TAP_UPDATE_TAP_BIN_DIR="$TMP/bin" \
+  TAP_UPDATE_PATCH_DIR="$TMP/patches" \
+  TMPDIR="$TMP/tmpdir" \
+  TAP_USER=tap TAP_GROUP=tap \
+  PATH="$TMP/stubs:$PATH" \
+  bash -c '
+    set -euo pipefail
+    source "$1"
+    apply_patches
+    # The fixed script clears the RETURN trap after atomic staging. A stale
+    # trap here would print `trap -- ... RETURN`.
+    if [[ -n "$(trap -p RETURN)" ]]; then
+      echo "stale RETURN trap still installed after apply_patches: $(trap -p RETURN)" >&2
+      exit 1
+    fi
+  ' _ "$defs" > "$log" 2>&1 || rc=$?
+
+  [[ "$rc" -eq 0 ]] || fail "apply_patches must clear its RETURN trap, rc=$rc; log: $(cat "$log")"
+  rm -rf "$TMP"
+  ok "apply_patches: temporary-file RETURN trap cleared after atomic staging (no stale trap on later returns)"
+}
+t9
+
 echo
 echo "ALL TAP-UPDATE SHELL TESTS PASSED (bash $BASH_MINOR)"
