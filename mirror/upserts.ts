@@ -123,8 +123,26 @@ export async function deleteBookmark(uri: string, did: string): Promise<void> {
   });
 }
 
+export interface AnnotationUpsertOptions {
+  /**
+   * Whether the upsert should clear queued preview-enrichment jobs for the
+   * subject. Default true — webhook/direct annotation writes observe the new
+   * annotation and cancel pending repair work as before. Two callers pass
+   * false so the job machinery keeps its attempts/backoff:
+   * - the preview worker itself, which must decide completion (done vs
+   *   bounded retry) BEFORE clearing, otherwise an incomplete write (e.g. no
+   *   usable YouTube description) deletes its own job and the next tick
+   *   re-enqueues a fresh attempts=0 job forever;
+   * - the webhook for an INCOMPLETE annotation echo (e.g. the worker's own
+   *   bounded-retry write), which must not erase the pending/failed retry
+   *   job, or the next scan re-enqueues an attempts=0 job forever.
+   */
+  clearPreviewJob?: boolean;
+}
+
 export async function upsertAnnotation(
   record: AnnotationUpsert,
+  options: AnnotationUpsertOptions = {},
 ): Promise<void> {
   assertDidMatchesUri(record.uri, record.did);
   await db.execute({
@@ -160,12 +178,14 @@ export async function upsertAnnotation(
       Date.now(),
     ],
   });
-  await db
-    .execute({
-      sql: "DELETE FROM preview_enrichment_jobs WHERE bookmark_uri = ?",
-      args: [record.subject],
-    })
-    .catch(() => {});
+  if (options.clearPreviewJob !== false) {
+    await db
+      .execute({
+        sql: "DELETE FROM preview_enrichment_jobs WHERE bookmark_uri = ?",
+        args: [record.subject],
+      })
+      .catch(() => {});
+  }
 }
 
 export async function deleteAnnotation(

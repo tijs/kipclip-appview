@@ -787,3 +787,217 @@ Deno.test({
     }
   },
 });
+
+// ============================================================================
+// Empty YouTube metadata must never be persisted (create / re-enrich)
+// ============================================================================
+
+const YT_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+const YT_THUMB = "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg";
+const YT_BOOKMARK_URI =
+  "at://did:plc:test123/community.lexicon.bookmarks.bookmark/yt001";
+
+/** Record every makeRequest the session makes so routes can be asserted. */
+function captureMakeRequests(sessionResult: any): Array<{
+  method: string;
+  endpoint: string;
+  body?: string;
+}> {
+  const calls: Array<{ method: string; endpoint: string; body?: string }> = [];
+  const session = (sessionResult as any).session;
+  const original = session.makeRequest.bind(session);
+  session.makeRequest = (
+    method: string,
+    endpoint: string,
+    options?: { body?: unknown },
+  ) => {
+    calls.push({
+      method,
+      endpoint,
+      body: options?.body !== undefined ? String(options.body) : undefined,
+    });
+    return original(method, endpoint, options);
+  };
+  return calls;
+}
+
+function annotationPutRecords(
+  calls: Array<{ endpoint: string; body?: string }>,
+) {
+  return calls.filter(
+    (c) =>
+      c.endpoint.includes("com.atproto.repo.putRecord") &&
+      (c.body ?? "").includes("com.kipclip.annotation"),
+  );
+}
+
+Deno.test({
+  name:
+    "POST /api/bookmarks - skips the annotation sidecar when YouTube metadata is empty",
+  async fn() {
+    const pdsResponses = new Map<string, Response>();
+    pdsResponses.set("createRecord", createRecordResponse("yt001", "cidyt1"));
+    const sessionResult = createMockSessionResult({ pdsResponses });
+    const calls = captureMakeRequests(sessionResult);
+    setTestSessionProvider(() => Promise.resolve(sessionResult));
+    // Empty mock map: every fetch 404s, so the recognized YouTube URL yields
+    // {} (empty) metadata instead of a fabricated title.
+    mockGlobalFetch(new Map());
+
+    try {
+      const req = new Request("https://kipclip.com/api/bookmarks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: YT_URL }),
+      });
+
+      const res = await handler(req);
+      assertEquals(res.status, 200);
+
+      const body = await res.json();
+      assertEquals(body.success, true);
+      assertEquals(body.bookmark.subject, YT_URL);
+      assertEquals(body.bookmark.title, undefined);
+
+      assertEquals(
+        annotationPutRecords(calls).length,
+        0,
+        "no annotation sidecar may be written for empty metadata",
+      );
+    } finally {
+      setTestSessionProvider(null);
+      restoreFetch();
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "POST /api/bookmarks/:rkey/enrich - returns 503 and writes nothing when metadata is empty",
+  async fn() {
+    const bookmarkRecord = {
+      uri: YT_BOOKMARK_URI,
+      cid: "cidyt1",
+      value: {
+        subject: YT_URL,
+        createdAt: "2025-01-01T00:00:00.000Z",
+        tags: [],
+      },
+    };
+    const pdsResponses = new Map<string, Response>();
+    pdsResponses.set(
+      "collection=community.lexicon.bookmarks.bookmark",
+      createPdsResponse(bookmarkRecord),
+    );
+    const sessionResult = createMockSessionResult({ pdsResponses });
+    const calls = captureMakeRequests(sessionResult);
+    setTestSessionProvider(() => Promise.resolve(sessionResult));
+    mockGlobalFetch(new Map());
+
+    try {
+      const req = new Request(
+        "https://kipclip.com/api/bookmarks/yt001/enrich",
+        { method: "POST" },
+      );
+
+      const res = await handler(req);
+      assertEquals(
+        res.status,
+        503,
+        "empty metadata must surface as an explicit retryable failure",
+      );
+      const body = await res.json();
+      assertEquals(body.success, false);
+      assertEquals(body.error, "metadata_unavailable");
+
+      const puts = calls.filter((c) => c.endpoint.includes("putRecord"));
+      assertEquals(
+        puts.length,
+        0,
+        "neither the annotation sidecar nor the $enriched fallback may be written",
+      );
+    } finally {
+      setTestSessionProvider(null);
+      restoreFetch();
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "POST /api/bookmarks/:rkey/enrich - preserves the note and writes fresh metadata on success",
+  async fn() {
+    const bookmarkRecord = {
+      uri: YT_BOOKMARK_URI,
+      cid: "cidyt1",
+      value: {
+        subject: YT_URL,
+        createdAt: "2025-01-01T00:00:00.000Z",
+        tags: [],
+      },
+    };
+    const annotationRecord = {
+      uri: "at://did:plc:test123/com.kipclip.annotation/yt001",
+      cid: "cidann1",
+      value: {
+        subject: YT_BOOKMARK_URI,
+        title: "Old Title",
+        note: "keep me",
+      },
+    };
+    const pdsResponses = new Map<string, Response>();
+    pdsResponses.set(
+      "collection=community.lexicon.bookmarks.bookmark",
+      createPdsResponse(bookmarkRecord),
+    );
+    pdsResponses.set(
+      "collection=com.kipclip.annotation",
+      createPdsResponse(annotationRecord),
+    );
+    const sessionResult = createMockSessionResult({ pdsResponses });
+    const calls = captureMakeRequests(sessionResult);
+    setTestSessionProvider(() => Promise.resolve(sessionResult));
+    mockGlobalFetch(
+      new Map([
+        [
+          "oembed",
+          new Response(
+            JSON.stringify({
+              type: "video",
+              title: "Fresh Video Title",
+              thumbnail_url: YT_THUMB,
+            }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
+        ],
+      ]),
+    );
+
+    try {
+      const req = new Request(
+        "https://kipclip.com/api/bookmarks/yt001/enrich",
+        { method: "POST" },
+      );
+
+      const res = await handler(req);
+      assertEquals(res.status, 200);
+
+      const body = await res.json();
+      assertEquals(body.success, true);
+      assertEquals(body.bookmark.title, "Fresh Video Title");
+      assertEquals(body.bookmark.note, "keep me");
+
+      const writes = annotationPutRecords(calls);
+      assertEquals(writes.length, 1);
+      const written = JSON.parse(writes[0].body!);
+      assertEquals(written.record.title, "Fresh Video Title");
+      assertEquals(written.record.note, "keep me");
+    } finally {
+      setTestSessionProvider(null);
+      restoreFetch();
+    }
+  },
+});

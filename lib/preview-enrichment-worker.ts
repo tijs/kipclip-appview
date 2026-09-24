@@ -1,5 +1,12 @@
-import { writeAnnotation as writeAnnotationRecord } from "./annotations.ts";
-import { extractUrlMetadata as extractUrlMetadataRecord } from "./enrichment.ts";
+import {
+  type PdsAnnotationRead,
+  readAnnotationFromPds,
+  writeAnnotation as writeAnnotationRecord,
+} from "./annotations.ts";
+import {
+  extractUrlMetadata as extractUrlMetadataRecord,
+  isNonEmptyUrlMetadata,
+} from "./enrichment.ts";
 import { getOAuth } from "./oauth-config.ts";
 import {
   claimPreviewEnrichmentJobs,
@@ -12,7 +19,12 @@ import {
 } from "./preview-enrichment-jobs.ts";
 import { ANNOTATION_COLLECTION } from "./route-utils.ts";
 import { upsertAnnotation as upsertAnnotationRecord } from "../mirror/upserts.ts";
-import type { AnnotationRecord } from "../shared/types.ts";
+import {
+  isKnownDefaultYouTubeDescription,
+  isKnownDefaultYouTubeTitle,
+  parseYouTubeVideoUrl,
+} from "./youtube-metadata.ts";
+import type { AnnotationRecord, UrlMetadata } from "../shared/types.ts";
 
 export interface PreviewEnrichmentStats {
   processed: number;
@@ -34,9 +46,80 @@ export interface PreviewWorkerOptions {
 export interface PreviewWorkerDeps {
   restoreSession?: (did: string) => Promise<any | null>;
   hasUsableAnnotation?: (bookmarkUri: string) => Promise<boolean>;
+  /**
+   * Authoritative annotation read for the merge base. Defaults to a
+   * getRecord against the user's PDS (authenticated session + rkey). Returns
+   * null when the PDS has no annotation (404); throws on any other failure so
+   * the worker retries instead of merging/writing from a stale mirror.
+   */
+  readAnnotation?: (
+    oauthSession: any,
+    rkey: string,
+  ) => Promise<PdsAnnotationRead | null>;
   extractUrlMetadata?: typeof extractUrlMetadataRecord;
   writeAnnotation?: typeof writeAnnotationRecord;
   upsertAnnotation?: typeof upsertAnnotationRecord;
+}
+
+/** Normalize a stored field to undefined when it carries no value. */
+function presentField(value: string | undefined): string | undefined {
+  return value && value.trim() !== "" ? value : undefined;
+}
+
+/**
+ * Merge freshly fetched metadata into an existing annotation record, filling
+ * only missing fields so user content survives repair:
+ *
+ * - The note and an existing meaningful (non-empty, non-default on YouTube
+ *   subjects) title/description are never overwritten.
+ * - Only missing or known-default title/description are replaced with fetched
+ *   values, and only when the fetch actually produced one.
+ * - image/favicon are filled only when the existing annotation lacks them.
+ * - The existing createdAt is preserved when the read supplied one (the local
+ *   mirror does not store it); otherwise a fresh timestamp is stamped.
+ *
+ * With an existing record of null (no annotation yet) this produces the fully
+ * fetched record, matching the pre-merge behavior. The record subject is always
+ * the bookmark's URI (bookmarkUri), never the input URL, so the original
+ * subject stays intact; subjectUrl is the actual bookmarked URL used only to
+ * decide whether known YouTube defaults count as placeholders.
+ */
+export function mergePreviewAnnotation(
+  existing: AnnotationRecord | null,
+  fetched: UrlMetadata,
+  bookmarkUri: string,
+  subjectUrl: string,
+  now = new Date().toISOString(),
+): AnnotationRecord {
+  if (!existing) {
+    return {
+      subject: bookmarkUri,
+      title: presentField(fetched.title),
+      description: presentField(fetched.description),
+      favicon: presentField(fetched.favicon),
+      image: presentField(fetched.image),
+      createdAt: now,
+    };
+  }
+  const isYouTubeSubject = parseYouTubeVideoUrl(subjectUrl) !== null;
+  const titleMissing = !presentField(existing.title) ||
+    (isYouTubeSubject && isKnownDefaultYouTubeTitle(existing.title!));
+  const descriptionMissing = !presentField(existing.description) ||
+    (isYouTubeSubject &&
+      isKnownDefaultYouTubeDescription(existing.description!));
+  return {
+    subject: bookmarkUri,
+    note: presentField(existing.note),
+    createdAt: existing.createdAt ?? now,
+    title: titleMissing
+      ? presentField(fetched.title) ?? presentField(existing.title)
+      : presentField(existing.title),
+    description: descriptionMissing
+      ? presentField(fetched.description) ?? presentField(existing.description)
+      : presentField(existing.description),
+    favicon: presentField(existing.favicon) ?? presentField(fetched.favicon),
+    image: presentField(existing.image) ?? presentField(fetched.image),
+  };
 }
 
 let timer: ReturnType<typeof setInterval> | undefined;
@@ -75,6 +158,7 @@ export async function processPreviewEnrichmentJob(
   const extractMetadata = deps.extractUrlMetadata ?? extractUrlMetadataRecord;
   const putAnnotation = deps.writeAnnotation ?? writeAnnotationRecord;
   const mirrorAnnotation = deps.upsertAnnotation ?? upsertAnnotationRecord;
+  const readExisting = deps.readAnnotation ?? readAnnotationFromPds;
 
   try {
     if (await checkAnnotation(job.bookmarkUri)) {
@@ -91,37 +175,81 @@ export async function processPreviewEnrichmentJob(
     }
 
     const metadata = await extractMetadata(job.subject);
+    // Empty metadata (e.g. a recognized YouTube URL whose oEmbed or page
+    // fetch failed) must be a retryable failure, never a persisted empty or
+    // dummy annotation. Generic non-YouTube extraction always yields at least
+    // a hostname title, so this only triggers for genuinely empty results.
+    if (!isNonEmptyUrlMetadata(metadata)) {
+      throw new Error("no usable metadata obtained");
+    }
     if (await checkAnnotation(job.bookmarkUri)) {
       await markPreviewJobDone(job.bookmarkUri);
       stats.skippedExisting = 1;
       return stats;
     }
-    const annotation: AnnotationRecord = {
-      subject: job.bookmarkUri,
-      title: metadata.title,
-      description: metadata.description,
-      favicon: metadata.favicon,
-      image: metadata.image,
-      createdAt: new Date().toISOString(),
-    };
+    // The merge base is the CURRENT annotation record read from the
+    // authoritative PDS (authenticated session + rkey). A PDS 404 is the
+    // authoritative "no annotation" answer; any other PDS read failure throws
+    // and is retried — a stale mirror is never used as the merge base or to
+    // overwrite after a PDS error. YouTube-default classification uses the
+    // bookmarked subject URL, not the AT-URI.
+    const pdsAnnotation = await readExisting(oauthSession, job.rkey);
+    const annotation = mergePreviewAnnotation(
+      pdsAnnotation?.value ?? null,
+      metadata,
+      job.bookmarkUri,
+      job.subject,
+    );
 
-    const result = await putAnnotation(oauthSession, job.rkey, annotation);
+    // Pass the fetched PDS CID as putRecord's swapRecord: a concurrent edit
+    // between our read and this write fails safely (InvalidSwap → retry) on
+    // the next attempt instead of being silently overwritten.
+    const result = await putAnnotation(oauthSession, job.rkey, annotation, {
+      swapRecord: pdsAnnotation?.cid,
+    });
     if (!result.ok) throw new Error("annotation write failed");
 
-    await mirrorAnnotation({
-      uri: result.uri ?? `at://${job.did}/${ANNOTATION_COLLECTION}/${job.rkey}`,
-      did: job.did,
-      rkey: job.rkey,
-      cid: result.cid ?? "",
-      subject: job.bookmarkUri,
-      title: annotation.title ?? null,
-      description: annotation.description ?? null,
-      favicon: annotation.favicon ?? null,
-      image: annotation.image ?? null,
-      note: null,
-    });
-    await markPreviewJobDone(job.bookmarkUri);
-    stats.success = 1;
+    // Mirror the write WITHOUT clearing the job: the worker decides completion
+    // itself below. Clearing here would delete the job before the decision,
+    // and the next tick would re-enqueue a fresh attempts=0 job whenever the
+    // annotation is still incomplete (e.g. the watch page had no usable
+    // description), looping external fetches and PDS writes forever.
+    await mirrorAnnotation(
+      {
+        uri: result.uri ??
+          `at://${job.did}/${ANNOTATION_COLLECTION}/${job.rkey}`,
+        did: job.did,
+        rkey: job.rkey,
+        cid: result.cid ?? "",
+        subject: job.bookmarkUri,
+        title: annotation.title ?? null,
+        description: annotation.description ?? null,
+        favicon: annotation.favicon ?? null,
+        image: annotation.image ?? null,
+        note: annotation.note ?? null,
+      },
+      { clearPreviewJob: false },
+    );
+
+    // Completion decision AFTER the write: if the merged annotation now
+    // satisfies the same YouTube completeness predicate (read back through
+    // the mirror, which reflects this write), the job is done. If it is still
+    // incomplete — no usable description — the available fields were persisted
+    // once for this attempt and the job keeps its bounded retry/backoff
+    // (three attempts) instead of being marked done and looping forever.
+    if (await checkAnnotation(job.bookmarkUri)) {
+      await markPreviewJobDone(job.bookmarkUri);
+      stats.success = 1;
+    } else {
+      const status = await markPreviewJobRetry(
+        job,
+        new Error(
+          "annotation incomplete after enrichment write (bounded retry)",
+        ),
+      );
+      if (status === "failed") stats.stopped = 1;
+      else stats.retry = 1;
+    }
   } catch (err) {
     const status = await markPreviewJobRetry(job, err);
     if (status === "failed") stats.stopped = 1;

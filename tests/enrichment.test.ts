@@ -5,8 +5,11 @@
 
 import "./test-setup.ts";
 
-import { assertEquals } from "@std/assert";
-import { extractUrlMetadataWithFetcher } from "../lib/enrichment.ts";
+import { assert, assertEquals } from "@std/assert";
+import {
+  extractUrlMetadataWithFetcher,
+  isNonEmptyUrlMetadata,
+} from "../lib/enrichment.ts";
 import { createHtmlResponse, createMockFetcher } from "./test-helpers.ts";
 
 Deno.test("extractUrlMetadata - parses title from <title> tag", async () => {
@@ -584,4 +587,168 @@ Deno.test("Sanitization - allows valid http favicon URL", async () => {
   );
 
   assertEquals(metadata.favicon, "https://cdn.example.com/icon.png");
+});
+
+// ============================================================================
+// YouTube-aware dispatch
+// ============================================================================
+
+const YT_VIDEO_ID = "dQw4w9WgXcQ";
+const YT_TITLE = "Rick Astley - Never Gonna Give You Up (Official Video)";
+const YT_DESCRIPTION = "We're no strangers to love. You know the rules.";
+const YT_THUMB = `https://i.ytimg.com/vi/${YT_VIDEO_ID}/hqdefault.jpg`;
+
+function youtubeOembedResponse(
+  overrides: Record<string, unknown> = {},
+): Response {
+  return new Response(
+    JSON.stringify({
+      type: "video",
+      title: YT_TITLE,
+      author_name: "Rick Astley",
+      provider_name: "YouTube",
+      thumbnail_url: YT_THUMB,
+      ...overrides,
+    }),
+    {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    },
+  );
+}
+
+function youtubePageResponse(description = YT_DESCRIPTION): Response {
+  const html = `<!DOCTYPE html><html><head>
+    <meta name="description" content="${description}">
+  </head><body></body></html>`;
+  return new Response(html, {
+    status: 200,
+    headers: { "Content-Type": "text/html" },
+  });
+}
+
+function youtubeMockFetcher(
+  oembed: Response | null,
+  page: Response | null = null,
+): typeof fetch {
+  const responses = new Map<string, Response>();
+  if (oembed) responses.set("oembed", oembed);
+  if (page) responses.set("watch?v=", page);
+  return createMockFetcher(responses);
+}
+
+Deno.test("extractUrlMetadata - dispatches YouTube watch URL to specialized resolver", async () => {
+  const metadata = await extractUrlMetadataWithFetcher(
+    `https://www.youtube.com/watch?v=${YT_VIDEO_ID}`,
+    youtubeMockFetcher(youtubeOembedResponse(), youtubePageResponse()),
+  );
+
+  assertEquals(metadata.title, YT_TITLE);
+  assertEquals(metadata.description, YT_DESCRIPTION);
+  assertEquals(metadata.image, YT_THUMB);
+  assertEquals(metadata.favicon, "https://www.youtube.com/favicon.ico");
+});
+
+Deno.test("extractUrlMetadata - youtu.be URL resolves through its canonical watch URL", async () => {
+  const fetchedUrls: string[] = [];
+  const base = youtubeMockFetcher(
+    youtubeOembedResponse(),
+    youtubePageResponse(),
+  );
+  const recording = ((input: RequestInfo | URL, init?: RequestInit) => {
+    fetchedUrls.push(typeof input === "string" ? input : String(input));
+    return base(input, init);
+  }) as typeof fetch;
+
+  const metadata = await extractUrlMetadataWithFetcher(
+    `https://youtu.be/${YT_VIDEO_ID}?si=share`,
+    recording,
+  );
+
+  assertEquals(metadata.title, YT_TITLE);
+  assert(
+    fetchedUrls.some((u) => u.includes("oembed")),
+    `oEmbed should be fetched via canonical URL, got ${fetchedUrls.join(", ")}`,
+  );
+  assert(
+    fetchedUrls.some((u) => u.includes(`v=${YT_VIDEO_ID}`)),
+    `oEmbed URL should carry canonical watch URL, got ${
+      fetchedUrls.join(", ")
+    }`,
+  );
+});
+
+Deno.test("extractUrlMetadata - YouTube metadata failure returns no fabricated title", async () => {
+  const metadata = await extractUrlMetadataWithFetcher(
+    `https://www.youtube.com/watch?v=${YT_VIDEO_ID}`,
+    youtubeMockFetcher(
+      new Response("Not Found", { status: 404 }),
+    ),
+  );
+
+  assertEquals(metadata.title, undefined);
+  assertEquals(metadata.description, undefined);
+  assertEquals(metadata.image, undefined);
+  assertEquals(metadata.favicon, undefined);
+});
+
+Deno.test("extractUrlMetadata - YouTube thumbnail falls back to deterministic i.ytimg.com", async () => {
+  const metadata = await extractUrlMetadataWithFetcher(
+    `https://youtu.be/${YT_VIDEO_ID}`,
+    youtubeMockFetcher(youtubeOembedResponse({ thumbnail_url: undefined })),
+  );
+
+  assertEquals(metadata.title, YT_TITLE);
+  assertEquals(metadata.image, YT_THUMB);
+});
+
+Deno.test("extractUrlMetadata - non-video YouTube URLs take the generic path", async () => {
+  const mockFetcher = createMockFetcher(
+    new Map([
+      [
+        "youtube.com",
+        createHtmlResponse({ title: "Channel Page" }),
+      ],
+    ]),
+  );
+
+  const metadata = await extractUrlMetadataWithFetcher(
+    "https://www.youtube.com/@somechannel",
+    mockFetcher,
+  );
+
+  assertEquals(metadata.title, "Channel Page");
+});
+
+// ============================================================================
+// Non-empty metadata guard (empty results must never be persisted)
+// ============================================================================
+
+Deno.test("isNonEmptyUrlMetadata - false only when no field carries a value", () => {
+  assertEquals(isNonEmptyUrlMetadata({}), false);
+  assertEquals(isNonEmptyUrlMetadata({ title: undefined }), false);
+  assertEquals(
+    isNonEmptyUrlMetadata({
+      title: "",
+      description: "",
+      favicon: "",
+      image: "",
+    }),
+    false,
+  );
+  assertEquals(isNonEmptyUrlMetadata({ title: "T" }), true);
+  assertEquals(isNonEmptyUrlMetadata({ description: "D" }), true);
+  assertEquals(isNonEmptyUrlMetadata({ favicon: "F" }), true);
+  assertEquals(isNonEmptyUrlMetadata({ image: "I" }), true);
+});
+
+Deno.test("isNonEmptyUrlMetadata - a recognized YouTube URL with failed fetches yields an empty result", async () => {
+  // Every fetch 404s: the specialized resolver must not fabricate a title,
+  // so the guard reports the result as empty for the caller to retry.
+  const metadata = await extractUrlMetadataWithFetcher(
+    "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    createMockFetcher(new Map()),
+  );
+  assertEquals(metadata, {});
+  assertEquals(isNonEmptyUrlMetadata(metadata), false);
 });

@@ -11,11 +11,19 @@
 
 import { assertEquals } from "@std/assert";
 import { clearMirrorTables, db } from "./mirror-test-setup.ts";
+import {
+  claimPreviewEnrichmentJobs,
+  enqueueMissingPreviewJobsForDid,
+  markPreviewJobRetry,
+} from "../lib/preview-enrichment-jobs.ts";
+import { upsertAnnotation, upsertBookmark } from "../mirror/upserts.ts";
 import { processEvent } from "../worker/webhook.ts";
 
 const DID = "did:plc:webhooktest001";
 const RKEY = "abc123";
 const _URI = `at://${DID}/community.lexicon.bookmarks.bookmark/${RKEY}`;
+const YT_SUBJECT = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+const DAY = 24 * 60 * 60 * 1000;
 
 async function trackedDidCount(): Promise<number> {
   const r = await db.execute({
@@ -448,6 +456,209 @@ Deno.test({
       val,
       null,
       "backfill event must not stamp backfill_complete_at",
+    );
+  },
+});
+
+// ============================================================================
+// Preview-enrichment job retention: incomplete annotation echoes must not
+// erase a pending/failed retry job (the preview worker's own bounded-retry
+// write echoed back through the TAP webhook), while a complete annotation
+// echo still settles/cancels queued preview work.
+// ============================================================================
+
+Deno.test({
+  name:
+    "incomplete YouTube annotation echo does not erase the pending preview retry job (attempts/backoff preserved)",
+  async fn() {
+    await clearMirrorTables();
+    const rkey = "ytvid";
+    const bookmarkUri =
+      `at://${DID}/community.lexicon.bookmarks.bookmark/${rkey}`;
+    await upsertBookmark({
+      uri: bookmarkUri,
+      did: DID,
+      rkey,
+      cid: "bafyytbook",
+      subject: YT_SUBJECT,
+      createdAt: "2026-05-09T10:00:00.000Z",
+    });
+    await enqueueMissingPreviewJobsForDid(DID, 10);
+    const [job] = await claimPreviewEnrichmentJobs(1);
+    assertEquals(job.rkey, rkey);
+
+    // Reproduce the preview worker's bounded-retry state: the partial
+    // annotation (no usable description) is already mirrored WITHOUT clearing
+    // the job, then the worker persisted attempt #1 with its backoff.
+    await upsertAnnotation(
+      {
+        uri: `at://${DID}/com.kipclip.annotation/${rkey}`,
+        did: DID,
+        rkey,
+        cid: "bafyytann",
+        subject: bookmarkUri,
+        title: "Real Video Title",
+        favicon: "https://www.youtube.com/favicon.ico",
+        image: "https://i.ytimg.com/vi/x/hqdefault.jpg",
+      },
+      { clearPreviewJob: false },
+    );
+    const retryNow = Date.now();
+    await markPreviewJobRetry(
+      job,
+      new Error("annotation incomplete after enrichment write (bounded retry)"),
+      retryNow,
+    );
+
+    // TAP echo of the worker's own PDS write arrives through the webhook.
+    // The echoed annotation is INCOMPLETE (no description) — it must NOT
+    // delete the retry job, or attempts/backoff are lost and the next 60s
+    // scan re-enqueues an attempts=0 job forever.
+    await processEvent({
+      id: 70,
+      type: "record",
+      record: {
+        live: true,
+        did: DID,
+        collection: "com.kipclip.annotation",
+        rkey,
+        action: "update",
+        record: {
+          subject: bookmarkUri,
+          title: "Real Video Title",
+          favicon: "https://www.youtube.com/favicon.ico",
+          image: "https://i.ytimg.com/vi/x/hqdefault.jpg",
+        },
+        cid: "bafyytann",
+      },
+    });
+
+    const rows = await db.execute({
+      sql:
+        "SELECT status, attempts, next_run_at FROM preview_enrichment_jobs WHERE bookmark_uri = ?",
+      args: [bookmarkUri],
+    });
+    assertEquals(
+      rows.rows.length,
+      1,
+      "an incomplete annotation echo must not delete the pending retry job",
+    );
+    assertEquals(rows.rows[0][0], "pending");
+    assertEquals(Number(rows.rows[0][1]), 1);
+    assertEquals(
+      Number(rows.rows[0][2]),
+      retryNow + DAY,
+      "the worker's backoff schedule must be preserved",
+    );
+  },
+});
+
+Deno.test({
+  name:
+    "incomplete YouTube annotation echo does not erase a failed preview retry job",
+  async fn() {
+    await clearMirrorTables();
+    const rkey = "ytfail";
+    const bookmarkUri =
+      `at://${DID}/community.lexicon.bookmarks.bookmark/${rkey}`;
+    await upsertBookmark({
+      uri: bookmarkUri,
+      did: DID,
+      rkey,
+      cid: "bafyytfail",
+      subject: YT_SUBJECT,
+      createdAt: "2026-05-09T10:00:00.000Z",
+    });
+    await enqueueMissingPreviewJobsForDid(DID, 10);
+    const [job] = await claimPreviewEnrichmentJobs(1);
+    // Attempt #3 → terminal 'failed' (the bounded retry limit).
+    await markPreviewJobRetry(
+      { ...job, attempts: 2 },
+      new Error("bounded retry exhausted"),
+      Date.now(),
+    );
+
+    await processEvent({
+      id: 72,
+      type: "record",
+      record: {
+        live: true,
+        did: DID,
+        collection: "com.kipclip.annotation",
+        rkey,
+        action: "update",
+        record: {
+          subject: bookmarkUri,
+          title: "Real Video Title",
+          image: "https://i.ytimg.com/vi/x/hqdefault.jpg",
+        },
+        cid: "bafyytfail",
+      },
+    });
+
+    const rows = await db.execute({
+      sql:
+        "SELECT status, attempts, last_error FROM preview_enrichment_jobs WHERE bookmark_uri = ?",
+      args: [bookmarkUri],
+    });
+    assertEquals(
+      rows.rows.length,
+      1,
+      "an incomplete annotation echo must not delete the failed job",
+    );
+    assertEquals(rows.rows[0][0], "failed");
+    assertEquals(Number(rows.rows[0][1]), 3);
+    assertEquals(rows.rows[0][2], "bounded retry exhausted");
+  },
+});
+
+Deno.test({
+  name: "complete annotation webhook echo still settles queued preview work",
+  async fn() {
+    await clearMirrorTables();
+    const rkey = "ytdone";
+    const bookmarkUri =
+      `at://${DID}/community.lexicon.bookmarks.bookmark/${rkey}`;
+    await upsertBookmark({
+      uri: bookmarkUri,
+      did: DID,
+      rkey,
+      cid: "bafyytdone",
+      subject: YT_SUBJECT,
+      createdAt: "2026-05-09T10:00:00.000Z",
+    });
+    await enqueueMissingPreviewJobsForDid(DID, 10);
+    await claimPreviewEnrichmentJobs(1);
+
+    await processEvent({
+      id: 71,
+      type: "record",
+      record: {
+        live: true,
+        did: DID,
+        collection: "com.kipclip.annotation",
+        rkey,
+        action: "create",
+        record: {
+          subject: bookmarkUri,
+          title: "Real Video Title",
+          description: "Real description",
+          favicon: "https://www.youtube.com/favicon.ico",
+          image: "https://i.ytimg.com/vi/x/hqdefault.jpg",
+        },
+        cid: "bafyytdone",
+      },
+    });
+
+    const rows = await db.execute({
+      sql:
+        "SELECT COUNT(*) FROM preview_enrichment_jobs WHERE bookmark_uri = ?",
+      args: [bookmarkUri],
+    });
+    assertEquals(
+      Number(rows.rows[0][0]),
+      0,
+      "a complete annotation echo must still cancel queued preview work",
     );
   },
 });

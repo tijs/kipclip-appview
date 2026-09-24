@@ -24,6 +24,11 @@ import {
 import { normalizeUrlForMatching } from "../../shared/url-utils.ts";
 import { generateTidForTimestamp } from "../../lib/tid.ts";
 import {
+  isKnownDefaultYouTubeDescription,
+  isKnownDefaultYouTubeTitle,
+  parseYouTubeVideoUrl,
+} from "../../lib/youtube-metadata.ts";
+import {
   deduplicateTagsCaseInsensitive,
   resolveTagCasing,
 } from "../../shared/tag-utils.ts";
@@ -326,15 +331,32 @@ export function registerImportRoutes(app: App<any>): App<any> {
           },
         ];
 
-        if (b.title || b.description) {
+        // Strip known exporter/YouTube defaults ("- YouTube", "YouTube" and
+        // the standard generic descriptions) only for recognized YouTube video
+        // bookmarks, so they never become durable annotation metadata. A
+        // placeholder-only entry writes no annotation at all and stays
+        // eligible for the records-first preview queue, which fetches real
+        // metadata later. Non-YouTube importer titles and descriptions are
+        // preserved byte-for-byte even when they happen to equal a default
+        // string (e.g. a Wikipedia article titled "YouTube"), and the bookmark
+        // subject is always the original URL, byte-for-byte.
+        const isYouTubeBookmark = parseYouTubeVideoUrl(b.url) !== null;
+        const title = isYouTubeBookmark && isKnownDefaultYouTubeTitle(b.title)
+          ? undefined
+          : b.title;
+        const description = isYouTubeBookmark &&
+            isKnownDefaultYouTubeDescription(b.description)
+          ? undefined
+          : b.description;
+        if (title || description) {
           ops.push({
             $type: "com.atproto.repo.applyWrites#create",
             collection: ANNOTATION_COLLECTION,
             rkey,
             value: {
               subject: bookmarkUri,
-              title: b.title,
-              description: b.description,
+              title,
+              description,
               createdAt,
             },
           });

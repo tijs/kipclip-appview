@@ -36,6 +36,7 @@ import {
   upsertTag,
 } from "../mirror/upserts.ts";
 import { broadcastToDid } from "../routes/api/live.ts";
+import { isUsableAnnotationRecord } from "../lib/preview-enrichment-jobs.ts";
 
 const BOOKMARK_COLLECTION = "community.lexicon.bookmarks.bookmark";
 const ANNOTATION_COLLECTIONS = new Set([
@@ -346,18 +347,43 @@ async function processRecordEvent(r: RecordEvt): Promise<void> {
   } else if (ANNOTATION_COLLECTIONS.has(collection)) {
     const subject = stringField(record, "subject");
     if (!subject) return;
-    await upsertAnnotation({
-      uri,
-      did,
-      rkey,
-      cid,
-      subject,
+    // Preview-job settle/cancel semantics: a COMPLETE annotation echo still
+    // cancels queued preview work (default clearPreviewJob, as before). An
+    // INCOMPLETE echo must NOT erase a pending/failed retry job — e.g. the
+    // preview worker's own bounded-retry write when a YouTube watch page had
+    // no usable description would otherwise lose its attempts/backoff, and
+    // the next 60s scan would re-enqueue an attempts=0 job forever. Judged
+    // from the echoed record itself (order-independent of mirror writes)
+    // via the same usability predicate the preview system applies.
+    const bookmarkUriRows = await db.execute({
+      sql: "SELECT subject FROM bookmarks WHERE uri = ? LIMIT 1",
+      args: [subject],
+    });
+    const annotationUsable = isUsableAnnotationRecord({
+      subjectUrl: bookmarkUriRows.rows.length > 0
+        ? String(bookmarkUriRows.rows[0][0])
+        : null,
       title: stringField(record, "title"),
       description: stringField(record, "description"),
       favicon: stringField(record, "favicon"),
       image: stringField(record, "image"),
       note: stringField(record, "note"),
     });
+    await upsertAnnotation(
+      {
+        uri,
+        did,
+        rkey,
+        cid,
+        subject,
+        title: stringField(record, "title"),
+        description: stringField(record, "description"),
+        favicon: stringField(record, "favicon"),
+        image: stringField(record, "image"),
+        note: stringField(record, "note"),
+      },
+      annotationUsable ? undefined : { clearPreviewJob: false },
+    );
   } else if (collection === TAG_COLLECTION) {
     const value = stringField(record, "value");
     const createdAt = stringField(record, "createdAt");

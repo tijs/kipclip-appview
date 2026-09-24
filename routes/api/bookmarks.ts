@@ -5,7 +5,10 @@
  */
 
 import type { App } from "@fresh/core";
-import { extractUrlMetadata } from "../../lib/enrichment.ts";
+import {
+  extractUrlMetadata,
+  isNonEmptyUrlMetadata,
+} from "../../lib/enrichment.ts";
 import {
   extractRkey,
   fetchAnnotationMap,
@@ -226,6 +229,7 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
       }
 
       const metadata = await extractUrlMetadata(body.url);
+      const hasMetadata = isNonEmptyUrlMetadata(metadata);
       const createdAt = new Date().toISOString();
 
       // Write clean bookmark record (standard fields only)
@@ -278,8 +282,13 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         );
       }
 
-      // Write annotation sidecar with same rkey, then mirror-upsert it.
-      if (rkey) {
+      // Write annotation sidecar with same rkey, then mirror-upsert it. When
+      // metadata is empty (e.g. a recognized YouTube URL whose oEmbed/page
+      // fetch failed), no annotation sidecar or mirror row is written — the
+      // records-first preview queue repairs the bookmark later. Persisting a
+      // subject+createdAt-only annotation would shadow real metadata on a
+      // future re-enrich.
+      if (rkey && hasMetadata) {
         const annotation: AnnotationRecord = {
           subject: data.uri,
           title: metadata.title,
@@ -615,6 +624,18 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         throw new Error(`Failed to get record: bookmark ${rkey} not found`);
       }
       const metadata = await extractUrlMetadata(currentRecord.value.subject);
+
+      // Empty metadata (e.g. a recognized YouTube video whose oEmbed/page
+      // fetch failed) must never replace good metadata with an empty record.
+      // Surface an explicit retryable failure and leave the existing
+      // annotation sidecar and any $enriched fallback untouched.
+      if (!isNonEmptyUrlMetadata(metadata)) {
+        return Response.json({
+          success: false,
+          error: "metadata_unavailable",
+          message: "URL metadata is temporarily unavailable; try again later.",
+        }, { status: 503 });
+      }
 
       // Preserve existing note from annotation
       const currentAnnotation = await fetchOwnerAnnotationRecord(

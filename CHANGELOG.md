@@ -4,8 +4,23 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-09-24
+
+### Added
+
+- YouTube-aware bookmark import enrichment preserves the original bookmark URL
+  while filling useful titles, descriptions, thumbnails, and favicons from
+  bounded public metadata endpoints.
+
 ### Fixed
 
+- Retroactive preview enrichment now repairs existing YouTube annotations that
+  are missing complete metadata, while preserving notes and meaningful user
+  fields.
+- YouTube boilerplate filtering covers the localized defaults observed in live
+  data, and failed metadata requests remain bounded and retryable.
+- TAP webhook echoes of incomplete preview annotations preserve retry attempts
+  and backoff instead of recreating a fresh job on every worker tick.
 - `tap-update.sh` stages downstream patches into a fresh private tap-readable
   directory before `git apply`. This keeps the kipclip source checkout
   inaccessible to the tap user while allowing the pinned build to apply the

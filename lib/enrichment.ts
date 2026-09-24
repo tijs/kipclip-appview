@@ -1,5 +1,11 @@
 import type { UrlMetadata } from "../shared/types.ts";
 import { decode } from "html-entities";
+import {
+  deterministicYouTubeThumbnail,
+  fetchYouTubeMetadata,
+  parseYouTubeVideoUrl,
+  type YouTubeVideoRef,
+} from "./youtube-metadata.ts";
 
 /** Maximum lengths for metadata fields */
 const MAX_TITLE_LENGTH = 200;
@@ -105,9 +111,56 @@ export function extractUrlMetadata(url: string): Promise<UrlMetadata> {
 }
 
 /**
+ * True when the metadata carries at least one usable field. Recognized YouTube
+ * URLs whose oEmbed/watch-page fetches fail resolve to an empty object; callers
+ * that persist enrichment data must treat that as a retryable failure instead
+ * of writing a subject+createdAt-only (or placeholder-destroying) annotation.
+ */
+export function isNonEmptyUrlMetadata(metadata: UrlMetadata): boolean {
+  return !!(metadata.title || metadata.description || metadata.favicon ||
+    metadata.image);
+}
+
+/**
+ * Merge oEmbed + watch-page metadata for a recognized YouTube video into the
+ * shared UrlMetadata shape. The favicon is the fixed YouTube origin favicon;
+ * the image prefers the validated oEmbed thumbnail and falls back to the
+ * deterministic i.ytimg.com ID thumbnail only when the ID is valid.
+ */
+async function fetchYouTubeEnrichedMetadata(
+  ref: YouTubeVideoRef,
+): Promise<UrlMetadata> {
+  const fetched = await fetchYouTubeMetadata(ref);
+  return {
+    title: fetched.title,
+    description: fetched.description,
+    favicon: "https://www.youtube.com/favicon.ico",
+    image: fetched.thumbnailUrl ?? deterministicYouTubeThumbnail(ref.videoId),
+  };
+}
+
+/**
  * Actually fetch and parse URL metadata (called by cache on miss).
  */
 async function fetchUrlMetadata(url: string): Promise<UrlMetadata> {
+  // YouTube-aware dispatch: recognized video URLs use the specialized
+  // resolver. When no useful metadata can be obtained we return an empty
+  // result instead of manufacturing a youtube.com title; the preview worker
+  // treats that as a retryable failure rather than persisting an empty
+  // annotation.
+  const youtubeRef = parseYouTubeVideoUrl(url);
+  if (youtubeRef) {
+    try {
+      return await fetchYouTubeEnrichedMetadata(youtubeRef);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.warn(
+        `[Enrichment] YouTube metadata unavailable for ${url}: ${msg}`,
+      );
+      return {};
+    }
+  }
+
   try {
     // Validate URL
     const parsedUrl = new URL(url);

@@ -624,3 +624,207 @@ Deno.test({
     assertEquals(body.error, "Authentication required");
   },
 });
+
+// ============================================================================
+// YouTube-aware import behavior (applyWrites payload capture)
+// ============================================================================
+
+/** Session that records every applyWrites payload body alongside the request. */
+async function runImportCapturingWrites(
+  content: string,
+  filename: string,
+): Promise<{ captured: any[]; processBody?: any }> {
+  const captured: any[] = [];
+  const sessionResult = createImportSession();
+  const session = (sessionResult as any).session;
+  const originalMakeRequest = session.makeRequest.bind(session);
+  session.makeRequest = (
+    method: string,
+    endpoint: string,
+    options?: { body?: unknown },
+  ) => {
+    if (
+      endpoint.includes("applyWrites") && options?.body !== undefined
+    ) {
+      captured.push(JSON.parse(String(options.body)));
+    }
+    return originalMakeRequest(method, endpoint, options);
+  };
+  setTestSessionProvider(() => Promise.resolve(sessionResult));
+
+  const req = createImportRequest(content, filename);
+  const res = await handler(req);
+  const prepareBody = await res.json();
+  if (!prepareBody.jobId) {
+    setTestSessionProvider(null);
+    return { captured };
+  }
+
+  let processBody: any;
+  let done = false;
+  while (!done) {
+    const processReq = new Request(
+      `https://kipclip.com/api/import/${prepareBody.jobId}/process`,
+      { method: "POST" },
+    );
+    const processRes = await handler(processReq);
+    processBody = await processRes.json();
+    done = processBody.done === true;
+  }
+
+  setTestSessionProvider(null);
+  return { captured, processBody };
+}
+
+function annotationOps(writes: any[]): any[] {
+  return writes.filter((w) => w.collection === "com.kipclip.annotation");
+}
+
+Deno.test({
+  name:
+    "Process: '- YouTube' placeholder title + generic description writes no annotation op",
+  async fn() {
+    const { captured, processBody } = await runImportCapturingWrites(
+      JSON.stringify([
+        {
+          href: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+          description: "- YouTube",
+          extended: "Share your videos with friends, family, and the world.",
+          tags: "",
+        },
+      ]),
+      "pinboard.json",
+    );
+
+    assertEquals(processBody.done, true);
+    assertEquals(processBody.result.imported, 1);
+    const allWrites = captured.flatMap((c) => c.writes);
+    assertEquals(
+      allWrites.length,
+      1,
+      "only the bookmark create should be written",
+    );
+    assertEquals(
+      allWrites[0].value.subject,
+      "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "subject URL must stay byte-for-byte unchanged",
+    );
+    assertEquals(annotationOps(allWrites).length, 0);
+  },
+});
+
+Deno.test({
+  name:
+    "Process: known default title stripped while custom description is preserved",
+  async fn() {
+    const { captured, processBody } = await runImportCapturingWrites(
+      JSON.stringify([
+        {
+          href: "https://youtu.be/dQw4w9WgXcQ",
+          description: "- YouTube",
+          extended: "My own research notes about this video",
+          tags: "",
+        },
+      ]),
+      "pinboard.json",
+    );
+
+    assertEquals(processBody.done, true);
+    const allWrites = captured.flatMap((c) => c.writes);
+    const ops = annotationOps(allWrites);
+    assertEquals(ops.length, 1);
+    assertEquals(
+      ops[0].value.subject,
+      `at://did:plc:test123/community.lexicon.bookmarks.bookmark/${
+        ops[0].rkey
+      }`,
+    );
+    assertEquals(
+      ops[0].value.title,
+      undefined,
+      "default title must not persist",
+    );
+    assertEquals(
+      ops[0].value.description,
+      "My own research notes about this video",
+    );
+  },
+});
+
+Deno.test({
+  name: "Process: custom title and description are preserved unchanged",
+  async fn() {
+    const { captured, processBody } = await runImportCapturingWrites(
+      JSON.stringify([
+        {
+          href: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+          description: "Never Gonna Give You Up",
+          extended: "Classic 1987 Rickroll",
+          tags: "",
+        },
+      ]),
+      "pinboard.json",
+    );
+
+    assertEquals(processBody.done, true);
+    const allWrites = captured.flatMap((c) => c.writes);
+    const ops = annotationOps(allWrites);
+    assertEquals(ops.length, 1);
+    assertEquals(ops[0].value.title, "Never Gonna Give You Up");
+    assertEquals(ops[0].value.description, "Classic 1987 Rickroll");
+  },
+});
+
+Deno.test({
+  name:
+    "Process: non-YouTube entry keeps an exporter default title as-is (stripping is scoped to YouTube URLs)",
+  async fn() {
+    const { captured, processBody } = await runImportCapturingWrites(
+      JSON.stringify([
+        {
+          href: "https://example.com/article",
+          description: "YouTube",
+          extended: "",
+          tags: "",
+        },
+      ]),
+      "pinboard.json",
+    );
+
+    assertEquals(processBody.done, true);
+    const allWrites = captured.flatMap((c) => c.writes);
+    const ops = annotationOps(allWrites);
+    assertEquals(
+      ops.length,
+      1,
+      "a non-YouTube entry with a literal 'YouTube' title must keep it",
+    );
+    assertEquals(ops[0].value.title, "YouTube");
+    assertEquals(allWrites[0].value.subject, "https://example.com/article");
+  },
+});
+
+Deno.test({
+  name:
+    "Process: YouTube import still succeeds when metadata is unavailable (no import-time fetch)",
+  async fn() {
+    // Import processing never fetches enrichment metadata, so a YouTube entry
+    // must succeed exactly like any other entry — the records-first preview
+    // queue repairs the placeholder afterwards.
+    const { processBody } = await runImportCapturingWrites(
+      JSON.stringify([
+        {
+          href: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+          description: "- YouTube",
+          tags: "",
+        },
+      ]),
+      "pinboard.json",
+    );
+
+    assertEquals(processBody.success, true);
+    assertEquals(processBody.done, true);
+    assertEquals(processBody.result.imported, 1);
+    assertEquals(processBody.result.failed, 0);
+  },
+});
