@@ -81,7 +81,8 @@ edits.
    sudo cp deploy/kipclip.env.example /etc/kipclip/env       # fill in
    sudo cp deploy/restic.env.example /etc/kipclip/restic.env # fill in
    # /etc/tap/env: see deploy/tap.env.example for keys
-   sudo chown root:kipclip /etc/kipclip/env /etc/kipclip/restic.env
+   sudo chown root:kipclip /etc/kipclip/env
+   sudo chown root:root /etc/kipclip/restic.env
    sudo chmod 0640 /etc/kipclip/env
    sudo chmod 0600 /etc/kipclip/restic.env
    sudo chown root:tap /etc/tap/env && sudo chmod 0640 /etc/tap/env

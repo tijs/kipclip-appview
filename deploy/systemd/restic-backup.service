@@ -5,8 +5,13 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-User=kipclip
-Group=kipclip
+# Runs as root: /etc/kipclip/restic.env is root:root 0600 (enforced by
+# check-env-perms.sh) and restic-backup.sh sources it — a non-root user
+# gets "Permission denied" every run. Keep User/Group in sync with the
+# root-owned 0600 secret contract; ReadWritePaths below still scopes
+# writes to the data dirs and NoNewPrivileges stays on.
+User=root
+Group=root
 ExecStart=/var/lib/kipclip/current/deploy/restic-backup.sh
 EnvironmentFile=/etc/kipclip/restic.env
 
