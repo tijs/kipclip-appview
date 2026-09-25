@@ -70,10 +70,13 @@ function presentField(value: string | undefined): string | undefined {
  * Merge freshly fetched metadata into an existing annotation record, filling
  * only missing fields so user content survives repair:
  *
- * - The note and an existing meaningful (non-empty, non-default on YouTube
- *   subjects) title/description are never overwritten.
- * - Only missing or known-default title/description are replaced with fetched
- *   values, and only when the fetch actually produced one.
+ * - Missing or known-default (on YouTube subjects) title/description are
+ *   replaced with the fetched value when the fetch produced a usable one.
+ *   When it did not, a known default is cleared (omitted on the wire) instead
+ *   of being preserved — an incomplete record stays retryable, never
+ *   fabricated boilerplate.
+ * - The note and an existing meaningful (non-empty, non-default) title/
+ *   description are never overwritten.
  * - image/favicon are filled only when the existing annotation lacks them.
  * - The existing createdAt is preserved when the read supplied one (the local
  *   mirror does not store it); otherwise a fresh timestamp is stamped.
@@ -102,21 +105,23 @@ export function mergePreviewAnnotation(
     };
   }
   const isYouTubeSubject = parseYouTubeVideoUrl(subjectUrl) !== null;
-  const titleMissing = !presentField(existing.title) ||
-    (isYouTubeSubject && isKnownDefaultYouTubeTitle(existing.title!));
-  const descriptionMissing = !presentField(existing.description) ||
-    (isYouTubeSubject &&
-      isKnownDefaultYouTubeDescription(existing.description!));
+  const existingTitle = presentField(existing.title);
+  const existingDescription = presentField(existing.description);
+  const titleIsPlaceholder = !existingTitle ||
+    (isYouTubeSubject && isKnownDefaultYouTubeTitle(existingTitle));
+  const descriptionIsPlaceholder = !existingDescription ||
+    (isYouTubeSubject && isKnownDefaultYouTubeDescription(existingDescription));
   return {
     subject: bookmarkUri,
     note: presentField(existing.note),
     createdAt: existing.createdAt ?? now,
-    title: titleMissing
-      ? presentField(fetched.title) ?? presentField(existing.title)
-      : presentField(existing.title),
-    description: descriptionMissing
-      ? presentField(fetched.description) ?? presentField(existing.description)
-      : presentField(existing.description),
+    // A missing or known-default field takes the fetched value when one
+    // exists; with no usable replacement the placeholder is cleared rather
+    // than preserved. Meaningful existing values are never touched.
+    title: titleIsPlaceholder ? presentField(fetched.title) : existingTitle,
+    description: descriptionIsPlaceholder
+      ? presentField(fetched.description)
+      : existingDescription,
     favicon: presentField(existing.favicon) ?? presentField(fetched.favicon),
     image: presentField(existing.image) ?? presentField(fetched.image),
   };

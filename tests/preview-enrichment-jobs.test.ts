@@ -1544,6 +1544,181 @@ Deno.test("mergePreviewAnnotation - does not delete existing fields when the fet
   assertEquals(merged.image, "existing-img");
 });
 
+const GERMAN_YOUTUBE_DEFAULT_DESCRIPTION =
+  "Auf YouTube findest du die angesagtesten Videos und Tracks. " +
+  "Außerdem kannst du eigene Inhalte hochladen und mit Freunden " +
+  "oder gleich der ganzen Welt teilen.";
+
+Deno.test(
+  "mergePreviewAnnotation - clears the German default description when the fetch has no usable description",
+  () => {
+    const merged = mergePreviewAnnotation(
+      {
+        subject: "x",
+        title: "Real Video Title",
+        description: GERMAN_YOUTUBE_DEFAULT_DESCRIPTION,
+      },
+      {
+        title: "Real Video Title",
+        favicon: "https://www.youtube.com/favicon.ico",
+        image: "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+      },
+      "at://did:plc:x/community.lexicon.bookmarks.bookmark/x",
+      YT_VIDEO_URL,
+    );
+    assertEquals(
+      merged.description,
+      undefined,
+      "no usable fetched description: the German default must be cleared, not preserved",
+    );
+    assertEquals(merged.title, "Real Video Title");
+    assertEquals(
+      merged.image,
+      "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+    );
+    assertEquals(
+      merged.favicon,
+      "https://www.youtube.com/favicon.ico",
+      "favicon from the fetch survives the cleared description",
+    );
+  },
+);
+
+Deno.test(
+  "mergePreviewAnnotation - clears a known default title when the fetch has no usable title",
+  () => {
+    const merged = mergePreviewAnnotation(
+      {
+        subject: "x",
+        title: "- YouTube",
+        description: "Real description",
+        note: "keep note",
+      },
+      { description: "Real description" },
+      "at://did:plc:x/community.lexicon.bookmarks.bookmark/x",
+      YT_VIDEO_URL,
+    );
+    assertEquals(
+      merged.title,
+      undefined,
+      "no usable fetched title: the '- YouTube' default must be cleared",
+    );
+    assertEquals(merged.description, "Real description");
+    assertEquals(merged.note, "keep note");
+  },
+);
+
+Deno.test(
+  "mergePreviewAnnotation - preserves a meaningful description when the fetch has none",
+  () => {
+    const merged = mergePreviewAnnotation(
+      {
+        subject: "x",
+        title: "My Title",
+        description: "My desc",
+        favicon: "existing-fav",
+        image: "existing-img",
+      },
+      { title: "Fetched" },
+      "at://did:plc:x/community.lexicon.bookmarks.bookmark/x",
+      YT_VIDEO_URL,
+    );
+    assertEquals(
+      merged.description,
+      "My desc",
+      "a meaningful description is never cleared by a fetch without one",
+    );
+    assertEquals(merged.title, "My Title");
+    assertEquals(merged.favicon, "existing-fav");
+    assertEquals(merged.image, "existing-img");
+  },
+);
+
+Deno.test(
+  "worker clears a known default YouTube description on write/mirror without dropping note, image, favicon, or createdAt, and keeps the job retryable",
+  async () => {
+    await clearMirrorTables();
+    await bookmark("yt", YT_VIDEO_URL);
+    assertEquals(await enqueueMissingPreviewJobsForDid(DID, 10), 1);
+    const job = (await claimPreviewEnrichmentJobs(1))[0];
+
+    let written: any = null;
+    let mirrored: any = null;
+    let mirrorOptions: any = null;
+    const stats = await processPreviewEnrichmentJob(job, {
+      restoreSession: () =>
+        Promise.resolve({ did: DID, pdsUrl: "https://pds.test" }),
+      // The authoritative PDS record carries the German default description
+      // plus a user note, image, and createdAt that must survive the merge.
+      readAnnotation: () =>
+        Promise.resolve({
+          uri: `at://${DID}/com.kipclip.annotation/${job.rkey}`,
+          cid: "bafyuser",
+          value: {
+            subject: job.bookmarkUri,
+            title: "Real Video Title",
+            description: GERMAN_YOUTUBE_DEFAULT_DESCRIPTION,
+            note: "user note",
+            image: "https://user.example/og.png",
+            createdAt: "2021-06-01T00:00:00.000Z",
+          },
+        }),
+      // The YouTube watch page produced NO usable description this attempt.
+      extractUrlMetadata: () =>
+        Promise.resolve({
+          title: "Real Video Title",
+          favicon: "https://www.youtube.com/favicon.ico",
+          image: "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+        }),
+      hasUsableAnnotation: () => Promise.resolve(false),
+      writeAnnotation: (_session, _rkey, annotationRecord, options) => {
+        written = annotationRecord;
+        assertEquals(options?.swapRecord, "bafyuser");
+        return Promise.resolve({ ok: true });
+      },
+      upsertAnnotation: (record, options) => {
+        mirrored = record;
+        mirrorOptions = options;
+        return Promise.resolve();
+      },
+    });
+
+    assertEquals(stats.success, 0);
+    assertEquals(
+      stats.retry,
+      1,
+      "still incomplete after the write (no YouTube description) — bounded retry, never done",
+    );
+    assertEquals(
+      written.description,
+      undefined,
+      "the German default must be cleared from the outgoing annotation",
+    );
+    assertEquals(written.title, "Real Video Title");
+    assertEquals(written.note, "user note");
+    assertEquals(
+      written.image,
+      "https://user.example/og.png",
+      "the user's existing image is never replaced by a fetched thumbnail",
+    );
+    assertEquals(written.favicon, "https://www.youtube.com/favicon.ico");
+    assertEquals(written.createdAt, "2021-06-01T00:00:00.000Z");
+    assertEquals(
+      mirrored.description,
+      null,
+      "the mirror reflects the cleared description",
+    );
+    assertEquals(mirrored.note, "user note");
+    assertEquals(mirrored.image, "https://user.example/og.png");
+    assertEquals(mirrored.title, "Real Video Title");
+    assertEquals(
+      mirrorOptions?.clearPreviewJob,
+      false,
+      "the worker's own mirror upsert must not clear the retry job",
+    );
+  },
+);
+
 Deno.test("mergePreviewAnnotation - preserves existing createdAt and stamps one for fresh records", () => {
   const merged = mergePreviewAnnotation(
     { subject: "x", title: "My Title", createdAt: "2024-01-01T00:00:00.000Z" },

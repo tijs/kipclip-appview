@@ -4,6 +4,16 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.25.2] - 2026-09-25
+
+### Fixed
+
+- Retroactive YouTube preview repair clears recognized default titles and
+  localized boilerplate descriptions when no usable replacement is available,
+  instead of preserving fabricated metadata and retrying it unchanged. Notes,
+  meaningful user fields, images, favicons, and creation timestamps remain
+  protected.
+
 ## [0.25.1] - 2026-09-25
 
 ### Fixed
