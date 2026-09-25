@@ -116,6 +116,21 @@ export async function readAnnotationFromPds(
   if (response.status === 404) return null;
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
+    // The com.kipclip.annotation PDS reports a missing record as HTTP 400
+    // with the XRPC error code RecordNotFound (it does not return 404).
+    // Treat exactly that shape as the same authoritative "no annotation"
+    // answer as a 404; any other error code, non-JSON body, or status is a
+    // genuine failure the caller must retry instead of assuming absence.
+    let errorCode: string | undefined;
+    try {
+      const body = JSON.parse(detail);
+      errorCode = typeof body?.error === "string" ? body.error : undefined;
+    } catch {
+      // Non-JSON error body: not a RecordNotFound signal.
+    }
+    if (response.status === 400 && errorCode === "RecordNotFound") {
+      return null;
+    }
     throw new Error(
       `getRecord ${ANNOTATION_COLLECTION}/${rkey} failed: HTTP ` +
         `${response.status} ${detail}`,

@@ -1631,6 +1631,51 @@ Deno.test(
 );
 
 Deno.test(
+  "readAnnotationFromPds - 400 RecordNotFound is no annotation, other 400s throw",
+  async () => {
+    // The authoritative PDS answers a missing record with HTTP 400 and the
+    // XRPC error code RecordNotFound (the com.kipclip.annotation PDS does not
+    // return 404). That must be the same "no annotation" answer as a 404:
+    // the preview worker then creates the annotation instead of retrying.
+    const missing = mockPdsSession(() =>
+      new Response(
+        JSON.stringify({
+          error: "RecordNotFound",
+          message: "Could not locate record: com.kipclip.annotation/a",
+        }),
+        { status: 400 },
+      )
+    );
+    assertEquals(await readAnnotationFromPds(missing, "a"), null);
+
+    // A 400 with any OTHER error code (or a non-JSON body) is a genuine PDS
+    // failure: it must keep throwing so the caller retries instead of
+    // assuming the annotation is absent.
+    const invalid = mockPdsSession(() =>
+      new Response(
+        JSON.stringify({ error: "InvalidRequest", message: "Bad repo" }),
+        { status: 400 },
+      )
+    );
+    await assertRejects(() => readAnnotationFromPds(invalid, "a"), Error);
+
+    const textBody = mockPdsSession(() =>
+      new Response("Bad Request", { status: 400 })
+    );
+    await assertRejects(() => readAnnotationFromPds(textBody, "a"), Error);
+
+    // A RecordNotFound-shaped body on a different status stays retryable too.
+    const wrongStatus = mockPdsSession(() =>
+      new Response(
+        JSON.stringify({ error: "RecordNotFound", message: "gone" }),
+        { status: 401 },
+      )
+    );
+    await assertRejects(() => readAnnotationFromPds(wrongStatus, "a"), Error);
+  },
+);
+
+Deno.test(
   "worker merges from the authoritative PDS record, preserving all fields and createdAt, and passes the PDS CID as swapRecord",
   async () => {
     await clearMirrorTables();

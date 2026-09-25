@@ -4,6 +4,15 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.25.1] - 2026-09-25
+
+### Fixed
+
+- Retroactive preview enrichment treats the PDS `RecordNotFound` response used
+  by some providers (`400` with the structured error) as a missing annotation,
+  so annotation-less YouTube bookmarks can be created and enriched instead of
+  consuming a retry attempt.
+
 ## [0.25.0] - 2026-09-24
 
 ### Added
