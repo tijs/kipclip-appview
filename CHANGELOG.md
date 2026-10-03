@@ -4,6 +4,11 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- The Tools page now links to the `kip` command-line client and shows its
+  Homebrew install command.
+
 ## [0.25.2] - 2026-09-25
 
 ### Fixed

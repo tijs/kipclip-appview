@@ -292,7 +292,7 @@ export function Tools() {
         </div>
       </div>
 
-      {/* Third-party Tools */}
+      {/* More Tools */}
       <div className="bg-white rounded-lg shadow-md p-8 mt-8">
         <div className="flex items-start gap-3 mb-6">
           <div className="w-10 h-10 bg-coral/10 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -313,15 +313,38 @@ export function Tools() {
           </div>
           <div>
             <h3 className="text-xl font-bold text-gray-800 mb-2">
-              Community Tools
+              More Tools
             </h3>
             <p className="text-gray-600">
-              Third-party tools that work with kipclip
+              More ways to work with your kipclip bookmarks
             </p>
           </div>
         </div>
 
         <div className="space-y-4">
+          <div className="bg-gray-50 rounded-lg p-4">
+            <h4 className="font-semibold text-gray-800 mb-2">kip CLI</h4>
+            <p className="text-sm text-gray-700">
+              Add, search, tag, and manage your bookmarks from the terminal. kip
+              talks directly to your PDS and uses the same bookmark data as
+              kipclip.
+            </p>
+            <div className="flex flex-wrap items-center gap-3 mt-3">
+              <code className="bg-white px-3 py-2 border rounded text-xs">
+                brew install tijs/tap/kipclip
+              </code>
+              <a
+                href="https://github.com/tijs/kipclip-cli"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-medium hover:underline"
+                style={{ color: "var(--coral)" }}
+              >
+                View on GitHub
+              </a>
+            </div>
+          </div>
+
           <div className="bg-gray-50 rounded-lg p-4">
             <div className="flex items-start justify-between gap-4">
               <div>
