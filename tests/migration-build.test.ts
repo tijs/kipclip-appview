@@ -61,7 +61,11 @@ Deno.test("migration actual frontend build is offline/deterministic and hashes f
         cwd: root,
         clearEnv: true,
         env: {
-          TMPDIR: Deno.env.get("TMPDIR")!,
+          // Isolated, deterministic temp dir for the child: GitHub runners
+          // set no parent TMPDIR, and Deno.Command env values must be
+          // strings (undefined fails the spawn with a serde_v8 error).
+          // `root` is also the only path the subprocess may write to.
+          TMPDIR: root,
           KIPCLIP_VERSION: "v-migration-fixture",
           KIPCLIP_SHA: "fixture-sha",
         },

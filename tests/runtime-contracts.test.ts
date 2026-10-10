@@ -15,6 +15,9 @@ Deno.test("portable contract suite runs against actual isolated Deno adapter", a
       `--allow-write=${scratch}`,
       "--allow-ffi",
       "--allow-net=127.0.0.1",
+      // libsql's native loader calls process.report.getReport() to detect
+      // libc flavor; Deno's compatibility layer needs cpus.
+      "--allow-sys=cpus",
       "--unstable-kv",
       "tests/runtime/contracts.mjs",
     ],
