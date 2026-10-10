@@ -1,16 +1,17 @@
+import { getHost } from "../runtime/host.ts";
 /**
  * Sentry error tracking for kipclip.
  * Captures errors and sends them to Sentry for monitoring.
  */
 
-import * as Sentry from "@sentry/deno";
+const Sentry = getHost().sentry;
 
-const SENTRY_DSN = Deno.env.get("SENTRY_DSN");
-const isProduction = Deno.env.get("ENVIRONMENT") !== "DEVELOPMENT";
+const SENTRY_DSN = getHost().env.get("SENTRY_DSN");
+const isProduction = getHost().env.get("ENVIRONMENT") !== "DEVELOPMENT";
 // Release tag injected by the kipclip-release update.sh into the systemd
 // unit's Environment= directive at swap time. Undefined in dev or before
 // the pull-based release flow lands -- Sentry just leaves events untagged.
-const SENTRY_RELEASE = Deno.env.get("SENTRY_RELEASE");
+const SENTRY_RELEASE = getHost().env.get("SENTRY_RELEASE");
 
 // Initialize Sentry (only in production or if DSN is explicitly set)
 if (SENTRY_DSN) {
@@ -24,7 +25,7 @@ if (SENTRY_DSN) {
     tracesSampleRate: 0,
     beforeSend(event, hint) {
       const error = hint?.originalException;
-      // Skip client-side HTTP errors (4xx). Fresh's HttpError has an empty
+      // Skip client-side HTTP errors (4xx). HTTP binder's HttpError has an empty
       // message string, so filter on the numeric `.status` instead. These are
       // overwhelmingly bots/scanners hitting bogus paths.
       if (error instanceof Error && error.name === "HttpError") {

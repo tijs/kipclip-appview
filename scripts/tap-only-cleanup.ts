@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Approval-gated TAP-only enrollment cleanup (operator path).
  *

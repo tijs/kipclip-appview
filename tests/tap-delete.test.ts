@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for lib/tap-delete.ts — verified TAP-side repo-row deletion.
  *

@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for lib/mirror-config.ts — MIRROR_MODE env parsing.
  */

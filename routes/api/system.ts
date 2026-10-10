@@ -1,3 +1,4 @@
+import { getHost } from "../../runtime/host.ts";
 /**
  * System API routes for release observability.
  *
@@ -25,7 +26,7 @@
  * swap by the kipclip-release timer).
  */
 
-import type { App } from "@fresh/core";
+import type { App } from "../../lib/http-app.ts";
 
 interface VersionInfo {
   version: string;
@@ -46,9 +47,10 @@ async function loadVersionInfo(): Promise<VersionInfo> {
   // relative "static/manifest.json": systemd sets WorkingDirectory to the
   // release dir (/var/lib/kipclip/current) and `deno task dev` runs from
   // the repo root, so the fallback resolves correctly in both.
-  const path = Deno.env.get("KIPCLIP_MANIFEST_PATH") ?? "static/manifest.json";
+  const path = getHost().env.get("KIPCLIP_MANIFEST_PATH") ??
+    "static/manifest.json";
   try {
-    const manifestContent = await Deno.readTextFile(path);
+    const manifestContent = await getHost().readTextFile(path);
     const manifest = JSON.parse(manifestContent);
     return {
       version: typeof manifest.version === "string"

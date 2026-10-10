@@ -1,3 +1,4 @@
+import { getHost } from "../runtime/host.ts";
 /**
  * TAP webhook receiver.
  *
@@ -81,7 +82,7 @@ export interface WebhookResult {
 // Read fresh per-request (not cached at module load) so tests can toggle the
 // flag between cases. Sub-µs cost; this is a DB-bound path.
 function ackAsync(): boolean {
-  return Deno.env.get("MIRROR_WEBHOOK_ACK_ASYNC") === "1";
+  return getHost().env.get("MIRROR_WEBHOOK_ACK_ASYNC") === "1";
 }
 
 async function webhookEventKey(id: number, payload: string): Promise<string> {
@@ -107,7 +108,7 @@ async function webhookEventKey(id: number, payload: string): Promise<string> {
 // Env var unset = check disabled. Read fresh on every request (not
 // cached at module load) so tests can toggle behavior between cases.
 function tapAdminPassword(): string {
-  return Deno.env.get("TAP_ADMIN_PASSWORD")?.trim() ?? "";
+  return getHost().env.get("TAP_ADMIN_PASSWORD")?.trim() ?? "";
 }
 
 // Single startup warning so an operator notices a misconfigured prod.

@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for lib/drift-quarantine.ts — the drift-alert quarantine execution
  * and exit-code policy.

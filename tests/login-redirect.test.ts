@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import { buildLoginRedirectUrl } from "../shared/login-redirect.ts";
 

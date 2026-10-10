@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for lib/drift-audit.ts — mirror-vs-PDS drift detection.
  */

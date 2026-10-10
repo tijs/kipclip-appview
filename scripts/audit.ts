@@ -9,19 +9,7 @@
  * KEEP THIS LIST TINY. Each entry must name a specific advisory, say why it
  * cannot be fixed from our side, and what would let us drop it again.
  */
-const ALLOWLIST: Record<string, string> = {
-  // esbuild "Missing binary integrity verification ... RCE via NPM_CONFIG_REGISTRY".
-  // Our own direct dep is on the patched esbuild@>=0.28.1. The only remaining
-  // vulnerable copy (esbuild@0.25.7) is pulled transitively by @fresh/core@2.3.3
-  // (directly and via @deno/esbuild-plugin), which pins it exactly; 2.3.3 is the
-  // latest Fresh, so there is no upstream version to upgrade to yet. The vector
-  // is npm install-time (postinstall fetching the platform binary) and does not
-  // apply under Deno, which runs no npm lifecycle scripts and verifies package
-  // bytes against deno.lock integrity hashes.
-  // DROP THIS once @fresh/core ships a release built on esbuild >= 0.28.1.
-  "GHSA-gv7w-rqvm-qjhr":
-    "esbuild <0.28.1 via @fresh/core@2.3.3 (transitive, unfixable until Fresh updates; not applicable under Deno)",
-};
+const ALLOWLIST: Record<string, string> = {};
 
 // deno audit colorizes output; strip ANSI before parsing.
 // deno-lint-ignore no-control-regex

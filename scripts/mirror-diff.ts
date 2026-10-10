@@ -1,4 +1,5 @@
 #!/usr/bin/env -S deno run -A
+import "../runtime/deno/install.ts";
 /**
  * Validate mirror correctness against a user's PDS.
  *

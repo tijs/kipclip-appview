@@ -8,7 +8,7 @@
  *                          on the site (Settings → Supporter, etc).
  */
 
-import type { App } from "@fresh/core";
+import type { App } from "../../lib/http-app.ts";
 import { getSupporters } from "../../lib/supporters.ts";
 
 export function registerSupportersRoutes(app: App<unknown>): App<unknown> {

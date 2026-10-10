@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for encryption utilities.
  * Verifies encryption/decryption with mocked environment.

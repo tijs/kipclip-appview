@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for lib/preferences.ts mirror branching:
  *   - reads from mirror when MIRROR_MODE=read + tracked DID + row exists

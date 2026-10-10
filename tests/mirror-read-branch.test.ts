@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for U12: read-path mirror branching in initial-data, bookmarks, share.
  * Covers shouldReadFromMirror gating + handler swap behavior.

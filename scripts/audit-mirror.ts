@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Audit mirror-vs-PDS divergence across every tracked DID.
  *

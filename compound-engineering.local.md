@@ -10,8 +10,8 @@ review_agents:
 
 kipclip is a bookmark manager for the AT Protocol ecosystem. Users authenticate
 via Bluesky OAuth and store bookmarks on their personal data server (PDS). The
-app uses Fresh 2.x (Deno), React 19 SPA frontend, and Turso/libSQL for session
-storage only.
+app uses Hono with runtime adapters, a React 19 SPA frontend, and local libSQL
+for sessions, settings, imports, and mirrored records.
 
 Key patterns:
 

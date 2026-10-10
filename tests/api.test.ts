@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * API tests for kipclip.
  * Tests route handlers via the app handler function.

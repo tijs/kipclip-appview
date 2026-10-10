@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for GET /api/stats/monthly and the lib/stats-monthly aggregator.
  * Uses the in-memory test database; main.ts runs migrations on import

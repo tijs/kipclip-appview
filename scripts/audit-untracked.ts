@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Audit DIDs that have signed in (seen_dids) but were never enrolled in
  * the mirror (tracked_dids). Resolves each DID's PDS via plc.directory,

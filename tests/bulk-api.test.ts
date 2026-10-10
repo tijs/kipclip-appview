@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for bulk bookmark operations API.
  * Tests POST /api/bookmarks/bulk for delete, add-tags, remove-tags.

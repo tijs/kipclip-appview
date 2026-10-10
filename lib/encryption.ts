@@ -1,9 +1,10 @@
+import { getHost } from "../runtime/host.ts";
 /**
  * Encryption utilities for sensitive user data.
  * Uses Web Crypto API with AES-GCM for secure encryption.
  */
 
-const ENCRYPTION_KEY = Deno.env.get("ENCRYPTION_KEY");
+const ENCRYPTION_KEY = getHost().env.get("ENCRYPTION_KEY");
 const ALGORITHM = "AES-GCM";
 const KEY_LENGTH = 256;
 

@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Periodic mirror-drift alert.
  *

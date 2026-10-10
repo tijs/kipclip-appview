@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for primary db initialization + migration coverage.
  */

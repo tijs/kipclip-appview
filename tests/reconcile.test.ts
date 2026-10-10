@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for lib/reconcile.ts — PDS-authoritative mirror repair.
  *

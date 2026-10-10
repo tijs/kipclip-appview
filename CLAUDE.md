@@ -34,12 +34,13 @@ together:
 - **`build-frontend.ts --watch`** rebuilds the esbuild SPA bundle
   (`static/bundle.<hash>.js`) whenever `frontend/` or `shared/` change. This is
   necessary because the frontend is a custom esbuild bundle served as a static
-  asset — it is NOT a Fresh island/route, so Fresh's built-in dev bundling never
-  rebuilds it. After a frontend edit, just reload the browser (the new content
-  hash busts the cache).
-- **The Fresh server** with `--watch=routes/,lib/,shared/,main.ts`. It does not
-  watch `static/`: `lib/file-server.ts` reads `manifest.json` per request, so a
-  rebuilt bundle is served on the next page load with no server restart.
+  asset — the backend server does not build it, so only this watcher rebuilds
+  it. After a frontend edit, just reload the browser (the new content hash busts
+  the cache).
+- **The backend server** with
+  `--watch=routes/,lib/,shared/,runtime/,main.ts,static/`. The manifest is read
+  per request, but `static/` is watched because the first HTML response caches
+  its bundle/SRI (preserved behavior), so a rebuild needs a restart to refresh.
 
 > Historically `dev` only built the frontend once at startup, so frontend edits
 > silently served a stale bundle. If a frontend change isn't showing up, confirm
@@ -48,14 +49,16 @@ together:
 ## Architecture
 
 kipclip is a real AppView. Production traffic serves from a Hetzner box that
-runs the Fresh server, a local libSQL mirror of every tracked user's bookmark
+runs the app server, a local libSQL mirror of every tracked user's bookmark
 data, and TAP (an indigo atproto sync utility) which firehoses events into a
-webhook on the box.
+webhook on the box. This tree carries the Hono runtime; the box continues on its
+deployed release until a separately approved cutover.
 
 ### High-level shape
 
 - **Frontend**: React 19 SPA with Tailwind CSS, bundled via esbuild
-- **Backend**: Fresh 2.x HTTP server running on the Hetzner box (`kipclip.com`)
+- **Backend**: Hono HTTP server for the Hetzner box (`kipclip.com`); production
+  cutover is a separate approved step
 - **Edge proxy**: Caddy on the box (TLS, security headers, CSP+SRI, webhook
   endpoint allow-list)
 - **TAP** (`bluesky-social/indigo` `cmd/tap`): subscribes to the relay, filters
@@ -107,13 +110,14 @@ unchanged.
 - `app.bookmark.annotation` — legacy annotation collection still ingested by TAP
   for backward compatibility, but new writes use `com.kipclip.annotation`
 
-### Fresh Framework
+### HTTP framework
 
-The app uses Fresh 2.x with programmatic routing. All routes are defined in
-`main.ts`:
+The app is a runtime-neutral Hono application behind a thin binder
+(`lib/http-app.ts`) that keeps domain handlers on standard Request/Response. All
+routes are registered from `main.ts` via the `register*` modules:
 
 ```typescript
-import { App } from "@fresh/core";
+import { App } from "./lib/http-app.ts";
 
 let app = new App({ trustProxy: true });
 
@@ -130,6 +134,9 @@ Key patterns:
 - `ctx.req` for the Request object
 - `ctx.params.rkey` for route parameters
 - `Response.json()` for JSON responses
+- Runtime entrypoints live under `runtime/` (e.g. `runtime/deno/server.ts` for
+  the Deno host); shared code accesses runtime services through
+  `runtime/host.ts` instead of importing runtime globals directly.
 
 ### OAuth Stack
 

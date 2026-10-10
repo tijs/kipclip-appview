@@ -1,0 +1,20 @@
+{
+  "name": "kipclip-runtime-adapters",
+  "private": true,
+  "type": "module",
+  "description": "Native host dependencies for the portable application bundle",
+  "scripts": {
+    "start:node": "node runtime/node/server.mjs",
+    "test:runtime:node": "node tests/runtime/contracts.mjs",
+    "test:runtime:bun": "bun tests/runtime/contracts.mjs",
+    "start:bun": "bun runtime/bun/server.mjs"
+  },
+  "dependencies": {
+    "@hono/node-server": "1.19.17",
+    "@libsql/client": "0.17.3",
+    "@sentry/bun": "10.76.2",
+    "@sentry/node": "10.76.2",
+    "hono": "4.13.13",
+    "ws": "8.21.0"
+  }
+}

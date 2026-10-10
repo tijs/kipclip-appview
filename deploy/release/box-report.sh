@@ -72,11 +72,11 @@ for t in kipclip-release.timer tap-update.timer deno-update.timer kipclip-drift-
   NextWall="$(systemctl show "$t" -p NextElapseUSecRealtime --value 2>/dev/null)"
   LastTrig="$(systemctl show "$t" -p LastTriggerUSec --value 2>/dev/null)"
   if [[ -n "$NextMono" && "$NextMono" != "0" && -n "$_now" ]]; then
-    Fresh="$(fresh_seconds "$NextMono" "$_now")"
+    freshSeconds="$(fresh_seconds "$NextMono" "$_now")"
   else
-    Fresh="-"
+    freshSeconds="-"
   fi
-  echo "timer=$t active=$Active next_monotonic_in_s=$Fresh next_wall=${NextWall:-$NextMono} last_trigger=${LastTrig:-never}"
+  echo "timer=$t active=$Active next_monotonic_in_s=$freshSeconds next_wall=${NextWall:-$NextMono} last_trigger=${LastTrig:-never}"
 done
 
 echo "== journal =="

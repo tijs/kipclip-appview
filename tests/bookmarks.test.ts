@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for bookmark CRUD operations.
  * Uses mock session and fetch to avoid network calls.
@@ -964,7 +965,7 @@ Deno.test({
           new Response(
             JSON.stringify({
               type: "video",
-              title: "Fresh Video Title",
+              title: "baseline Video Title",
               thumbnail_url: YT_THUMB,
             }),
             {
@@ -987,13 +988,13 @@ Deno.test({
 
       const body = await res.json();
       assertEquals(body.success, true);
-      assertEquals(body.bookmark.title, "Fresh Video Title");
+      assertEquals(body.bookmark.title, "baseline Video Title");
       assertEquals(body.bookmark.note, "keep me");
 
       const writes = annotationPutRecords(calls);
       assertEquals(writes.length, 1);
       const written = JSON.parse(writes[0].body!);
-      assertEquals(written.record.title, "Fresh Video Title");
+      assertEquals(written.record.title, "baseline Video Title");
       assertEquals(written.record.note, "keep me");
     } finally {
       setTestSessionProvider(null);

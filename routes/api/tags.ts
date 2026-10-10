@@ -3,7 +3,7 @@
  * Handles CRUD operations for user tags stored on their PDS.
  */
 
-import type { App } from "@fresh/core";
+import type { App } from "../../lib/http-app.ts";
 import {
   BOOKMARK_COLLECTION,
   createAuthErrorResponse,

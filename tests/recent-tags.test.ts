@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for recent-tags localStorage helpers and pure reducer.
  * Uses a localStorage mock since Deno doesn't provide one.

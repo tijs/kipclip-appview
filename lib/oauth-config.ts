@@ -1,3 +1,4 @@
+import { getHost } from "../runtime/host.ts";
 /**
  * OAuth configuration and instance creation.
  * Eagerly initialized at startup when BASE_URL env var is set; otherwise
@@ -23,7 +24,7 @@ export function getBaseUrl(): string {
 }
 
 function buildOAuth(resolvedBaseUrl: string) {
-  const COOKIE_SECRET = Deno.env.get("COOKIE_SECRET");
+  const COOKIE_SECRET = getHost().env.get("COOKIE_SECRET");
   if (!COOKIE_SECRET) {
     throw new Error("COOKIE_SECRET environment variable is required");
   }
@@ -54,7 +55,7 @@ function buildOAuth(resolvedBaseUrl: string) {
  */
 export function tryInitOAuthFromEnv(): boolean {
   if (oauth) return true;
-  const envBaseUrl = Deno.env.get("BASE_URL");
+  const envBaseUrl = getHost().env.get("BASE_URL");
   if (!envBaseUrl) return false;
   console.log(`Using BASE_URL from environment: ${envBaseUrl}`);
   buildOAuth(envBaseUrl);
@@ -62,8 +63,8 @@ export function tryInitOAuthFromEnv(): boolean {
 }
 
 /**
- * Lazy init from a request URL. Pass `ctx.url` from a Fresh handler — when
- * `trustProxy` is on the App, Fresh has already applied
+ * Lazy init from a request URL. Pass `ctx.url` from a HTTP binder handler — when
+ * `trustProxy` is on the App, HTTP binder has already applied
  * X-Forwarded-Proto/X-Forwarded-Host so the URL reflects the public scheme
  * and host. Safe to call multiple times — only initializes once.
  */
@@ -71,7 +72,7 @@ export function initOAuth(
   url: URL,
 ): ReturnType<typeof createATProtoOAuth> {
   if (oauth) return oauth;
-  const envBaseUrl = Deno.env.get("BASE_URL");
+  const envBaseUrl = getHost().env.get("BASE_URL");
   if (envBaseUrl) {
     console.log(`Using BASE_URL from environment: ${envBaseUrl}`);
     return buildOAuth(envBaseUrl);

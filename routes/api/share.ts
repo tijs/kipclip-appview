@@ -4,7 +4,7 @@
  * `lib/pds-public.ts` for SSRF + DoS hardening.
  */
 
-import type { App } from "@fresh/core";
+import type { App } from "../../lib/http-app.ts";
 import { resolveDid } from "../../lib/plc-resolver.ts";
 import {
   ANNOTATION_COLLECTION,

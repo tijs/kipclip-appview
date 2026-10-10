@@ -1,3 +1,4 @@
+import { getHost } from "../runtime/host.ts";
 /**
  * File server utilities for serving static files.
  * Frontend is now pre-built, so no runtime transpilation needed.
@@ -71,7 +72,7 @@ export async function readFile(path: string, baseUrl: string): Promise<string> {
   const filePath = resolveProjectPath(path, baseUrl);
 
   try {
-    const content = await Deno.readTextFile(filePath);
+    const content = await getHost().readTextFile(filePath);
     return content;
   } catch (error) {
     console.error(`Failed to read file: ${filePath}`, error);
@@ -100,7 +101,7 @@ export async function serveFile(
   try {
     const filePath = resolveProjectPath(path, baseUrl);
     const ext = path.split(".").pop() || "";
-    const content = await Deno.readFile(filePath);
+    const content = await getHost().readFile(filePath);
     const mimeType = contentType(ext) || "application/octet-stream";
     const cacheControl = getCacheControl(path);
 

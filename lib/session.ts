@@ -1,3 +1,4 @@
+import { getHost } from "../runtime/host.ts";
 /**
  * Session utilities with comprehensive error logging.
  * Uses @tijs/atproto-oauth for OAuth and session management.
@@ -31,7 +32,7 @@ let sessions: SessionManager | null = null;
 
 function getSessionManager(): SessionManager {
   if (!sessions) {
-    const COOKIE_SECRET = Deno.env.get("COOKIE_SECRET");
+    const COOKIE_SECRET = getHost().env.get("COOKIE_SECRET");
     if (!COOKIE_SECRET) {
       throw new Error("COOKIE_SECRET environment variable is required");
     }

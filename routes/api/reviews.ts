@@ -7,7 +7,7 @@
  *                       elsewhere on the site.
  */
 
-import type { App } from "@fresh/core";
+import type { App } from "../../lib/http-app.ts";
 import { getReviews } from "../../lib/reviews.ts";
 
 export function registerReviewsRoutes(app: App<unknown>): App<unknown> {

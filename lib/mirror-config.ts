@@ -1,3 +1,4 @@
+import { getHost } from "../runtime/host.ts";
 /**
  * MIRROR_MODE configuration.
  *
@@ -25,7 +26,7 @@ const VALID_MODES: ReadonlySet<MirrorMode> = new Set(["off", "read"]);
 let cached: MirrorMode | null = null;
 
 function readMode(): MirrorMode {
-  const raw = Deno.env.get("MIRROR_MODE");
+  const raw = getHost().env.get("MIRROR_MODE");
   if (!raw) return "off";
   const normalised = raw.trim().toLowerCase();
   if (VALID_MODES.has(normalised as MirrorMode)) {

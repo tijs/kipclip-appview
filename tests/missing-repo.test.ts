@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for lib/missing-repo.ts — persistent missing-repo bookkeeping.
  */

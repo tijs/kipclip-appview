@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Regression tests for the public share endpoint.
  *

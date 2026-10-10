@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 import { assertEquals } from "@std/assert";
 import {
   deduplicateTagsCaseInsensitive,

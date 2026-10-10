@@ -1,3 +1,4 @@
+import { getHost } from "../runtime/host.ts";
 /**
  * Shared helper for executing SQL against TAP's local SQLite database.
  *
@@ -13,7 +14,7 @@ export interface TapDbOptions {
 }
 
 export function tapDbPath(opts?: TapDbOptions): string {
-  const envPath = Deno.env.get("TAP_DB_PATH");
+  const envPath = getHost().env.get("TAP_DB_PATH");
   return opts?.tapDbPath ??
     (envPath && envPath.length > 0 ? envPath : DEFAULT_TAP_DB_PATH);
 }
@@ -31,8 +32,7 @@ export async function withTapDb<T>(
   // deno-lint-ignore no-explicit-any
   let tapClient: any;
   try {
-    const { createClient } = await import("@libsql/client");
-    tapClient = createClient({ url: `file:${path}` });
+    tapClient = getHost().createDatabase({ url: `file:${path}` });
     return await fn(tapClient);
   } finally {
     try {
