@@ -24,8 +24,9 @@ for (const scenario of ["lazy", "eager", "gc-failure"]) {
           "--allow-ffi",
           "--deny-net",
           // libsql's native loader calls process.report.getReport() to
-          // detect libc flavor; Deno's compatibility layer needs cpus.
-          "--allow-sys=cpus",
+          // detect libc flavor; Deno's compatibility layer needs CPU and
+          // network-interface system information.
+          "--allow-sys=cpus,networkInterfaces",
           fromFileUrl(new URL("./migration/startup-probe.ts", import.meta.url)),
           scenario,
         ],
