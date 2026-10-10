@@ -3,7 +3,7 @@
  * Handles batch delete, add-tags, and remove-tags operations for bookmarks.
  */
 
-import type { App } from "@fresh/core";
+import type { App } from "../../lib/http-app.ts";
 import { extractRkey, mapBookmarkRecord } from "../../lib/annotations.ts";
 import {
   ANNOTATION_COLLECTION,

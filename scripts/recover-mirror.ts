@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * One-shot mirror recovery for a tracked DID whose `bookmarks`/`tags`/
  * `annotations` mirror tables are empty (or partial) but whose PDS holds

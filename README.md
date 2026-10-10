@@ -22,8 +22,9 @@ bookmark lexicon.
 ## Architecture
 
 - **Frontend**: React 19 + TypeScript + Tailwind CSS
-- **Backend**: Fresh 2.x on a Hetzner box (`kipclip.com`). Pull-based releases
-  via signed `v*` git tags
+- **Backend**: Hono migration candidate in this tree; production (`kipclip.com`)
+  remains on the existing deployed runtime. Pull-based releases via signed `v*`
+  git tags
 - **AppView mirror**: every tracked user's bookmark / tag / annotation /
   preference records are mirrored from the user's PDS into a local libSQL
   database on the box, kept fresh by
@@ -39,7 +40,7 @@ bookmark lexicon.
 
 ```text
 kipclip-appview/
-├── main.ts              # Fresh app entry point (all routes)
+├── main.ts              # Hono candidate app entry point (all routes)
 ├── dev.ts               # Development server
 ├── lib/                 # Backend utilities
 │   ├── db.ts            # Database client

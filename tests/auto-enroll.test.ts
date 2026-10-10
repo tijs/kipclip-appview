@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for lib/auto-enroll.ts — TAP enroll auth + failure propagation.
  *

@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for lib/tap-repo-state.ts — persisted TAP-repo classification.
  *

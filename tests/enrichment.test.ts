@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for URL metadata extraction.
  * Uses mock fetcher to avoid network calls.

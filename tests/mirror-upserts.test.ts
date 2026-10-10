@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for mirror/upserts.ts — idempotent upsert + delete helpers.
  */

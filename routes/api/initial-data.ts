@@ -4,7 +4,7 @@
  * subsequent pages fetched in background by the client.
  */
 
-import type { App } from "@fresh/core";
+import type { App } from "../../lib/http-app.ts";
 import {
   ANNOTATION_COLLECTION,
   BOOKMARK_COLLECTION,

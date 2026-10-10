@@ -4,7 +4,7 @@
  * (bypassing the server cache) and return {isSupporter}.
  */
 
-import type { App } from "@fresh/core";
+import type { App } from "../../lib/http-app.ts";
 import {
   createAuthErrorResponse,
   getSessionFromRequest,

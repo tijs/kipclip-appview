@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Unit tests for atprotofans.com supporter detection.
  */

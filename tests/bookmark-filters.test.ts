@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for bookmark filtering logic.
  * Tests buildTagIndex, filterByTags, and matchesSearch as pure functions.

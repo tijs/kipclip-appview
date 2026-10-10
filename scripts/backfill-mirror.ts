@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * One-shot PDS → mirror backfill for a single DID.
  *

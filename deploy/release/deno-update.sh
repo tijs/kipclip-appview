@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Pull-based Deno runtime update for kipclip's Hetzner box.
 #
-# kipclip runs `/opt/deno/bin/deno serve`, so the runtime version is
+# kipclip uses the `/opt/deno/bin/deno` runtime, so the runtime version is
 # bound to the systemd unit's ExecStart. Upstream Deno ships frequently;
 # we want security + perf fixes without manual intervention.
 #

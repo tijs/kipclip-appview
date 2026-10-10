@@ -1,3 +1,4 @@
+import { getHost } from "../runtime/host.ts";
 /**
  * Background auto-enrollment for new users.
  *
@@ -24,14 +25,14 @@ import {
   recordMissingRepo,
 } from "./missing-repo.ts";
 
-const TAP_CONTROL_URL = Deno.env.get("TAP_CONTROL_URL") ??
+const TAP_CONTROL_URL = getHost().env.get("TAP_CONTROL_URL") ??
   "http://127.0.0.1:2480";
 // TAP requires Basic auth (admin:<password>) on all endpoints including
 // outbound webhook delivery. Read from the same env var TAP uses.
 // Read at call time, not module load, so tests can toggle the value
 // without re-importing.
 function tapAdminPassword(): string | undefined {
-  return Deno.env.get("TAP_ADMIN_PASSWORD");
+  return getHost().env.get("TAP_ADMIN_PASSWORD");
 }
 
 // TAP /repos/add is a single in-process call to a local process on the box

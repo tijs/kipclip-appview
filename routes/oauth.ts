@@ -3,7 +3,7 @@
  * Handles login flow and OAuth client metadata.
  */
 
-import type { App } from "@fresh/core";
+import type { App } from "../lib/http-app.ts";
 import { getBaseUrl, getOAuth } from "../lib/oauth-config.ts";
 import { OAUTH_SCOPES } from "../lib/oauth-scopes.ts";
 

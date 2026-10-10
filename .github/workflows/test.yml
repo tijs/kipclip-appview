@@ -13,13 +13,19 @@ jobs:
       - uses: actions/checkout@v5
       - uses: denoland/setup-deno@v2
         with:
-          deno-version: v2.9.1
+          deno-version: v2.9.7
       - name: Install dependencies (frozen lockfile)
         run: deno ci
       - name: Format check
         run: deno fmt --check
       - name: Lint
         run: deno lint
+      - name: Shell regression tests (release updater)
+        run: bash tests/shell/update.test.sh
+      - name: Audit framework references
+        run: deno task audit:framework
+      - name: Audit shared runtime boundary
+        run: deno task audit:runtime
       - name: Audit dependencies
         continue-on-error: true
         run: deno audit
@@ -38,3 +44,29 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.lcov
+
+  runtime-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9.7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26.7.0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: deno ci
+      - run: npm ci --ignore-scripts
+      - run: deno task audit:native
+      - run: deno task build:all
+      - name: Identical contract gates Deno → Bun → Node
+        run: |
+          deno task test:runtime:deno
+          deno task test:runtime:bun
+          deno task test:runtime:node
+        env:
+          TMPDIR: ${{ runner.temp }}
+          KIPCLIP_REQUIRE_BUILT_ASSETS: "1"

@@ -3,7 +3,7 @@
  * This is a fallback for when the service worker doesn't intercept the request.
  */
 
-import type { App } from "@fresh/core";
+import type { App } from "../lib/http-app.ts";
 
 /**
  * Create a redirect response with mutable headers.

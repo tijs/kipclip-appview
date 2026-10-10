@@ -10,7 +10,7 @@
  *     Basic-auth inside handleWebhookRequest. No public exposure (R23).
  */
 
-import { type App, ipFilter } from "@fresh/core";
+import { type App, ipFilter } from "../../lib/http-app.ts";
 import {
   createAuthErrorResponse,
   setSessionCookie,

@@ -1,3 +1,4 @@
+import { getHost } from "../runtime/host.ts";
 import {
   type PdsAnnotationRead,
   readAnnotationFromPds,
@@ -302,11 +303,17 @@ export async function runPreviewEnrichmentTick(
 export function startPreviewEnrichmentWorker(
   options: PreviewWorkerOptions = {},
 ): void {
-  if (timer !== undefined || Deno.env.get("KIPCLIP_TESTING")) return;
+  if (timer !== undefined || getHost().env.get("KIPCLIP_TESTING")) return;
   const intervalMs = options.intervalMs ?? 60_000;
   timer = setInterval(() => {
     runPreviewEnrichmentTick(options).catch((err) =>
       console.warn("[preview-enrichment] tick failed", err)
     );
   }, intervalMs);
+}
+
+/** Stop scheduling ticks; an already-running tick completes normally. */
+export function stopPreviewEnrichmentWorker(): void {
+  if (timer !== undefined) clearInterval(timer);
+  timer = undefined;
 }

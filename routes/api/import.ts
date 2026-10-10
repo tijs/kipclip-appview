@@ -5,7 +5,7 @@
  * GET /api/import/:jobId — get current job status.
  */
 
-import type { App } from "@fresh/core";
+import type { App } from "../../lib/http-app.ts";
 import { parseBookmarkFile } from "../../lib/import-parsers.ts";
 import {
   ANNOTATION_COLLECTION,

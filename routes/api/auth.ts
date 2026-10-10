@@ -3,7 +3,7 @@
  * Handles session management.
  */
 
-import type { App } from "@fresh/core";
+import type { App } from "../../lib/http-app.ts";
 import { getOAuth } from "../../lib/oauth-config.ts";
 import { markSeenDid } from "../../lib/seen-dids.ts";
 

@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for /api/initial-data endpoint.
  * Verifies that bookmarks include tags, pagination works correctly,

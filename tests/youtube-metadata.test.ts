@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for the YouTube-aware metadata module.
  * Deterministic: all fetches are mocked; no live YouTube traffic.

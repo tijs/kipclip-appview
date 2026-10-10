@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for Instapaper API client.
  * Uses mocked fetch to avoid external dependencies.

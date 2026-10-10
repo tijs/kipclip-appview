@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for lib/webhook-diag.ts — bounded malformed-repoOp diagnostics.
  *

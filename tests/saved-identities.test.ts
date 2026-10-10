@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for saved login identities utility.
  * Uses a localStorage mock since Deno doesn't provide one.

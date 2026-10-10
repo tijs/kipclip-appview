@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 import { assert, assertEquals, assertRejects } from "@std/assert";
 import { clearMirrorTables, db } from "./mirror-test-setup.ts";
 import { upsertAnnotation, upsertBookmark } from "../mirror/upserts.ts";

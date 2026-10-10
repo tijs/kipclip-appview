@@ -4,7 +4,7 @@
  * PUT /api/preferences — update user preferences on PDS
  */
 
-import type { App } from "@fresh/core";
+import type { App } from "../../lib/http-app.ts";
 import {
   createAuthErrorResponse,
   getSessionFromRequest,

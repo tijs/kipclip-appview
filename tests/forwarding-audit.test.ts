@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for lib/forwarding-audit.ts — mirror-vs-TAP forwarding-drift detection.
  *

@@ -7,7 +7,7 @@
  *                        formal atstore review records.
  */
 
-import type { App } from "@fresh/core";
+import type { App } from "../../lib/http-app.ts";
 import { getMentions } from "../../lib/mentions.ts";
 
 export function registerMentionsRoutes(app: App<unknown>): App<unknown> {

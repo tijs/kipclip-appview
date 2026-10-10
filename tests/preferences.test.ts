@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Preferences API tests.
  * Tests route handlers for GET/PUT /api/preferences.

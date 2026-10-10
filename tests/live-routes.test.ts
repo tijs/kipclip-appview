@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for routes/api/live.ts — WebSocket upgrade + DID socket registry +
  * broadcastToDid fan-out. Real WebSocket upgrades require a live Deno.serve

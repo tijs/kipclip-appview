@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 import { assertEquals, assertThrows } from "@std/assert";
 import {
   detectFormat,

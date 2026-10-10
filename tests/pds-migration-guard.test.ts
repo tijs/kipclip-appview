@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for lib/pds-migration-guard.ts — write-side migration detection.
  *

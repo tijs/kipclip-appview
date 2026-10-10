@@ -15,7 +15,7 @@
  *           "vitals":{"lcp":820,"fcp":410,"ttfb":120},"bookmarks":47}
  */
 
-import type { App } from "@fresh/core";
+import type { App } from "../../lib/http-app.ts";
 
 const MAX_BEACON_BYTES = 4 * 1024;
 

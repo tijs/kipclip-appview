@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for settings API endpoints.
  * Uses mock session to test settings CRUD operations.

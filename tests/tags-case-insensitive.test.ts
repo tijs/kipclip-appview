@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Integration tests for case-insensitive tag behavior.
  * Tests that tag operations properly handle mixed-case tags.

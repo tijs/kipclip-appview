@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for routes/api/sync.ts — status / hook endpoints.
  */
@@ -23,7 +24,7 @@ const baseHandler = app.handler();
 // is not a valid IP literal — matchSubnets rejects it.
 //
 // `as unknown as Deno.ServeHandlerInfo` skips threading the
-// ServeHandlerInfo<Addr> generic; Fresh's middleware reads only
+// ServeHandlerInfo<Addr> generic; baseline's middleware reads only
 // `info.remoteAddr.hostname` so the partial shape is sufficient.
 const loopbackConn = {
   remoteAddr: {

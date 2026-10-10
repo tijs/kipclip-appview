@@ -1,7 +1,7 @@
 # kipclip box ops runbook
 
 Deploy artefacts for the production Hetzner box that serves `kipclip.com`. The
-box runs the Fresh server, a local libSQL mirror of every tracked user's
+box runs the application service, a local libSQL mirror of every tracked user's
 bookmark data, restic backups to B2, Caddy as the TLS edge, and TAP (an indigo
 atproto sync utility) which firehoses events into a webhook on the box.
 

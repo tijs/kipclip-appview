@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Reconciling mirror sync — repair tables that diverged from the PDS.
  *

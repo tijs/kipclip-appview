@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for search query parsing with tag: syntax.
  */

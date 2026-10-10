@@ -1,3 +1,4 @@
+import { getHost } from "../runtime/host.ts";
 // Database module using libSQL.
 //
 // Single db connection backed by the primary local SQLite file on the box
@@ -5,7 +6,7 @@
 // to file:.local/kipclip.db. Holds all tables: OAuth sessions, user_settings,
 // import_jobs, and all mirror tables.
 
-const dbUrl = Deno.env.get("DATABASE_URL") || "file:.local/kipclip.db";
+const dbUrl = getHost().env.get("DATABASE_URL") || "file:.local/kipclip.db";
 const isLocal = dbUrl.startsWith("file:");
 const isTestDb = dbUrl.startsWith("libsql://test");
 
@@ -29,9 +30,7 @@ if (isTestDb) {
     },
   };
 } else {
-  const { createClient } = await import("@libsql/client");
-
-  const client = createClient({
+  const client = getHost().createDatabase({
     url: dbUrl,
   });
 

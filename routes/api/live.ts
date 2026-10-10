@@ -16,7 +16,7 @@
  *     sometimes hide.
  */
 
-import type { App } from "@fresh/core";
+import type { App } from "../../lib/http-app.ts";
 import { getSessionFromRequest } from "../../lib/session.ts";
 import type { LiveEvent } from "../../shared/types.ts";
 
@@ -24,7 +24,7 @@ export type { LiveEvent };
 
 interface SocketEntry {
   did: string;
-  intervalId: number;
+  intervalId: ReturnType<typeof setInterval> | 0;
   missedPongs: number;
 }
 
@@ -166,7 +166,12 @@ export function registerLiveRoutes(app: App<unknown>): App<unknown> {
       error(socket, event) {
         console.warn("[live] socket error", {
           did,
-          message: event instanceof ErrorEvent ? event.message : undefined,
+          message:
+            typeof ErrorEvent !== "undefined" && event instanceof ErrorEvent
+              ? event.message
+              : "message" in event
+              ? String(event.message)
+              : undefined,
         });
         // `error` may not be followed by `close` in every runtime; clean up
         // synchronously here to avoid leaking the socket in the registry.
@@ -175,4 +180,14 @@ export function registerLiveRoutes(app: App<unknown>): App<unknown> {
     });
   });
   return app;
+}
+
+/** Host shutdown: release owned heartbeats and close active connections. */
+export function stopLiveConnections(): void {
+  for (const socket of [...entries.keys()]) {
+    cleanupSocket(socket);
+    try {
+      socket.close(1001, "server shutdown");
+    } catch { /* Already closed. */ }
+  }
 }

@@ -4,7 +4,7 @@
  * Enrichment metadata and notes are stored in annotation sidecar records.
  */
 
-import type { App } from "@fresh/core";
+import type { App } from "../../lib/http-app.ts";
 import {
   extractUrlMetadata,
   isNonEmptyUrlMetadata,

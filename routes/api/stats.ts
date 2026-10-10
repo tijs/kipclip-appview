@@ -12,7 +12,7 @@
  *                              and seen_dids backfill caveats.
  */
 
-import type { App } from "@fresh/core";
+import type { App } from "../../lib/http-app.ts";
 import { getStats } from "../../lib/stats.ts";
 import { getMonthlyStats, MAX_MONTHS } from "../../lib/stats-monthly.ts";
 

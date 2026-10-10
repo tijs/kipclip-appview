@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Integration tests for the two-phase import API.
  * Tests prepare (POST /api/import) and process (POST /api/import/:jobId/process).

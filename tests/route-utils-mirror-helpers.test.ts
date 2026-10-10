@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for fetchOwnerBookmarkRecords + fetchOwnerTagRecords (U1, plan 003).
  *

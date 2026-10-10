@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for PLC directory resolution.
  * Uses mock fetcher to avoid network calls.

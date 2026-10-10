@@ -3,7 +3,7 @@
  * Handles static assets, robots.txt, and SPA fallback routing.
  */
 
-import type { App } from "@fresh/core";
+import type { App } from "../lib/http-app.ts";
 import {
   getBundleFileName,
   getBundleIntegrity,
@@ -72,7 +72,7 @@ async function getHtmlWithBundle(): Promise<string> {
 
 /**
  * Register static file routes.
- * @param app - Fresh app instance
+ * @param app - HTTP binder app instance
  * @param moduleUrl - import.meta.url from the main module (project root)
  */
 export function registerStaticRoutes(

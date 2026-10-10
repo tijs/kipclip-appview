@@ -35,7 +35,6 @@ echo "→ Syncing repo to $HOST:$APP_DIR"
 rsync -az --delete \
   --exclude .git \
   --exclude node_modules \
-  --exclude _fresh \
   --exclude .local \
   --exclude tests \
   "$ROOT/" "$HOST:$APP_DIR/"

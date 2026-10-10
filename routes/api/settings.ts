@@ -3,7 +3,7 @@
  * Handles user settings management.
  */
 
-import type { App } from "@fresh/core";
+import type { App } from "../../lib/http-app.ts";
 import {
   createAuthErrorResponse,
   getSessionFromRequest,

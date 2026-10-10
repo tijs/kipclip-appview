@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Tests for lib/tap-only-cleanup.ts — approval-gated TAP-only enrollment
  * cleanup classification and selection.

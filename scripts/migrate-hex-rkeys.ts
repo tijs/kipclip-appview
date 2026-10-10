@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * One-time migration: convert hex-format rkeys to AT Protocol TIDs.
  *

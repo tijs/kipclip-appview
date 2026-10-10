@@ -1,12 +1,11 @@
+import { getHost } from "./runtime/host.ts";
 /**
- * Main entry point for kipclip Fresh application.
+ * Main entry point for kipclip HTTP binder application.
  * Orchestrates route registration and middleware setup.
  */
 
-import { App, staticFiles } from "@fresh/core";
-// Static import required — top-level await requires a static import at module
-// level. The load() call is gated instead (not the import).
-import { load } from "@std/dotenv";
+import { App } from "./lib/http-app.ts";
+import { staticFiles } from "./lib/static-assets.ts";
 import { initializeTables } from "./lib/db.ts";
 import { logMirrorMode } from "./lib/mirror-config.ts";
 import { initOAuth, tryInitOAuthFromEnv } from "./lib/oauth-config.ts";
@@ -43,9 +42,9 @@ import { registerStaticRoutes } from "./routes/static.ts";
 // Skipped under KIPCLIP_TESTING — tests set every env var they need on the
 // `deno task test` command line, and loading .env here would bring back
 // the developer's real SENTRY_DSN even after tests/test-setup.ts opted out.
-if (!Deno.env.get("KIPCLIP_TESTING")) {
+if (!getHost().env.get("KIPCLIP_TESTING")) {
   try {
-    await load({ export: true });
+    await getHost().loadEnv();
     console.log("✅ Loaded .env file");
   } catch (error) {
     console.warn("⚠️ Failed to load .env file:", (error as Error).message);
@@ -61,12 +60,12 @@ initWebhook();
 // Log the active mirror mode so deploys make config visible in journalctl
 logMirrorMode();
 
-// Create the Fresh app.
+// Create the HTTP binder app.
 // trustProxy applies X-Forwarded-Proto and X-Forwarded-Host to ctx.url
 // before handlers see it. Assumes a trusted reverse proxy is in front
 // (Caddy on the Hetzner box) — running this app bare on a public interface
 // would let attackers spoof the scheme/host via forged headers.
-let app = new App({ trustProxy: true });
+let app = new App({ trustProxy: true, upgrade: getHost().upgrade });
 
 // ============================================================================
 // Middleware
@@ -198,10 +197,10 @@ app = registerShareTargetRoutes(app);
 
 // Serve static files from /static directory (must be after API routes to
 // prevent staticFiles() from intercepting POST/PUT/DELETE requests with 405)
-app.use(staticFiles());
+app.use(staticFiles(app));
 
 // Static files and SPA routing (must be last)
-app = registerStaticRoutes(app, import.meta.url);
+app = registerStaticRoutes(app, new URL("main.ts", getHost().rootUrl).href);
 
-// Export app for Fresh build system
+// Shared application export; runtime adapters own server startup
 export { app };

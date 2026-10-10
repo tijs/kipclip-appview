@@ -1,3 +1,4 @@
+import "../runtime/deno/install.ts";
 /**
  * Test environment setup.
  * Sets test-mode defaults. Import this at the top of test files before
