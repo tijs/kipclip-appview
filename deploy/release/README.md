@@ -273,15 +273,21 @@ Two options:
 
 A failed release rolls back automatically before the tick exits: the previous
 `current` symlink and both drop-ins are restored, systemd is reloaded, and the
-old release is restarted and health-verified. If that rollback cannot be
-verified, the tick keeps the activation journal and fails closed — the log line
-names the journal path an operator must inspect, and later ticks keep stopping
-at recovery until it is resolved (see "Crash recovery").
+old release is restarted and health-verified. **Immediately after observing that
+rollback, pin the previous known-good tag and read it back before the next 60s
+timer tick**; otherwise the failed latest tag is retried automatically:
 
-A manual pin to a pre-Hono tag after the cutover switches the runtime back by
-the same base-unit-aware transaction on the next tick. Remember that without a
-pin the timer retries the failed latest tag every 60s: pin first, then fix
-forward.
+```bash
+ssh kipclip-box "echo vX.Y.Z-1 | sudo tee /etc/kipclip/release-pin && cat /etc/kipclip/release-pin"
+curl https://kipclip.com/api/version
+```
+
+If the rollback itself cannot be verified, the tick keeps the activation journal
+and fails closed — the log line names the journal path an operator must inspect,
+and later ticks keep stopping at recovery until it is resolved (see "Crash
+recovery"). Keep the pin in place while repairing forward. After a Hono cutover,
+pinning a pre-Hono tag uses the base-unit-aware runtime transaction; do not run
+bootstrap as a substitute for that rollback.
 
 ## Bootstrap-redo (config changes)
 

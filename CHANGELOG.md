@@ -4,10 +4,27 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-10-10
+
 ### Added
 
 - The Tools page now links to the `kip` command-line client and shows its
   Homebrew install command.
+
+### Changed
+
+- Replaced Fresh with a runtime-portable Hono application. Shared route and
+  business code now runs behind Deno, Bun, and Node adapters, with Fresh runtime
+  dependencies removed. Deno remains the production host. All 47 cross-runtime
+  contract tests pass on Deno 2.9.7, Bun 1.4.2, and Node 26.7.0 in CI; the full
+  Deno suite passes 774 tests.
+- The release updater stages and builds a candidate before mutation, records a
+  durable activation journal, and recovers interrupted cutovers before the no-op
+  fast path. On activation failure it restores the prior symlink and drop-ins
+  and verifies rollback health; if recovery cannot be proven, it keeps the
+  journal and fails closed. Its no-journal guard stops before fetch/build on an
+  undeterminable unit, unit/current runtime mismatch, or stale/unreadable
+  `SENTRY_RELEASE`. Covered by 28 updater scenarios in CI.
 
 ## [0.25.2] - 2026-09-25
 
