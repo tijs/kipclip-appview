@@ -1,5 +1,6 @@
 import { assertEquals } from "@std/assert";
 import {
+  hasDomainTagRule,
   suggestDomainTags,
   validateDomainTagRules,
 } from "../shared/domain-tag-rules.ts";
@@ -50,5 +51,28 @@ Deno.test("rule validation uses UTF-8 byte limits and rejects wildcards", () => 
   assertEquals(
     validateDomainTagRules([{ domain: "arxiv.org", tag: "é".repeat(33) }]),
     false,
+  );
+});
+
+Deno.test("domain rules match hostnames regardless of letter case", () => {
+  for (const domain of ["youtube.com", "Youtube.com"]) {
+    for (
+      const url of [
+        "https://youtube.com/watch?v=1",
+        "https://Youtube.com/watch?v=1",
+      ]
+    ) {
+      assertEquals(
+        suggestDomainTags(url, [{ domain, tag: "video" }], ["video"], []),
+        ["video"],
+      );
+    }
+  }
+  assertEquals(
+    hasDomainTagRule([{ domain: "Youtube.com", tag: "Video" }], {
+      domain: "youtube.com",
+      tag: "video",
+    }),
+    true,
   );
 });
