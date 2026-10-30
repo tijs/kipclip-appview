@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { isIOS, isStandalonePwa, openOAuthPopup } from "../utils/pwa.ts";
 import { Button } from "./Button.tsx";
+import { prepareLoginIdentifier } from "../../shared/login-handle.ts";
 import {
   getSavedIdentities,
   removeIdentity,
@@ -60,48 +61,6 @@ function IdentityAvatar(
       {initial}
     </div>
   );
-}
-
-/**
- * Validate an AT Protocol handle format.
- * Valid formats:
- * - user.bsky.social
- * - example.com
- * - subdomain.example.com
- */
-function validateHandle(handle: string): { valid: boolean; error?: string } {
-  const trimmed = handle.trim();
-
-  if (!trimmed) {
-    return { valid: false, error: "Handle is required" };
-  }
-
-  // Handle must contain at least one dot
-  if (!trimmed.includes(".")) {
-    return {
-      valid: false,
-      error: "Handle must include a domain (e.g., alice.bsky.social)",
-    };
-  }
-
-  // Basic format check: alphanumeric, dots, hyphens only
-  const validPattern = /^[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]$/;
-  if (!validPattern.test(trimmed)) {
-    return {
-      valid: false,
-      error: "Handle contains invalid characters",
-    };
-  }
-
-  // Check for consecutive dots or dots at start/end (already handled by pattern above)
-  if (trimmed.includes("..")) {
-    return {
-      valid: false,
-      error: "Handle cannot contain consecutive dots",
-    };
-  }
-
-  return { valid: true };
 }
 
 export function Login() {
@@ -213,18 +172,12 @@ export function Login() {
     const currentHandle = inputRef.current?.value || handle;
     if (!currentHandle.trim()) return;
 
-    const trimmed = currentHandle.trim();
-
-    // Authorization server URLs are valid for initiating OAuth flows
-    if (!trimmed.startsWith("https://")) {
-      const validation = validateHandle(trimmed);
-      if (!validation.valid) {
-        setError(validation.error || "Invalid handle format");
-        return;
-      }
+    const identifier = prepareLoginIdentifier(currentHandle);
+    if ("error" in identifier) {
+      setError(identifier.error);
+      return;
     }
-
-    await startOAuthFlow(trimmed);
+    await startOAuthFlow(identifier.value);
   }
 
   function handleBlueskyConnect() {

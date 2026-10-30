@@ -18,7 +18,7 @@
     "jsr:@tijs/oauth-client-deno@5.1.0": "5.1.0",
     "npm:@atproto/syntax@0.3.0": "0.3.0",
     "npm:@atproto/syntax@0.4.0": "0.4.0",
-    "npm:@hono/node-server@1.19.17": "1.19.17_hono@4.13.13",
+    "npm:@hono/node-server@2.1.3": "2.1.3_hono@4.13.13",
     "npm:@libsql/client@0.17.3": "0.17.3",
     "npm:@sentry/bun@10.76.2": "10.76.2_@opentelemetry+core@2.12.0",
     "npm:@sentry/deno@10.34.0": "10.34.0",
@@ -251,8 +251,8 @@
       "os": ["win32"],
       "cpu": ["x64"]
     },
-    "@hono/node-server@1.19.17_hono@4.13.13": {
-      "integrity": "sha512-dSneS5qhiauZWGDCeK4o695Xd9nUNjviSZCMQrj10eetr8Uln1ucn6bbphOM6UynAMMtNIzZNSpL9vnASJwrPQ==",
+    "@hono/node-server@2.1.3_hono@4.13.13": {
+      "integrity": "sha512-TA//nWMqPhbfdfneACk6t5a9eqbS9lABEPyKn0/xZTah3H3U2XaVg85rJFl0/Fyit0I552YDHgXGVSf3GwqbUw==",
       "dependencies": [
         "hono"
       ]
@@ -687,7 +687,7 @@
     ],
     "packageJson": {
       "dependencies": [
-        "npm:@hono/node-server@1.19.17",
+        "npm:@hono/node-server@2.1.3",
         "npm:@libsql/client@0.17.3",
         "npm:@sentry/bun@10.76.2",
         "npm:@sentry/node@10.76.2",
