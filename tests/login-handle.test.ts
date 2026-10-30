@@ -28,4 +28,16 @@ Deno.test("login identifiers accept one optional leading at sign", () => {
     valid: true,
     value: "https://bsky.social",
   });
+  assertEquals(prepareLoginIdentifier("   "), {
+    valid: false,
+    error: "Handle is required",
+  });
+  assertEquals(prepareLoginIdentifier("@alice"), {
+    valid: false,
+    error: "Handle must include a domain (e.g., alice.bsky.social)",
+  });
+  assertEquals(prepareLoginIdentifier("@alice..example"), {
+    valid: false,
+    error: "Handle cannot contain consecutive dots",
+  });
 });
