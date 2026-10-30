@@ -3,6 +3,7 @@ import { useApp } from "../context/AppContext.tsx";
 import { apiGet, apiPut } from "../utils/api.ts";
 import {
   type DomainTagRule,
+  hasDomainTagRule,
   validateDomainTagRules,
 } from "../../shared/domain-tag-rules.ts";
 
@@ -82,10 +83,7 @@ export function DomainTagSettings() {
       return;
     }
     if (
-      rules.some((r) =>
-        r.domain === rule.domain &&
-        r.tag.toLowerCase() === rule.tag.toLowerCase()
-      )
+      hasDomainTagRule(rules, rule)
     ) {
       setError("That rule already exists.");
       return;

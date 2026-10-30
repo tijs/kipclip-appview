@@ -3,6 +3,17 @@ export interface DomainTagRule {
   tag: string;
 }
 
+/** Rule hostnames and tags are case-insensitive for duplicate detection. */
+export function hasDomainTagRule(
+  rules: DomainTagRule[],
+  rule: DomainTagRule,
+): boolean {
+  return rules.some((existing) =>
+    existing.domain.toLowerCase() === rule.domain.toLowerCase() &&
+    existing.tag.toLowerCase() === rule.tag.toLowerCase()
+  );
+}
+
 /** Validate rules at the API boundary; wildcards and subdomains are explicit. */
 export function validateDomainTagRules(
   value: unknown,

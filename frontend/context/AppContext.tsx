@@ -31,6 +31,7 @@ import {
   toggleTagInQuery,
 } from "../../shared/search-query.ts";
 import { connectLiveEvents, type LiveEvent } from "../lib/live-events.ts";
+import { refreshLivePreferences } from "../lib/preferences-response.ts";
 import {
   loadRecentTags,
   nextRecentTags,
@@ -639,11 +640,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         if (needsPreferences && !livePreferencesInFlightRef.current) {
           livePreferencesInFlightRef.current = true;
-          apiGet("/api/preferences")
-            .then((r) => (r.ok ? r.json() : null))
-            .then((p: UserPreferences | null) => {
-              if (p) setPreferences(p);
-            })
+          refreshLivePreferences(
+            () => apiGet("/api/preferences"),
+            setPreferences,
+          )
             .catch(() => {})
             .finally(() => {
               livePreferencesInFlightRef.current = false;
