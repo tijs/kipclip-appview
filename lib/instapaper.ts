@@ -14,6 +14,36 @@ export interface InstapaperAddResult {
   error?: string;
 }
 
+/** Missing previous tags mean none; malformed previous tags are unknown. */
+export function isKnownPreviousTags(value: unknown): boolean {
+  return value === undefined ||
+    (Array.isArray(value) && value.every((tag) => typeof tag === "string"));
+}
+
+/** Send only when the confirmed reading-list tag was newly applied. */
+export async function sendReadingListBookmarkIfNew(
+  session: any,
+  tags: string[],
+  url: string,
+  title?: string,
+  previousTags: string[] = [],
+): Promise<void> {
+  if (!tags.length) return;
+  const { db } = await import("./db.ts");
+  const enabled = await db.execute({
+    sql: "SELECT instapaper_enabled FROM user_settings WHERE did = ?",
+    args: [session.did],
+  });
+  if (Number(enabled.rows?.[0]?.[0]) !== 1) return;
+  const { getAuthoritativeReadingListTag } = await import("./preferences.ts");
+  const tag = await getAuthoritativeReadingListTag(session);
+  if (!tag) return;
+  const matches = (item: unknown) =>
+    typeof item === "string" && item.toLowerCase() === tag.toLowerCase();
+  if (!tags.some(matches) || previousTags.some(matches)) return;
+  await sendToInstapaperAsync(session.did, url, title);
+}
+
 /**
  * Send an article to Instapaper.
  * Uses Simple API with basic authentication.
