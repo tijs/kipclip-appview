@@ -173,11 +173,13 @@ export interface CheckDuplicatesResponse {
 export interface UserPreferences {
   dateFormat: string;
   readingListTag: string;
+  domainTagRules?: Array<{ domain: string; tag: string }>;
 }
 
 export interface UpdatePreferencesRequest {
   dateFormat?: string;
   readingListTag?: string;
+  domainTagRules?: Array<{ domain: string; tag: string }>;
 }
 
 // Combined initial data response (for optimized page load).

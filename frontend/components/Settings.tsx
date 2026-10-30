@@ -10,6 +10,7 @@ import { apiPost } from "../utils/api.ts";
 import { ImportBookmarks } from "./ImportBookmarks.tsx";
 import { PageShell } from "./PageShell.tsx";
 import { SettingsSupporter } from "./SettingsSupporter.tsx";
+import { DomainTagSettings } from "./DomainTagSettings.tsx";
 import type { MergeTagDuplicatesResponse } from "../../shared/types.ts";
 
 type SettingsTab = "general" | "import" | "supporter";
@@ -209,6 +210,8 @@ export function Settings() {
               </div>
             </div>
           </section>
+
+          <DomainTagSettings />
 
           {/* Reading List Tag — instant apply, no save button needed */}
           <section className="bg-white rounded-lg shadow-md p-6 space-y-4">
