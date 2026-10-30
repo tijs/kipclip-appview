@@ -4,6 +4,15 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.27.1] - 2026-10-30
+
+### Fixed
+
+- Keep settings available after a live preference refresh, including after
+  adding or removing a site-tag rule.
+- Treat hostname capitalization consistently when detecting duplicate
+  site-tag rules.
+
 ## [0.27.0] - 2026-10-30
 
 ### Added
