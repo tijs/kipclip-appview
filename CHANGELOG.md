@@ -4,6 +4,20 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-10-30
+
+### Added
+
+- Suggest existing tags for explicitly configured exact hostnames when adding
+  bookmarks or sharing a link. Suggestions are applied only when selected.
+
+### Fixed
+
+- Accept handles entered with a leading `@` on the login form.
+- Return a clear temporary-unavailability message when Instapaper credential
+  encryption is not configured, before contacting Instapaper.
+- Update the Node adapter to address a static-path security advisory.
+
 ## [0.26.0] - 2026-10-10
 
 ### Added
