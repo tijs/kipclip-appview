@@ -11,7 +11,7 @@ import {
 } from "../../lib/route-utils.ts";
 import { getUserSettings, updateUserSettings } from "../../lib/settings.ts";
 import { validateInstapaperCredentials } from "../../lib/instapaper.ts";
-import { decrypt } from "../../lib/encryption.ts";
+import { decrypt, isEncryptionConfigured } from "../../lib/encryption.ts";
 import { db } from "../../lib/db.ts";
 import type {
   GetSettingsResponse,
@@ -52,6 +52,24 @@ export function registerSettingsRoutes(app: App<any>): App<any> {
       const body = (await ctx.req.json()) as UpdateSettingsRequest & {
         instapaperPassword?: string;
       };
+
+      if (
+        !isEncryptionConfigured() &&
+        (body.instapaperEnabled || body.instapaperUsername !== undefined ||
+          body.instapaperPassword !== undefined)
+      ) {
+        console.error(
+          "Instapaper unavailable: encryption key is not configured",
+        );
+        return Response.json(
+          {
+            success: false,
+            error:
+              "Instapaper is temporarily unavailable. Please try again later.",
+          },
+          { status: 503 },
+        );
+      }
 
       // Validate Instapaper credentials if enabling or updating
       if (
