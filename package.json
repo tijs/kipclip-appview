@@ -10,7 +10,7 @@
     "start:bun": "bun runtime/bun/server.mjs"
   },
   "dependencies": {
-    "@hono/node-server": "1.19.17",
+    "@hono/node-server": "2.1.3",
     "@libsql/client": "0.17.3",
     "@sentry/bun": "10.76.2",
     "@sentry/node": "10.76.2",
