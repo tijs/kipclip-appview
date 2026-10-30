@@ -14,12 +14,19 @@ export interface InstapaperAddResult {
   error?: string;
 }
 
-/** Best-effort delivery after creation, without guessing a user's tag on errors. */
-export async function sendCreatedReadingListBookmark(
+/** Missing previous tags mean none; malformed previous tags are unknown. */
+export function isKnownPreviousTags(value: unknown): boolean {
+  return value === undefined ||
+    (Array.isArray(value) && value.every((tag) => typeof tag === "string"));
+}
+
+/** Send only when the confirmed reading-list tag was newly applied. */
+export async function sendReadingListBookmarkIfNew(
   session: any,
   tags: string[],
   url: string,
   title?: string,
+  previousTags: string[] = [],
 ): Promise<void> {
   if (!tags.length) return;
   const { db } = await import("./db.ts");
@@ -30,9 +37,10 @@ export async function sendCreatedReadingListBookmark(
   if (Number(enabled.rows?.[0]?.[0]) !== 1) return;
   const { getAuthoritativeReadingListTag } = await import("./preferences.ts");
   const tag = await getAuthoritativeReadingListTag(session);
-  if (!tag || !tags.some((item) => item.toLowerCase() === tag.toLowerCase())) {
-    return;
-  }
+  if (!tag) return;
+  const matches = (item: unknown) =>
+    typeof item === "string" && item.toLowerCase() === tag.toLowerCase();
+  if (!tags.some(matches) || previousTags.some(matches)) return;
   await sendToInstapaperAsync(session.did, url, title);
 }
 

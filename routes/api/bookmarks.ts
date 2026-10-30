@@ -33,11 +33,9 @@ import {
   deduplicateTagsCaseInsensitive,
   resolveTagCasing,
 } from "../../shared/tag-utils.ts";
-import { getUserSettings } from "../../lib/settings.ts";
-import { getUserPreferences } from "../../lib/preferences.ts";
 import {
-  sendCreatedReadingListBookmark,
-  sendToInstapaperAsync,
+  isKnownPreviousTags,
+  sendReadingListBookmarkIfNew,
 } from "../../lib/instapaper.ts";
 import { shouldReadFromMirror } from "../../lib/mirror-config.ts";
 import { listAllBookmarks } from "../../mirror/queries.ts";
@@ -341,7 +339,7 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
       // Send newly created reading-list bookmarks as well as later tag edits.
       // This is best-effort: Instapaper must never block or undo a saved bookmark.
       if (validatedTags.length > 0) {
-        sendCreatedReadingListBookmark(
+        sendReadingListBookmarkIfNew(
           oauthSession,
           validatedTags,
           body.url,
@@ -472,31 +470,28 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         createdAt: currentRecord.value.createdAt,
       };
 
-      // Run bookmark write, annotation write, settings + preferences fetch in parallel.
+      // Run bookmark and annotation writes in parallel.
       // swapRecord pins the put to the cid we just read so a concurrent edit
       // (other tab/device that wrote between our read and our put) can't be
       // silently overwritten — PDS rejects with InvalidSwap and the client
       // gets a 409 to retry on fresh state.
-      const [putResult, annotationWritten, settings, preferences] =
-        await Promise.all([
-          oauthSession.makeRequest(
-            "POST",
-            `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.putRecord`,
-            {
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                repo: oauthSession.did,
-                collection: BOOKMARK_COLLECTION,
-                rkey,
-                record,
-                swapRecord: currentRecord.cid,
-              }),
-            },
-          ),
-          writeAnnotation(oauthSession, rkey, annotation),
-          getUserSettings(oauthSession.did),
-          getUserPreferences(oauthSession),
-        ]);
+      const [putResult, annotationWritten] = await Promise.all([
+        oauthSession.makeRequest(
+          "POST",
+          `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.putRecord`,
+          {
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              repo: oauthSession.did,
+              collection: BOOKMARK_COLLECTION,
+              rkey,
+              record,
+              swapRecord: currentRecord.cid,
+            }),
+          },
+        ),
+        writeAnnotation(oauthSession, rkey, annotation),
+      ]);
 
       if (!putResult.ok) {
         const errorText = await putResult.text();
@@ -600,18 +595,16 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         note: body.note,
       };
 
-      const rlTagLower = preferences.readingListTag.toLowerCase();
-      const hasReadingListTag = record.tags.some(
-        (t: string) => t.toLowerCase() === rlTagLower,
-      );
-      const hadReadingListTag = currentRecord.value.tags?.some(
-        (t: string) => t.toLowerCase() === rlTagLower,
-      ) || false;
-
-      if (
-        settings.instapaperEnabled && hasReadingListTag && !hadReadingListTag
-      ) {
-        sendToInstapaperAsync(oauthSession.did, subject, title).catch(
+      const previousTags = currentRecord.value.tags;
+      const previousTagsKnown = isKnownPreviousTags(previousTags);
+      if (record.tags.length > 0 && previousTagsKnown) {
+        sendReadingListBookmarkIfNew(
+          oauthSession,
+          record.tags,
+          subject,
+          title,
+          previousTags === undefined ? [] : previousTags,
+        ).catch(
           (err) => console.error("Failed to send bookmark to Instapaper:", err),
         );
       }

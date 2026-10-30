@@ -3,13 +3,25 @@ import { assertEquals } from "@std/assert";
 import { app } from "../main.ts";
 import { setTestSessionProvider } from "../lib/session.ts";
 import { updateUserSettings } from "../lib/settings.ts";
-import { sendCreatedReadingListBookmark } from "../lib/instapaper.ts";
+import {
+  isKnownPreviousTags,
+  sendReadingListBookmarkIfNew,
+} from "../lib/instapaper.ts";
 import { createMockSessionResult } from "./test-helpers.ts";
 
 Deno.test("new bookmarks send to Instapaper only when the reading-list tag is present", async () => {
+  assertEquals(isKnownPreviousTags(undefined), true);
+  assertEquals(isKnownPreviousTags([]), true);
+  assertEquals(isKnownPreviousTags(["toread"]), true);
+  assertEquals(isKnownPreviousTags(null), false);
+  assertEquals(isKnownPreviousTags("toread"), false);
+  assertEquals(isKnownPreviousTags(["toread", 4]), false);
   const session = createMockSessionResult();
   const did = session.session!.did;
   let failCreate = false;
+  let failPut = false;
+  let previousTags: unknown = [];
+  let preferenceReads = 0;
   let instapaperStatus = 201;
   let deliveries: string[] = [];
   let preference = () =>
@@ -25,7 +37,32 @@ Deno.test("new bookmarks send to Instapaper only when the reading-list tag is pr
       return Promise.resolve(Response.json({ records: [] }));
     }
     if (url.includes("getRecord")) {
-      return Promise.resolve(preference());
+      if (url.includes("community.lexicon.bookmarks.bookmark")) {
+        return Promise.resolve(Response.json({
+          uri: `at://${did}/community.lexicon.bookmarks.bookmark/abc123`,
+          cid: "bafytest",
+          value: {
+            subject: "https://example.invalid/edited",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            tags: previousTags,
+          },
+        }));
+      }
+      if (
+        new URL(url).searchParams.get("collection") ===
+          "com.kipclip.preferences"
+      ) {
+        preferenceReads++;
+        return Promise.resolve(preference());
+      }
+      return Promise.resolve(
+        Response.json({ error: "RecordNotFound" }, { status: 400 }),
+      );
+    }
+    if (url.includes("putRecord") && failPut) {
+      return Promise.resolve(
+        Response.json({ error: "InvalidSwap" }, { status: 400 }),
+      );
     }
     if (url.includes("createRecord") && failCreate) {
       return Promise.resolve(new Response("unavailable", { status: 503 }));
@@ -81,14 +118,14 @@ Deno.test("new bookmarks send to Instapaper only when the reading-list tag is pr
     }
     assertEquals(deliveries, ["https://example.invalid/tagged"]);
     deliveries = [];
-    await sendCreatedReadingListBookmark(
+    await sendReadingListBookmarkIfNew(
       session.session!,
       ["other"],
       "https://example.invalid/untagged",
     );
     assertEquals(deliveries, []);
     await updateUserSettings(did, { instapaperEnabled: false });
-    await sendCreatedReadingListBookmark(
+    await sendReadingListBookmarkIfNew(
       session.session!,
       ["toread"],
       "https://example.invalid/disabled",
@@ -97,19 +134,27 @@ Deno.test("new bookmarks send to Instapaper only when the reading-list tag is pr
     await updateUserSettings(did, { instapaperEnabled: true });
     preference = () =>
       Response.json({ value: { readingListTag: "read-later" } });
-    await sendCreatedReadingListBookmark(
+    await sendReadingListBookmarkIfNew(
       session.session!,
       ["TOREAD"],
       "https://example.invalid/wrong-tag",
     );
     assertEquals(deliveries, []);
-    await sendCreatedReadingListBookmark(
+    await sendReadingListBookmarkIfNew(
       session.session!,
       ["Read-Later"],
       "https://example.invalid/custom",
     );
     assertEquals(deliveries, ["https://example.invalid/custom"]);
     deliveries = [];
+    await sendReadingListBookmarkIfNew(
+      session.session!,
+      ["READ-LATER"],
+      "https://example.invalid/already-tagged",
+      undefined,
+      ["read-later"],
+    );
+    assertEquals(deliveries, []);
     for (
       const invalid of [
         () => new Response(null, { status: 503 }),
@@ -123,7 +168,7 @@ Deno.test("new bookmarks send to Instapaper only when the reading-list tag is pr
       ]
     ) {
       preference = invalid;
-      await sendCreatedReadingListBookmark(
+      await sendReadingListBookmarkIfNew(
         session.session!,
         ["toread"],
         "https://example.invalid/unknown",
@@ -132,7 +177,7 @@ Deno.test("new bookmarks send to Instapaper only when the reading-list tag is pr
     assertEquals(deliveries, []);
     preference = () =>
       Response.json({ error: "RecordNotFound" }, { status: 400 });
-    await sendCreatedReadingListBookmark(
+    await sendReadingListBookmarkIfNew(
       session.session!,
       ["toread"],
       "https://example.invalid/default",
@@ -146,7 +191,7 @@ Deno.test("new bookmarks send to Instapaper only when the reading-list tag is pr
       ]
     ) {
       preference = defaultPreference;
-      await sendCreatedReadingListBookmark(
+      await sendReadingListBookmarkIfNew(
         session.session!,
         ["toread"],
         "https://example.invalid/default-variant",
@@ -159,6 +204,46 @@ Deno.test("new bookmarks send to Instapaper only when the reading-list tag is pr
     deliveries = [];
     preference = () =>
       Response.json({ error: "RecordNotFound" }, { status: 400 });
+    const editedDelivery = new Promise<void>((resolve) => {
+      deliveryReceived = resolve;
+    });
+    const edit = await app.handler()(
+      new Request(
+        "https://kipclip.com/api/bookmarks/abc123",
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ tags: ["ToRead"] }),
+        },
+      ),
+    );
+    assertEquals(edit.status, 200);
+    const editTimeout = setTimeout(() => deliveryReceived(), 2000);
+    try {
+      await editedDelivery;
+    } finally {
+      clearTimeout(editTimeout);
+    }
+    assertEquals(deliveries, ["https://example.invalid/edited"]);
+    deliveries = [];
+    const editRequest = () =>
+      new Request("https://kipclip.com/api/bookmarks/abc123", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ tags: ["toread"] }),
+      });
+    previousTags = "malformed";
+    const readsBeforeMalformed = preferenceReads;
+    assertEquals((await app.handler()(editRequest())).status, 200);
+    assertEquals(preferenceReads, readsBeforeMalformed);
+    assertEquals(deliveries, []);
+    previousTags = [];
+    failPut = true;
+    const readsBeforeConflict = preferenceReads;
+    assertEquals((await app.handler()(editRequest())).status, 409);
+    assertEquals(preferenceReads, readsBeforeConflict);
+    assertEquals(deliveries, []);
+    failPut = false;
     instapaperStatus = 500;
     const failedDelivery = new Promise<void>((resolve) => {
       deliveryReceived = resolve;
