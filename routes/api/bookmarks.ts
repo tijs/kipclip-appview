@@ -35,7 +35,10 @@ import {
 } from "../../shared/tag-utils.ts";
 import { getUserSettings } from "../../lib/settings.ts";
 import { getUserPreferences } from "../../lib/preferences.ts";
-import { sendToInstapaperAsync } from "../../lib/instapaper.ts";
+import {
+  sendCreatedReadingListBookmark,
+  sendToInstapaperAsync,
+} from "../../lib/instapaper.ts";
 import { shouldReadFromMirror } from "../../lib/mirror-config.ts";
 import { listAllBookmarks } from "../../mirror/queries.ts";
 import {
@@ -334,6 +337,19 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         favicon: metadata.favicon,
         image: metadata.image,
       };
+
+      // Send newly created reading-list bookmarks as well as later tag edits.
+      // This is best-effort: Instapaper must never block or undo a saved bookmark.
+      if (validatedTags.length > 0) {
+        sendCreatedReadingListBookmark(
+          oauthSession,
+          validatedTags,
+          body.url,
+          metadata.title,
+        ).catch((err) =>
+          console.error("Failed to send bookmark to Instapaper:", err)
+        );
+      }
 
       // Create PDS tag records for new tags, then mirror-write + invalidate cache
       // so GET /api/tags reflects new tags immediately without waiting for TAP.

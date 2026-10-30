@@ -14,6 +14,28 @@ export interface InstapaperAddResult {
   error?: string;
 }
 
+/** Best-effort delivery after creation, without guessing a user's tag on errors. */
+export async function sendCreatedReadingListBookmark(
+  session: any,
+  tags: string[],
+  url: string,
+  title?: string,
+): Promise<void> {
+  if (!tags.length) return;
+  const { db } = await import("./db.ts");
+  const enabled = await db.execute({
+    sql: "SELECT instapaper_enabled FROM user_settings WHERE did = ?",
+    args: [session.did],
+  });
+  if (Number(enabled.rows?.[0]?.[0]) !== 1) return;
+  const { getAuthoritativeReadingListTag } = await import("./preferences.ts");
+  const tag = await getAuthoritativeReadingListTag(session);
+  if (!tag || !tags.some((item) => item.toLowerCase() === tag.toLowerCase())) {
+    return;
+  }
+  await sendToInstapaperAsync(session.did, url, title);
+}
+
 /**
  * Send an article to Instapaper.
  * Uses Simple API with basic authentication.

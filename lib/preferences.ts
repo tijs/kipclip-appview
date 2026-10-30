@@ -29,6 +29,41 @@ async function isRecordNotFound(response: Response): Promise<boolean> {
   }
 }
 
+/** Read the authoritative trigger before sending a bookmark to a third party.
+ * Unknown or unavailable preferences must not be guessed from a stale mirror. */
+export async function getAuthoritativeReadingListTag(
+  oauthSession: any,
+): Promise<string | null> {
+  const params = new URLSearchParams({
+    repo: oauthSession.did,
+    collection: PREFERENCES_COLLECTION,
+    rkey: "self",
+  });
+  try {
+    const response = await oauthSession.makeRequest(
+      "GET",
+      `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.getRecord?${params}`,
+    );
+    if (!response.ok) {
+      return await isRecordNotFound(response)
+        ? DEFAULT_PREFERENCES.readingListTag
+        : null;
+    }
+    const record = await response.json();
+    if (
+      !record.value || typeof record.value !== "object" ||
+      Array.isArray(record.value)
+    ) {
+      return null;
+    }
+    const tag = record.value.readingListTag;
+    if (tag === undefined) return DEFAULT_PREFERENCES.readingListTag;
+    return typeof tag === "string" && tag.trim() ? tag : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Domain rules are read from the PDS directly because the existing mirror
  * stores only the older preference fields. */
 export async function getDomainTagRules(oauthSession: any) {
