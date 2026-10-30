@@ -21,12 +21,26 @@
             "description": "Tag used to identify reading list bookmarks",
             "maxLength": 64
           },
+          "domainTagRules": {
+            "type": "array",
+            "description": "User-selected tag suggestions for exact hostnames",
+            "maxLength": 100,
+            "items": { "type": "ref", "ref": "#domainTagRule" }
+          },
           "createdAt": {
             "type": "string",
             "format": "datetime",
             "description": "Timestamp when preferences were last updated"
           }
         }
+      }
+    },
+    "domainTagRule": {
+      "type": "object",
+      "required": ["domain", "tag"],
+      "properties": {
+        "domain": { "type": "string", "maxLength": 253 },
+        "tag": { "type": "string", "maxLength": 64 }
       }
     }
   }

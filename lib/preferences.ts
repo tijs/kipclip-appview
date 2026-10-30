@@ -11,11 +11,52 @@ import { shouldReadFromMirror } from "./mirror-config.ts";
 import { getMirrorPreferences } from "../mirror/queries.ts";
 import { PREFERENCES_COLLECTION } from "./route-utils.ts";
 import type { UserPreferences } from "../shared/types.ts";
+import { validateDomainTagRules } from "../shared/domain-tag-rules.ts";
 
 const DEFAULT_PREFERENCES: UserPreferences = {
   dateFormat: "us",
   readingListTag: "toread",
 };
+
+export class PreferenceConflictError extends Error {}
+
+async function isRecordNotFound(response: Response): Promise<boolean> {
+  if (response.status !== 400 && response.status !== 404) return false;
+  try {
+    return (await response.clone().json()).error === "RecordNotFound";
+  } catch {
+    return false;
+  }
+}
+
+/** Domain rules are read from the PDS directly because the existing mirror
+ * stores only the older preference fields. */
+export async function getDomainTagRules(oauthSession: any) {
+  const params = new URLSearchParams({
+    repo: oauthSession.did,
+    collection: PREFERENCES_COLLECTION,
+    rkey: "self",
+  });
+  const response = await oauthSession.makeRequest(
+    "GET",
+    `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.getRecord?${params}`,
+  );
+  if (!response.ok && await isRecordNotFound(response)) {
+    return { rules: [], cid: null };
+  }
+  if (!response.ok) {
+    throw new Error("Could not read domain rules from your PDS");
+  }
+  const record = await response.json();
+  const rules = record.value?.domainTagRules ?? [];
+  if (!validateDomainTagRules(rules)) {
+    throw new Error("Invalid domain rules in your PDS");
+  }
+  if (typeof record.cid !== "string") {
+    throw new Error("PDS omitted the preference revision");
+  }
+  return { rules, cid: record.cid as string | null };
+}
 
 /**
  * Fetch user preferences. Reads from the local mirror when available;
@@ -70,14 +111,41 @@ export async function getUserPreferences(
  * Update user preferences on PDS. Merges updates with existing values
  * and upserts via putRecord.
  */
-export async function updateUserPreferences(
+export async function writeUserPreferences(
   oauthSession: any,
   updates: Partial<UserPreferences>,
-): Promise<UserPreferences> {
-  const existing = await getUserPreferences(oauthSession);
-  const merged: UserPreferences = { ...existing, ...updates };
-
-  await oauthSession.makeRequest(
+  expectedCid?: string | null,
+): Promise<{ preferences: UserPreferences; cid: string | null }> {
+  // Write against the authoritative PDS record, not a potentially stale mirror.
+  // Preserve fields introduced by other clients and reject concurrent changes.
+  const params = new URLSearchParams({
+    repo: oauthSession.did,
+    collection: PREFERENCES_COLLECTION,
+    rkey: "self",
+  });
+  const current = await oauthSession.makeRequest(
+    "GET",
+    `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.getRecord?${params}`,
+  );
+  if (!current.ok && !(await isRecordNotFound(current))) {
+    throw new Error("Could not read preferences from your PDS");
+  }
+  const existing = current.ok ? await current.json() : null;
+  if (expectedCid !== undefined && (existing?.cid ?? null) !== expectedCid) {
+    throw new PreferenceConflictError(
+      "Site tag rules changed elsewhere; reload before saving",
+    );
+  }
+  const value = existing?.value ?? {};
+  if (value.$type && value.$type !== PREFERENCES_COLLECTION) {
+    throw new Error("Unexpected preference record type");
+  }
+  const merged: UserPreferences = {
+    ...DEFAULT_PREFERENCES,
+    ...value,
+    ...updates,
+  };
+  const response = await oauthSession.makeRequest(
     "POST",
     `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.putRecord`,
     {
@@ -86,14 +154,40 @@ export async function updateUserPreferences(
         repo: oauthSession.did,
         collection: PREFERENCES_COLLECTION,
         rkey: "self",
+        swapRecord: existing?.cid ?? null,
         record: {
-          dateFormat: merged.dateFormat,
-          readingListTag: merged.readingListTag,
+          ...value,
+          ...merged,
+          $type: PREFERENCES_COLLECTION,
           createdAt: new Date().toISOString(),
         },
       }),
     },
   );
+  if (!response.ok) {
+    let code: string | undefined;
+    try {
+      code = (await response.clone().json()).error;
+    } catch { /* no error code */ }
+    if (response.status === 409 || code === "InvalidSwap") {
+      throw new PreferenceConflictError(
+        "Preferences could not be saved; reload and try again",
+      );
+    }
+    throw new Error("Could not save preferences to your PDS; please try again");
+  }
+  const result = await response.json();
+  return {
+    preferences: merged,
+    cid: typeof result.cid === "string" ? result.cid : null,
+  };
+}
 
-  return merged;
+export async function updateUserPreferences(
+  oauthSession: any,
+  updates: Partial<UserPreferences>,
+  expectedCid?: string | null,
+): Promise<UserPreferences> {
+  return (await writeUserPreferences(oauthSession, updates, expectedCid))
+    .preferences;
 }

@@ -6,6 +6,7 @@ import { useApp } from "../context/AppContext.tsx";
 import { apiPost } from "../utils/api.ts";
 import { DuplicateWarning } from "./DuplicateWarning.tsx";
 import { TagInput } from "./TagInput.tsx";
+import { DomainTagSuggestions } from "./DomainTagSuggestions.tsx";
 import { Button } from "./Button.tsx";
 
 interface AddBookmarkProps {
@@ -139,6 +140,13 @@ export function AddBookmark({
                   availableTags={availableTags}
                   disabled={loading}
                   compact
+                />
+                <DomainTagSuggestions
+                  url={url}
+                  selected={tags}
+                  available={availableTags}
+                  onChange={setTags}
+                  disabled={loading}
                 />
               </div>
 

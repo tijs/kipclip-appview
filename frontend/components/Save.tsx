@@ -7,6 +7,7 @@ import type {
 } from "../../shared/types.ts";
 import { DuplicateWarning } from "./DuplicateWarning.tsx";
 import { TagInput } from "./TagInput.tsx";
+import { DomainTagSuggestions } from "./DomainTagSuggestions.tsx";
 import { Button } from "./Button.tsx";
 import { buildLoginRedirectUrl } from "../../shared/login-redirect.ts";
 
@@ -343,6 +344,13 @@ export function Save() {
                   availableTags={availableTags}
                   disabled={saving}
                   compact
+                />
+                <DomainTagSuggestions
+                  url={url}
+                  selected={tags}
+                  available={availableTags}
+                  onChange={setTags}
+                  disabled={saving}
                 />
                 <p className="text-xs text-gray-500 mt-1.5">
                   Press{" "}
