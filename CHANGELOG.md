@@ -4,6 +4,14 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.27.2] - 2026-10-30
+
+### Fixed
+
+- Send newly created bookmarks tagged for the reading list to Instapaper when
+  the integration is enabled. Edits and new saves now skip delivery when the
+  reading-list preference cannot be confirmed.
+
 ## [0.27.1] - 2026-10-30
 
 ### Fixed
