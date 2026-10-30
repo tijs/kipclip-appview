@@ -93,3 +93,69 @@ Deno.test("domain rules read and update the user's PDS record", async () => {
     setTestSessionProvider(null);
   }
 });
+
+Deno.test("domain rules reject unavailable and malformed PDS records", async () => {
+  const session = createMockSessionResult();
+  const handler = app.handler();
+  const request = () =>
+    handler(new Request("https://kipclip.com/api/preferences/domain-tags"));
+  setTestSessionProvider(() => Promise.resolve(session));
+  try {
+    for (
+      const response of [
+        new Response("unavailable", { status: 503 }),
+        Response.json({
+          value: { domainTagRules: [{ domain: "*.example", tag: "x" }] },
+          cid: "x",
+        }),
+        Response.json({ value: { domainTagRules: [] } }),
+      ]
+    ) {
+      session.session!.makeRequest = () => Promise.resolve(response.clone());
+      assertEquals((await request()).status, 503);
+    }
+    session.session!.makeRequest = () =>
+      Promise.resolve(
+        Response.json({ error: "RecordNotFound" }, { status: 400 }),
+      );
+    const empty = await request();
+    assertEquals(await empty.json(), { rules: [], cid: null });
+  } finally {
+    setTestSessionProvider(null);
+  }
+});
+
+Deno.test("preference validation rejects invalid inputs before writing", async () => {
+  const session = createMockSessionResult();
+  let writes = 0;
+  session.session!.makeRequest = () => {
+    writes++;
+    return Promise.resolve(new Response("", { status: 500 }));
+  };
+  setTestSessionProvider(() => Promise.resolve(session));
+  try {
+    for (
+      const body of [
+        null,
+        [],
+        { domainTagRules: [], domainRulesRevision: "" },
+        { dateFormat: "not-a-format" },
+        { readingListTag: 42 },
+        { readingListTag: "   " },
+        { readingListTag: "bad tag!" },
+      ]
+    ) {
+      const response = await app.handler()(
+        new Request("https://kipclip.com/api/preferences", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        }),
+      );
+      assertEquals(response.status, 400);
+    }
+    assertEquals(writes, 0);
+  } finally {
+    setTestSessionProvider(null);
+  }
+});
