@@ -82,3 +82,62 @@ Deno.test("failed PDS preference reads and writes are not reported as success", 
     updateUserPreferences(failedWrite, { dateFormat: "iso" })
   );
 });
+
+for (const creating of [true, false]) {
+  Deno.test(`concurrent ${creating ? "first creates" : "updates"} preserve the winning record`, async () => {
+    let cid: string | null = creating ? null : "old";
+    let stored: any = creating
+      ? null
+      : { dateFormat: "us", readingListTag: "later" };
+    let reads = 0;
+    let release!: () => void;
+    const bothRead = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const session = {
+      did: "did:plc:test",
+      pdsUrl: "https://pds.example",
+      async makeRequest(
+        method: string,
+        _url: string,
+        options?: { body: string },
+      ) {
+        if (method === "GET") {
+          const snapshotCid = cid;
+          const snapshot = stored;
+          if (++reads === 2) release();
+          await bothRead;
+          return snapshotCid === null
+            ? Response.json({ error: "RecordNotFound" }, { status: 400 })
+            : Response.json({ cid: snapshotCid, value: snapshot });
+        }
+        const body = JSON.parse(options!.body);
+        if (body.swapRecord !== cid) {
+          return Response.json({ error: "InvalidSwap" }, { status: 400 });
+        }
+        stored = body.record;
+        cid = "winner";
+        return Response.json({ cid });
+      },
+    };
+    const startingCid = cid;
+    const results = await Promise.allSettled([
+      updateUserPreferences(session, {
+        domainTagRules: [{ domain: "a.example", tag: "one" }],
+      }, startingCid),
+      updateUserPreferences(session, {
+        domainTagRules: [{ domain: "b.example", tag: "two" }],
+      }, startingCid),
+    ]);
+    assertEquals(
+      results.filter((result) => result.status === "fulfilled").length,
+      1,
+    );
+    assertEquals(
+      results.filter((result) => result.status === "rejected").length,
+      1,
+    );
+    assertEquals(stored.domainTagRules.length, 1);
+    assertEquals(cid, "winner");
+  });
+}
