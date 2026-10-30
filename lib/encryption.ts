@@ -8,6 +8,10 @@ const ENCRYPTION_KEY = getHost().env.get("ENCRYPTION_KEY");
 const ALGORITHM = "AES-GCM";
 const KEY_LENGTH = 256;
 
+export function isEncryptionConfigured(): boolean {
+  return Boolean(ENCRYPTION_KEY);
+}
+
 /**
  * Derive a CryptoKey from the ENCRYPTION_KEY environment variable.
  * Cached for performance.

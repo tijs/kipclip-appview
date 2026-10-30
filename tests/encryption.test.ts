@@ -5,13 +5,12 @@ import "../runtime/deno/install.ts";
  */
 
 import { assertEquals, assertNotEquals, assertRejects } from "@std/assert";
-import { decrypt, encrypt } from "../lib/encryption.ts";
-
 // Set test encryption key
 Deno.env.set(
   "ENCRYPTION_KEY",
   "test-encryption-key-for-unit-tests-only-minimum-32-chars",
 );
+const { decrypt, encrypt } = await import("../lib/encryption.ts");
 
 Deno.test("encrypt - encrypts plaintext to base64 string", async () => {
   const plaintext = "my-secret-password";
