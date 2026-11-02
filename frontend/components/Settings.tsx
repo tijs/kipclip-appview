@@ -334,6 +334,9 @@ export function Settings() {
                 <p className="text-gray-600 mb-4">
                   Automatically send articles to Instapaper when you tag them
                   with your reading list tag ("{readingListTag || "toread"}").
+                  {" "}
+                  This includes bookmarks saved through other apps and existing
+                  reading-list bookmarks.
                 </p>
 
                 {/* Enable toggle */}
@@ -414,7 +417,8 @@ export function Settings() {
                         When you tag a bookmark with "
                         {readingListTag || "toread"}
                         ", it will be automatically sent to your Instapaper
-                        account.
+                        account in the background. Existing bookmarks with this
+                        tag are included too.
                       </p>
                     </div>
                   </div>

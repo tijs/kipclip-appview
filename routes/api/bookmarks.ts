@@ -33,13 +33,10 @@ import {
   deduplicateTagsCaseInsensitive,
   resolveTagCasing,
 } from "../../shared/tag-utils.ts";
-import {
-  isKnownPreviousTags,
-  sendReadingListBookmarkIfNew,
-} from "../../lib/instapaper.ts";
 import { shouldReadFromMirror } from "../../lib/mirror-config.ts";
 import { listAllBookmarks } from "../../mirror/queries.ts";
 import {
+  deleteBookmark,
   upsertAnnotation,
   upsertBookmark,
   upsertTag,
@@ -262,7 +259,7 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
       // auto-enroll and the user's next request). Idempotent — TAP will
       // re-upsert the same row when its webhook fires.
       if (rkey) {
-        upsertBookmark({
+        await upsertBookmark({
           uri: data.uri,
           did: oauthSession.did,
           rkey,
@@ -335,19 +332,6 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         favicon: metadata.favicon,
         image: metadata.image,
       };
-
-      // Send newly created reading-list bookmarks as well as later tag edits.
-      // This is best-effort: Instapaper must never block or undo a saved bookmark.
-      if (validatedTags.length > 0) {
-        sendReadingListBookmarkIfNew(
-          oauthSession,
-          validatedTags,
-          body.url,
-          metadata.title,
-        ).catch((err) =>
-          console.error("Failed to send bookmark to Instapaper:", err)
-        );
-      }
 
       // Create PDS tag records for new tags, then mirror-write + invalidate cache
       // so GET /api/tags reflects new tags immediately without waiting for TAP.
@@ -513,7 +497,7 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
       // Mirror-write bookmark + annotation so the edit is visible
       // immediately on refresh without waiting for the TAP webhook
       // round-trip. Idempotent — TAP will re-upsert the same row.
-      upsertBookmark({
+      await upsertBookmark({
         uri: data.uri,
         did: oauthSession.did,
         rkey,
@@ -594,20 +578,6 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         image: existing.image,
         note: body.note,
       };
-
-      const previousTags = currentRecord.value.tags;
-      const previousTagsKnown = isKnownPreviousTags(previousTags);
-      if (record.tags.length > 0 && previousTagsKnown) {
-        sendReadingListBookmarkIfNew(
-          oauthSession,
-          record.tags,
-          subject,
-          title,
-          previousTags === undefined ? [] : previousTags,
-        ).catch(
-          (err) => console.error("Failed to send bookmark to Instapaper:", err),
-        );
-      }
 
       const result: UpdateBookmarkTagsResponse = { success: true, bookmark };
       return setSessionCookie(Response.json(result), setCookieHeader);
@@ -767,6 +737,18 @@ export function registerBookmarkRoutes(app: App<any>): App<any> {
         const errorText = await response.text();
         throw new Error(`Failed to delete record: ${errorText}`);
       }
+
+      // Cancel queued actions immediately; do not wait for TAP's delete echo.
+      await deleteBookmark(
+        `at://${oauthSession.did}/${BOOKMARK_COLLECTION}/${rkey}`,
+        oauthSession.did,
+      ).catch((error) =>
+        captureMessage("bookmark mirror-write failed", "warning", {
+          op: "DELETE /api/bookmarks/:rkey",
+          did: oauthSession.did,
+          error: String(error),
+        })
+      );
 
       // Also delete annotation sidecar (fire-and-forget)
       oauthSession.makeRequest(

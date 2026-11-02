@@ -23,6 +23,8 @@ import type {
   EnrichedBookmark,
 } from "../../shared/types.ts";
 import { tagIncludes } from "../../shared/tag-utils.ts";
+import { deleteBookmark, upsertBookmark } from "../../mirror/upserts.ts";
+import { captureMessage } from "../../lib/sentry.ts";
 
 const MAX_WRITES = 10;
 
@@ -133,6 +135,18 @@ async function bulkDelete(
       );
 
       if (res.ok) {
+        for (const op of batch) {
+          await deleteBookmark(
+            `at://${did}/${BOOKMARK_COLLECTION}/${op.rkey}`,
+            did,
+          ).catch((error) =>
+            captureMessage("bookmark mirror-write failed", "warning", {
+              op: "bulk delete",
+              did,
+              error: String(error),
+            })
+          );
+        }
         succeeded += batch.length;
         for (const op of batch) deletedUris.push(op._uri);
       } else {
@@ -311,6 +325,28 @@ async function updateBookmarkTags(
   const annotation: AnnotationRecord | undefined = currentAnnotation
     ? (currentAnnotation.value as AnnotationRecord)
     : undefined;
+
+  // The same record boundary schedules actions and supersedes removed tags
+  // immediately, including before TAP has echoed this bulk edit.
+  await upsertBookmark({
+    uri: putData.uri ?? currentRecord.uri,
+    did: oauthSession.did,
+    rkey,
+    cid: putData.cid,
+    subject: record.subject,
+    createdAt: record.createdAt,
+    tags: record.tags,
+    enrichedTitle: annotation?.title ?? null,
+    enrichedDescription: annotation?.description ?? null,
+    enrichedFavicon: annotation?.favicon ?? null,
+    enrichedImage: annotation?.image ?? null,
+  }).catch((error) =>
+    captureMessage("bookmark mirror-write failed", "warning", {
+      op: "bulk tag update",
+      did: oauthSession.did,
+      error: String(error),
+    })
+  );
 
   return mapBookmarkRecord({ ...putData, value: record }, annotation);
 }

@@ -14,36 +14,6 @@ export interface InstapaperAddResult {
   error?: string;
 }
 
-/** Missing previous tags mean none; malformed previous tags are unknown. */
-export function isKnownPreviousTags(value: unknown): boolean {
-  return value === undefined ||
-    (Array.isArray(value) && value.every((tag) => typeof tag === "string"));
-}
-
-/** Send only when the confirmed reading-list tag was newly applied. */
-export async function sendReadingListBookmarkIfNew(
-  session: any,
-  tags: string[],
-  url: string,
-  title?: string,
-  previousTags: string[] = [],
-): Promise<void> {
-  if (!tags.length) return;
-  const { db } = await import("./db.ts");
-  const enabled = await db.execute({
-    sql: "SELECT instapaper_enabled FROM user_settings WHERE did = ?",
-    args: [session.did],
-  });
-  if (Number(enabled.rows?.[0]?.[0]) !== 1) return;
-  const { getAuthoritativeReadingListTag } = await import("./preferences.ts");
-  const tag = await getAuthoritativeReadingListTag(session);
-  if (!tag) return;
-  const matches = (item: unknown) =>
-    typeof item === "string" && item.toLowerCase() === tag.toLowerCase();
-  if (!tags.some(matches) || previousTags.some(matches)) return;
-  await sendToInstapaperAsync(session.did, url, title);
-}
-
 /**
  * Send an article to Instapaper.
  * Uses Simple API with basic authentication.
@@ -56,7 +26,7 @@ export async function sendToInstapaper(
   try {
     // Validate URL
     const parsedUrl = new URL(url);
-    if (!parsedUrl.protocol.startsWith("http")) {
+    if (!["http:", "https:"].includes(parsedUrl.protocol)) {
       throw new Error("Only HTTP(S) URLs are supported");
     }
 
@@ -72,19 +42,14 @@ export async function sendToInstapaper(
       btoa(`${credentials.username}:${credentials.password}`)
     }`;
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
-
     const response = await fetch(apiUrl.toString(), {
       method: "GET",
-      signal: controller.signal,
+      signal: AbortSignal.timeout(10000),
       headers: {
         "Authorization": authHeader,
         "User-Agent": "kipclip/1.0 (+https://kipclip.com)",
       },
     });
-
-    clearTimeout(timeoutId);
 
     // Instapaper returns 201 on success
     if (response.status === 201) {
@@ -133,62 +98,6 @@ export async function sendToInstapaper(
       success: false,
       error: error.message || "Failed to send to Instapaper",
     };
-  }
-}
-
-/**
- * Send bookmark to Instapaper asynchronously using stored credentials.
- * Fetches credentials from DB, decrypts them, and sends.
- * Silent failure: logs errors but doesn't throw to caller.
- */
-export async function sendToInstapaperAsync(
-  did: string,
-  url: string,
-  title?: string,
-): Promise<void> {
-  // Dynamic imports to avoid circular dependencies
-  const { db } = await import("./db.ts");
-  const { decrypt } = await import("./encryption.ts");
-
-  try {
-    const result = await db.execute({
-      sql: `SELECT instapaper_username_encrypted, instapaper_password_encrypted
-            FROM user_settings
-            WHERE did = ? AND instapaper_enabled = 1`,
-      args: [did],
-    });
-
-    if (!result.rows?.[0]) {
-      console.warn("Instapaper credentials not found for user:", did);
-      return;
-    }
-
-    const [encryptedUsername, encryptedPassword] = result.rows[0] as string[];
-    if (!encryptedUsername || !encryptedPassword) {
-      console.warn("Instapaper credentials incomplete for user:", did);
-      return;
-    }
-
-    const username = await decrypt(encryptedUsername);
-    const password = await decrypt(encryptedPassword);
-
-    const instapaperResult = await sendToInstapaper(
-      url,
-      { username, password },
-      title,
-    );
-
-    if (instapaperResult.success) {
-      console.log(`Successfully sent to Instapaper: ${url}`);
-    } else {
-      console.error(
-        `Failed to send to Instapaper: ${instapaperResult.error}`,
-        { url, did },
-      );
-    }
-  } catch (error) {
-    console.error("Error in sendToInstapaperAsync:", error);
-    throw error;
   }
 }
 

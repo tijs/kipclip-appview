@@ -13,6 +13,9 @@ await initializeTables();
 export { db };
 
 export async function clearMirrorTables(): Promise<void> {
+  await db.execute({ sql: "DELETE FROM event_action_jobs", args: [] });
+  await db.execute({ sql: "DELETE FROM app_events", args: [] });
+  await db.execute({ sql: "DELETE FROM instapaper_deliveries", args: [] });
   await db.execute({ sql: "DELETE FROM bookmarks", args: [] });
   await db.execute({ sql: "DELETE FROM annotations", args: [] });
   await db.execute({ sql: "DELETE FROM tags", args: [] });

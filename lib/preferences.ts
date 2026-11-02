@@ -9,6 +9,8 @@
 
 import { shouldReadFromMirror } from "./mirror-config.ts";
 import { getMirrorPreferences } from "../mirror/queries.ts";
+import { upsertPreferences } from "../mirror/upserts.ts";
+import { captureMessage } from "./sentry.ts";
 import { PREFERENCES_COLLECTION } from "./route-utils.ts";
 import type { UserPreferences } from "../shared/types.ts";
 import { validateDomainTagRules } from "../shared/domain-tag-rules.ts";
@@ -212,6 +214,19 @@ export async function writeUserPreferences(
     throw new Error("Could not save preferences to your PDS; please try again");
   }
   const result = await response.json();
+  if (typeof result.cid === "string") {
+    await upsertPreferences({
+      did: oauthSession.did,
+      cid: result.cid,
+      readingListTag: merged.readingListTag,
+      dateFormat: merged.dateFormat,
+    }).catch((error) =>
+      captureMessage("preferences mirror-write failed", "warning", {
+        did: oauthSession.did,
+        error: String(error),
+      })
+    );
+  }
   return {
     preferences: merged,
     cid: typeof result.cid === "string" ? result.cid : null,

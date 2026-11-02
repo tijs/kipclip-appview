@@ -176,7 +176,8 @@ try {
       sql: "SELECT version FROM migrations ORDER BY version",
       args: [],
     })).rows;
-    assert.equal(rows.length, 14);
+    assert.equal(rows.length, 15);
+    assert.equal(rows.at(-1)[0], "015");
   });
   await test("native SQLite file persistence/close/reopen", async () => {
     const root = await mkdtemp(
@@ -200,6 +201,68 @@ try {
       client?.close();
       await rm(root, { recursive: true, force: true });
     }
+  });
+  await test("transactional events and listener execution on native database", async () => {
+    await core.db.execute({
+      sql: "CREATE TABLE event_batch_fixture (value TEXT)",
+      args: [],
+    });
+    await assert.rejects(() =>
+      core.db.batch([
+        {
+          sql: "INSERT INTO event_batch_fixture VALUES ('must-roll-back')",
+          args: [],
+        },
+        { sql: "INSERT INTO missing_batch_fixture VALUES (1)", args: [] },
+      ])
+    );
+    assert.deepEqual(
+      (await core.db.execute({
+        sql: "SELECT value FROM event_batch_fixture",
+        args: [],
+      })).rows,
+      [],
+    );
+    const eventDid = "did:plc:runtimeevents";
+    const key = `at://${eventDid}/community.lexicon.bookmarks.bookmark/fixture`;
+    await core.processEvent({
+      type: "record",
+      record: {
+        did: eventDid,
+        live: true,
+        collection: "community.lexicon.bookmarks.bookmark",
+        rkey: "fixture",
+        cid: "runtime-cid",
+        action: "create",
+        record: {
+          subject: "https://example.invalid/runtime-event",
+          createdAt: "2026-01-01T00:00:00Z",
+          tags: [],
+        },
+      },
+    });
+    const seen = [];
+    const actions = ["preview", "instapaper"].map((id) => ({
+      id,
+      run: (event) => {
+        assert.equal(event.key, key);
+        seen.push(id);
+        return Promise.resolve();
+      },
+    }));
+    await core.eventWorker.runEventTick(
+      { backfillLimit: 0, batchSize: 2 },
+      actions,
+    );
+    assert.deepEqual(seen.sort(), ["instapaper", "preview"]);
+    assert.deepEqual(
+      (await core.db.execute({
+        sql:
+          "SELECT DISTINCT status FROM event_action_jobs WHERE event_key = ?",
+        args: [key],
+      })).rows,
+      [["done"]],
+    );
   });
   await test("native Sentry SDK custom transport remains offline", async () => {
     const envelopes = [];
@@ -342,6 +405,11 @@ try {
       assert.equal(scheduled, 1);
       core.worker.stopPreviewEnrichmentWorker();
       assert.equal(cleared, 1);
+      core.eventWorker.startEventWorker();
+      core.eventWorker.startEventWorker();
+      assert.equal(scheduled, 2);
+      core.eventWorker.stopEventWorker();
+      assert.equal(cleared, 2);
     } finally {
       process.env.KIPCLIP_TESTING = "1";
       globalThis.setInterval = set;

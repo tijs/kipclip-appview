@@ -4,6 +4,7 @@
  */
 
 import { db } from "./db.ts";
+import { eventStatements, type Statement } from "./events.ts";
 import type { UserSettings } from "../shared/types.ts";
 import { decrypt, encrypt } from "./encryption.ts";
 
@@ -120,11 +121,12 @@ export async function updateUserSettings(
     updateValues.push(encrypted);
   }
 
+  const statements: Statement[] = [];
   if (settingsExist && updateFields.length > 0) {
     updateFields.push("updated_at = CURRENT_TIMESTAMP");
     updateValues.push(did); // WHERE did = ?
 
-    await db.execute({
+    statements.push({
       sql: `UPDATE user_settings
             SET ${updateFields.join(", ")}
             WHERE did = ?`,
@@ -139,7 +141,7 @@ export async function updateUserSettings(
       ? await encrypt(updates.instapaperPassword)
       : null;
 
-    await db.execute({
+    statements.push({
       sql: `INSERT INTO user_settings
             (did, instapaper_enabled,
              instapaper_username_encrypted, instapaper_password_encrypted)
@@ -151,6 +153,16 @@ export async function updateUserSettings(
         encryptedPassword,
       ],
     });
+  }
+
+  if (statements.length) {
+    statements.push(...eventStatements({
+      type: "instapaper.connection.changed",
+      key: `settings:instapaper:${did}`,
+      did,
+      version: crypto.randomUUID(),
+    }));
+    await db.batch(statements);
   }
 
   // Return updated settings

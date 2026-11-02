@@ -39,6 +39,12 @@ Deno.test("portable contract suite runs against actual isolated Deno adapter", a
       .slice(15),
   );
   assertEquals(report.runtime, "deno");
-  assertEquals(report.passed, 47);
+  assertEquals(report.passed, 48);
+  assertEquals(
+    report.names.includes(
+      "transactional events and listener execution on native database",
+    ),
+    true,
+  );
   assertEquals(report.failed, 0);
 });

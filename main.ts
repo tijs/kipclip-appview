@@ -10,6 +10,7 @@ import { initializeTables } from "./lib/db.ts";
 import { logMirrorMode } from "./lib/mirror-config.ts";
 import { initOAuth, tryInitOAuthFromEnv } from "./lib/oauth-config.ts";
 import { startPreviewEnrichmentWorker } from "./lib/preview-enrichment-worker.ts";
+import { startEventWorker } from "./lib/event-worker.ts";
 import { captureError } from "./lib/sentry.ts";
 
 // Route modules
@@ -56,6 +57,7 @@ await initializeTables();
 
 // Trigger post-migration startup work (GC of seen_webhook_events).
 initWebhook();
+startEventWorker();
 
 // Log the active mirror mode so deploys make config visible in journalctl
 logMirrorMode();

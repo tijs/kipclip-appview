@@ -6,6 +6,7 @@ import { type AssetEntry, setStaticSnapshot } from "../../lib/static-assets.ts";
 import { contentType } from "@std/media-types";
 import { fromFileUrl, join } from "@std/path";
 import { stopPreviewEnrichmentWorker } from "../../lib/preview-enrichment-worker.ts";
+import { stopEventWorker } from "../../lib/event-worker.ts";
 import { stopLiveConnections } from "../../routes/api/live.ts";
 
 export async function startServer(
@@ -55,6 +56,7 @@ export async function startServer(
   const stop = () =>
     stopping ??= (async () => {
       stopPreviewEnrichmentWorker();
+      stopEventWorker();
       stopLiveConnections();
       await server.shutdown();
       for (const signal of ["SIGINT", "SIGTERM"] as const) {

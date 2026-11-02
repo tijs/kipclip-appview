@@ -258,6 +258,7 @@ export async function readMirrorAnnotation(
 export async function findMissingPreviewBookmarks(
   did: string,
   limit = 25,
+  bookmarkUri?: string,
 ): Promise<MissingPreviewBookmark[]> {
   const incomplete = incompleteAnnotationConditionSql();
   const result = await db.execute({
@@ -266,13 +267,19 @@ export async function findMissingPreviewBookmarks(
       FROM bookmarks b
       LEFT JOIN annotations a ON a.subject = b.uri AND a.did = b.did
       WHERE b.did = ?
+        ${bookmarkUri ? "AND b.uri = ?" : ""}
         AND (
           a.uri IS NULL OR (${incomplete.sql})
         )
       ORDER BY b.created_at DESC
       LIMIT ?
     `,
-    args: [did, ...incomplete.args, limit],
+    args: [
+      did,
+      ...(bookmarkUri ? [bookmarkUri] : []),
+      ...incomplete.args,
+      limit,
+    ],
   });
   return result.rows.map((row) => ({
     uri: String(row[0]),
@@ -283,6 +290,7 @@ export async function findMissingPreviewBookmarks(
 }
 
 export interface EnqueuePreviewOptions {
+  bookmarkUri?: string;
   /** Explicit authenticated reactivation: reopen failed / blocked_no_session
    * jobs as a fresh pending attempt (attempts reset, immediate next run).
    * Periodic scans (default) must leave terminal jobs stable. */
@@ -298,7 +306,11 @@ export async function enqueueMissingPreviewJobsForDid(
   limit = 25,
   opts: EnqueuePreviewOptions = {},
 ): Promise<number> {
-  const missing = await findMissingPreviewBookmarks(did, limit);
+  const missing = await findMissingPreviewBookmarks(
+    did,
+    limit,
+    opts.bookmarkUri,
+  );
   let enqueued = 0;
   const now = Date.now();
   const reactivate = opts.reactivate ?? false;
