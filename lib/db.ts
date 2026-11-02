@@ -14,6 +14,8 @@ interface DbClient {
   execute: (
     query: { sql: string; args: unknown[] },
   ) => Promise<{ rows: unknown[][]; rowsAffected: number }>;
+  /** A libSQL write batch commits all statements together or rolls back. */
+  batch: (queries: { sql: string; args: unknown[] }[]) => Promise<void>;
 }
 
 let db: DbClient;
@@ -22,6 +24,7 @@ if (isTestDb) {
   // Mock client for tests - doesn't actually connect
   console.error("✅ Using mock database (test mode)");
   db = {
+    batch: () => Promise.resolve(),
     execute: (
       _query: { sql: string; args: unknown[] },
     ): Promise<{ rows: unknown[][]; rowsAffected: number }> => {
@@ -47,6 +50,9 @@ if (isTestDb) {
   // Wrap the client to provide a consistent interface.
   // The libSQL client returns Row objects; convert to arrays for compatibility.
   db = {
+    batch: async (queries) => {
+      await client.batch(queries, "write");
+    },
     execute: async (
       query: { sql: string; args: unknown[] },
     ): Promise<{ rows: unknown[][]; rowsAffected: number }> => {

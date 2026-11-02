@@ -30,6 +30,7 @@ import {
   deletePreferences,
   deleteTag,
   gcSeenWebhookEvents,
+  hasSeenWebhookEvent,
   markWebhookEventSeen,
   upsertAnnotation,
   upsertBookmark,
@@ -206,11 +207,11 @@ export async function handleWebhookRequest(req: Request): Promise<Response> {
   // payload hash: exact retries deduplicate, while a new event reusing an old
   // ID still applies. Events without an id bypass dedup and rely on the
   // idempotent upsert layer alone.
-  if (typeof body.id === "number") {
-    const firstTime = await markWebhookEventSeen(
-      await webhookEventKey(body.id, payload),
-    );
-    if (!firstTime) {
+  const eventKey = typeof body.id === "number"
+    ? await webhookEventKey(body.id, payload)
+    : undefined;
+  if (eventKey !== undefined) {
+    if (await hasSeenWebhookEvent(eventKey)) {
       return Response.json({
         id: body.id,
         type: body.type,
@@ -220,13 +221,17 @@ export async function handleWebhookRequest(req: Request): Promise<Response> {
     }
   }
 
-  if (ackAsync()) {
+  // Bookmark events must be durable before acknowledging delivery. Other
+  // collections retain the legacy optional fast-ack backfill behavior.
+  if (ackAsync() && body.record?.collection !== BOOKMARK_COLLECTION) {
     // Ack immediately so TAP advances its outbox cursor; process in background.
     // Required during backfill when burst load exceeds TAP's
     // 30s webhook timeout. Idempotent upserts make at-least-once writes safe;
     // event loss on Deno crash is acceptable since owner can re-track.
     queueMicrotask(() => {
-      processEvent(body).catch((err) => {
+      processEvent(body).then(async () => {
+        if (eventKey !== undefined) await markWebhookEventSeen(eventKey);
+      }).catch((err) => {
         console.error(
           "[webhook] async dispatch error",
           err,
@@ -241,6 +246,9 @@ export async function handleWebhookRequest(req: Request): Promise<Response> {
 
   try {
     const result = await processEvent(body);
+    // Failed mirror/event transactions must remain retryable. Marking a key
+    // before processing made TAP's next retry disappear as a false replay.
+    if (eventKey !== undefined) await markWebhookEventSeen(eventKey);
     return Response.json(result);
   } catch (err) {
     console.error(

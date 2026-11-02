@@ -6,6 +6,7 @@ export async function loadApplication() {
   const { db } = await import("../lib/db.ts");
   const live = await import("../routes/api/live.ts");
   const worker = await import("../lib/preview-enrichment-worker.ts");
+  const eventWorker = await import("../lib/event-worker.ts");
   const assets = await import("../lib/static-assets.ts");
   const { SessionManager } = await import("@tijs/atproto-sessions");
   const { OAuthClient } = await import("@tijs/oauth-client-deno");
@@ -17,6 +18,7 @@ export async function loadApplication() {
     db,
     live,
     worker,
+    eventWorker,
     assets,
     SessionManager,
     OAuthClient,

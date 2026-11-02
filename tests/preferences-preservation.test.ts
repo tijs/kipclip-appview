@@ -1,4 +1,5 @@
 import "./test-setup.ts";
+import "./mirror-test-setup.ts";
 import { assertEquals, assertRejects } from "@std/assert";
 import { updateUserPreferences } from "../lib/preferences.ts";
 
@@ -141,3 +142,28 @@ for (const creating of [true, false]) {
     assertEquals(cid, "winner");
   });
 }
+
+Deno.test("a successful PDS preference write remains successful when local mirroring fails", async () => {
+  const { db } = await import("../lib/db.ts");
+  const original = db.batch;
+  const session = {
+    did: "did:plc:mirrorfailure",
+    pdsUrl: "https://pds.example.invalid",
+    makeRequest: (method: string) =>
+      Promise.resolve(
+        method === "GET"
+          ? Response.json({ error: "RecordNotFound" }, { status: 400 })
+          : Response.json({ cid: "pds-saved" }),
+      ),
+  };
+  db.batch = () => Promise.reject(new Error("fixture mirror failure"));
+  try {
+    assertEquals(
+      (await updateUserPreferences(session, { readingListTag: "later" }))
+        .readingListTag,
+      "later",
+    );
+  } finally {
+    db.batch = original;
+  }
+});

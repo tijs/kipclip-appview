@@ -4,6 +4,35 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-11-02
+
+### Added
+
+- Send reading-list bookmarks to your connected Instapaper account when they are
+  saved through other AT Protocol apps, including Disperse. Existing
+  reading-list bookmarks are picked up gradually in the background too. Thanks
+  to [James Haley](https://bsky.app/profile/jhaley.com/post/3mz7cvxr4u22h) for
+  reporting the missing third-party delivery.
+
+### Changed
+
+- Use shared, durable events and a single action registry for bookmark
+  processing, preview scheduling, and preference or connection changes. Actions
+  retry independently and track successful Instapaper deliveries per account;
+  changing only your password does not resend bookmarks.
+- Verify the bookmark and reading-list preference against the PDS before
+  exporting to Instapaper, and cancel queued work promptly after local deletes
+  or tag changes.
+
+### Fixed
+
+- Keep failed bookmark webhook writes retryable instead of treating the next
+  delivery as an already processed event.
+
+Historical catch-up can submit bookmarks sent by older versions again because
+those versions did not keep delivery history. A remote acceptance followed by a
+timeout can also lead to a retry.
+
 ## [0.27.2] - 2026-10-30
 
 ### Fixed
@@ -1581,7 +1610,8 @@ All notable changes to kipclip are documented in this file.
 - Responsive mobile and desktop layouts
 - Kip logo and "Find it, Kip it" tagline
 
-[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.24.36...HEAD
+[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.28.0...HEAD
+[0.28.0]: https://github.com/tijs/kipclip-appview/compare/v0.27.2...v0.28.0
 [0.24.36]: https://github.com/tijs/kipclip-appview/compare/v0.24.35...v0.24.36
 [0.24.35]: https://github.com/tijs/kipclip-appview/compare/v0.24.34...v0.24.35
 [0.24.34]: https://github.com/tijs/kipclip-appview/compare/v0.24.33...v0.24.34

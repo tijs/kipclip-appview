@@ -12,6 +12,8 @@
  */
 
 import { db } from "../lib/db.ts";
+import { bookmarkEventStatements } from "../lib/bookmark-events.ts";
+import { eventStatements } from "../lib/events.ts";
 
 export interface BookmarkUpsert {
   uri: string;
@@ -77,7 +79,7 @@ function assertDidMatchesUri(uri: string, did: string): void {
 export async function upsertBookmark(record: BookmarkUpsert): Promise<void> {
   assertDidMatchesUri(record.uri, record.did);
   const tagsJson = JSON.stringify(record.tags ?? []);
-  await db.execute({
+  await db.batch([{
     sql: `
       INSERT INTO bookmarks (
         uri, did, rkey, cid, subject, created_at, tags,
@@ -112,15 +114,46 @@ export async function upsertBookmark(record: BookmarkUpsert): Promise<void> {
       record.enrichedImage ?? null,
       Date.now(),
     ],
+  }, ...bookmarkEventStatements(record)]);
+}
+
+/** Adapt successful PDS record writes to the common indexing/event boundary. */
+export async function upsertBookmarkRecord(
+  did: string,
+  record: { uri: string; cid: string; value: Record<string, any> },
+): Promise<void> {
+  const value = record.value;
+  const enriched = value.$enriched ?? {};
+  await upsertBookmark({
+    uri: record.uri,
+    did,
+    rkey: record.uri.split("/").pop() ?? "",
+    cid: record.cid,
+    subject: value.subject,
+    createdAt: value.createdAt,
+    tags: value.tags ?? [],
+    enrichedTitle: enriched.title ?? value.title ?? null,
+    enrichedDescription: enriched.description ?? null,
+    enrichedFavicon: enriched.favicon ?? null,
+    enrichedImage: enriched.image ?? null,
   });
 }
 
 export async function deleteBookmark(uri: string, did: string): Promise<void> {
   assertDidMatchesUri(uri, did);
-  await db.execute({
+  await db.batch([{
     sql: "DELETE FROM bookmarks WHERE uri = ? AND did = ?",
     args: [uri, did],
-  });
+  }, {
+    sql: "DELETE FROM event_action_jobs WHERE event_key = ?",
+    args: [uri],
+  }, {
+    sql: "DELETE FROM app_events WHERE event_key = ?",
+    args: [uri],
+  }, {
+    sql: "DELETE FROM preview_enrichment_jobs WHERE bookmark_uri = ?",
+    args: [uri],
+  }]);
 }
 
 export interface AnnotationUpsertOptions {
@@ -236,8 +269,18 @@ export async function deleteTag(uri: string, did: string): Promise<void> {
 export async function upsertPreferences(
   record: PreferencesUpsert,
 ): Promise<void> {
-  await db.execute({
-    sql: `
+  await db.batch([
+    ...eventStatements({
+      type: "preferences.changed",
+      key: `at://${record.did}/com.kipclip.preferences/self`,
+      did: record.did,
+      version: record.cid,
+    }, {
+      sql: "NOT EXISTS (SELECT 1 FROM preferences WHERE did = ? AND cid = ?)",
+      args: [record.did, record.cid],
+    }),
+    {
+      sql: `
       INSERT INTO preferences (did, cid, date_format, reading_list_tag, updated_at)
       VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(did) DO UPDATE SET
@@ -246,21 +289,30 @@ export async function upsertPreferences(
         reading_list_tag = excluded.reading_list_tag,
         updated_at = excluded.updated_at
     `,
-    args: [
-      record.did,
-      record.cid,
-      record.dateFormat ?? null,
-      record.readingListTag ?? null,
-      Date.now(),
-    ],
-  });
+      args: [
+        record.did,
+        record.cid,
+        record.dateFormat ?? null,
+        record.readingListTag ?? null,
+        Date.now(),
+      ],
+    },
+  ]);
 }
 
 export async function deletePreferences(did: string): Promise<void> {
-  await db.execute({
-    sql: "DELETE FROM preferences WHERE did = ?",
-    args: [did],
-  });
+  await db.batch([
+    {
+      sql: "DELETE FROM preferences WHERE did = ?",
+      args: [did],
+    },
+    ...eventStatements({
+      type: "preferences.changed",
+      key: `at://${did}/com.kipclip.preferences/self`,
+      did,
+      version: `deleted:${crypto.randomUUID()}`,
+    }),
+  ]);
 }
 
 /**
@@ -322,6 +374,14 @@ export async function markWebhookEventSeen(eventKey: string): Promise<boolean> {
     args: [eventKey, Date.now()],
   });
   return result.rowsAffected === 1;
+}
+
+export async function hasSeenWebhookEvent(eventKey: string): Promise<boolean> {
+  const result = await db.execute({
+    sql: "SELECT 1 FROM seen_webhook_deliveries WHERE event_key = ?",
+    args: [eventKey],
+  });
+  return result.rows.length > 0;
 }
 
 /**

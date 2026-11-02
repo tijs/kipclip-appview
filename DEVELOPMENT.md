@@ -270,3 +270,39 @@ correct permissions.
 - Add integration tests that hit real PDS (optional)
 - Inspect database schema to understand data model
 - Try adding new features locally before deploying
+
+## Events and background actions
+
+Successful record writes/indexing publish typed facts in the same SQLite write
+batch as the mirror change. `lib/events.ts` owns event persistence and
+subscription catch-up; `lib/event-worker.ts` owns job claims, leases, bounded
+retries and completion. `lib/event-actions.ts` is the single subscription
+registry. Producers must not call an integration directly.
+
+Current events are `bookmark.saved`, `preferences.changed`, and
+`instapaper.connection.changed`. Bookmark records from direct writes, TAP and
+PDS backfill share the same boundary. Historical mirror records enter through a
+bounded discovery source, independent of page visits. Changes to preferences or
+connections re-evaluate Instapaper eligibility through another subscription.
+
+Events represent the **latest state of an entity**: the key identifies that
+entity, and the version is its PDS CID or a new local change token. Identical
+versions preserve job completion and retry backoff; a newer version supersedes
+older queued work. This is not an immutable history of every intermediate edit.
+Registering a new action automatically catches up with existing events of its
+types. Keep request-critical PDS writes and immediate response/live-update work
+inline; background actions must be idempotent and bound their external requests.
+
+Preview scheduling delegates to the existing records-first enrichment queue. Its
+PDS merge/CAS, retry history, periodic repair scan and authenticated
+reactivation remain in place: annotation changes and restored sessions can need
+repair without a bookmark CID change.
+
+Instapaper delivery checks the authoritative public PDS reading-list preference
+and the current bookmark/connection before sending. Successful delivery history
+is scoped to bookmark URI, URL and recipient-account fingerprint; changing only
+a password does not resend items. Historical catch-up includes existing
+reading-list bookmarks. Pre-upgrade sends have no local delivery history, so
+catch-up may submit those again. A remote acceptance followed by a timeout/crash
+can also cause a retry: SQLite and Instapaper cannot provide a shared
+exactly-once transaction.

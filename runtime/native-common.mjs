@@ -71,6 +71,7 @@ export async function indexAssets(core, host) {
 
 export function stopBackground(core) {
   core.worker.stopPreviewEnrichmentWorker();
+  core.eventWorker.stopEventWorker();
   core.live.stopLiveConnections();
 }
 export function installSignals(stop) {

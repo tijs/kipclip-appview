@@ -29,7 +29,11 @@ import { tagIncludes, tagsEqual } from "../../shared/tag-utils.ts";
 import { mergeTagDuplicates } from "../../lib/migration-merge-tags.ts";
 import { shouldReadFromMirror } from "../../lib/mirror-config.ts";
 import { listTags as listMirrorTags } from "../../mirror/queries.ts";
-import { deleteTag, upsertTag } from "../../mirror/upserts.ts";
+import {
+  deleteTag,
+  upsertBookmarkRecord,
+  upsertTag,
+} from "../../mirror/upserts.ts";
 import { captureMessage } from "../../lib/sentry.ts";
 import { createTimer } from "../../lib/server-timing.ts";
 import {
@@ -346,6 +350,19 @@ export function registerTagRoutes(app: App<any>): App<any> {
                 `Failed to update bookmark ${bookmarkRkey}:`,
                 await res.text(),
               );
+            } else {
+              const written = await res.json();
+              await upsertBookmarkRecord(oauthSession.did, {
+                uri: record.uri,
+                cid: written.cid,
+                value: { ...record.value, tags: updatedTags },
+              }).catch((error) =>
+                captureMessage("bookmark mirror-write failed", "warning", {
+                  op: "tag update",
+                  did: oauthSession.did,
+                  error: String(error),
+                })
+              );
             }
           }),
       );
@@ -502,6 +519,19 @@ export function registerTagRoutes(app: App<any>): App<any> {
               console.error(
                 `Failed to update bookmark ${bookmarkRkey}:`,
                 await res.text(),
+              );
+            } else {
+              const written = await res.json();
+              await upsertBookmarkRecord(oauthSession.did, {
+                uri: record.uri,
+                cid: written.cid,
+                value: { ...record.value, tags: updatedTags },
+              }).catch((error) =>
+                captureMessage("bookmark mirror-write failed", "warning", {
+                  op: "tag update",
+                  did: oauthSession.did,
+                  error: String(error),
+                })
               );
             }
           }),

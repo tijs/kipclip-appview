@@ -238,4 +238,45 @@ export const MIRROR_MIGRATIONS: MigrationEntry[] = [
         ON tap_repo_state(state, next_check_at)
     `,
   },
+  {
+    version: "015",
+    description:
+      "Durable application events, listener jobs and Instapaper delivery history",
+    sql: `
+      CREATE TABLE IF NOT EXISTS app_events (
+        event_key TEXT PRIMARY KEY,
+        type TEXT NOT NULL,
+        did TEXT NOT NULL,
+        version TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS event_action_jobs (
+        event_key TEXT NOT NULL,
+        action TEXT NOT NULL,
+        version TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        next_run_at INTEGER NOT NULL,
+        lease_token TEXT,
+        lease_until INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        PRIMARY KEY (event_key, action)
+      );
+      CREATE INDEX IF NOT EXISTS idx_event_actions_due
+        ON event_action_jobs(status, next_run_at);
+      CREATE INDEX IF NOT EXISTS idx_app_events_did
+        ON app_events(did);
+      CREATE TABLE IF NOT EXISTS instapaper_deliveries (
+        bookmark_uri TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        account_key TEXT NOT NULL,
+        status TEXT NOT NULL,
+        lease_token TEXT,
+        lease_until INTEGER NOT NULL DEFAULT 0,
+        delivered_at INTEGER,
+        PRIMARY KEY (bookmark_uri, subject, account_key)
+      )
+    `,
+  },
 ];

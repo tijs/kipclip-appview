@@ -64,8 +64,8 @@ for (const scenario of ["lazy", "eager", "gc-failure"]) {
       assertEquals(result.scenario, scenario);
       assertEquals(result.events, ["migrations-complete", "webhook-gc"]);
       assertEquals(result.intervals, [60000, 1234]);
-      // Two declared migrations share version005; only14 unique versions apply.
-      assertEquals(result.migrations, 14);
+      // Two declared migrations share version005; fifteen unique versions apply.
+      assertEquals(result.migrations, 15);
     } finally {
       await Deno.remove(tmp, { recursive: true });
     }
