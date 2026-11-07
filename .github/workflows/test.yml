@@ -22,6 +22,8 @@ jobs:
         run: deno lint
       - name: Shell regression tests (release updater)
         run: bash tests/shell/update.test.sh
+      - name: Shell regression tests (Deno and TAP activation recovery)
+        run: bash tests/shell/runtime-updaters.test.sh
       - name: Audit framework references
         run: deno task audit:framework
       - name: Audit shared runtime boundary
