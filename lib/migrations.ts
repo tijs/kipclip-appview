@@ -99,6 +99,17 @@ const NON_MIRROR_MIGRATIONS: Array<{
       ALTER TABLE iron_session_storage ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''
     `,
   },
+  {
+    version: "016",
+    description: "Fence import chunk ownership and persist resumable progress",
+    sql: `
+      ALTER TABLE import_chunks ADD COLUMN lease_token TEXT;
+      ALTER TABLE import_chunks ADD COLUMN lease_until INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE import_chunks ADD COLUMN imported INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE import_chunks ADD COLUMN failed INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE import_chunks ADD COLUMN processed_bookmarks INTEGER NOT NULL DEFAULT 0
+    `,
+  },
 ];
 
 // Combined list applied to the primary db.

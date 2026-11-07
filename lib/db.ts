@@ -10,12 +10,17 @@ const dbUrl = getHost().env.get("DATABASE_URL") || "file:.local/kipclip.db";
 const isLocal = dbUrl.startsWith("file:");
 const isTestDb = dbUrl.startsWith("libsql://test");
 
-interface DbClient {
+export interface DbExecutor {
   execute: (
     query: { sql: string; args: unknown[] },
   ) => Promise<{ rows: unknown[][]; rowsAffected: number }>;
   /** A libSQL write batch commits all statements together or rolls back. */
   batch: (queries: { sql: string; args: unknown[] }[]) => Promise<void>;
+}
+
+interface DbClient extends DbExecutor {
+  /** Hold a short write transaction; never perform network I/O inside it. */
+  transaction<T>(run: (tx: DbExecutor) => Promise<T>): Promise<T>;
 }
 
 let db: DbClient;
@@ -24,6 +29,7 @@ if (isTestDb) {
   // Mock client for tests - doesn't actually connect
   console.error("✅ Using mock database (test mode)");
   db = {
+    transaction: (run) => run(db),
     batch: () => Promise.resolve(),
     execute: (
       _query: { sql: string; args: unknown[] },
@@ -47,22 +53,62 @@ if (isTestDb) {
     await client.execute("PRAGMA synchronous = NORMAL");
   }
 
-  // Wrap the client to provide a consistent interface.
-  // The libSQL client returns Row objects; convert to arrays for compatibility.
-  db = {
+  const executorFor = (connection: any): DbExecutor => ({
+    execute: async (query) => {
+      const result = await connection.execute(query);
+      return {
+        rows: result.rows.map((row: any) => Object.values(row)),
+        rowsAffected: Number(result.rowsAffected ?? 0),
+      };
+    },
     batch: async (queries) => {
-      await client.batch(queries, "write");
+      await connection.batch(queries, "write");
     },
-    execute: async (
-      query: { sql: string; args: unknown[] },
-    ): Promise<{ rows: unknown[][]; rowsAffected: number }> => {
-      const result = await client.execute({
-        sql: query.sql,
-        args: query.args as any,
-      });
-      const rows = result.rows.map((row) => Object.values(row));
-      return { rows, rowsAffected: Number(result.rowsAffected ?? 0) };
-    },
+  });
+  const raw = executorFor(client);
+  // Keep ordinary calls outside callback transactions on this connection.
+  // Local libSQL transaction() detaches its connection, which also loses an
+  // anonymous in-memory database; use BEGIN/COMMIT on the existing connection.
+  let tail = Promise.resolve();
+  function exclusive<T>(run: () => Promise<T>): Promise<T> {
+    const result = tail.then(run);
+    tail = result.then(() => {}, () => {});
+    return result;
+  }
+  db = {
+    execute: (query) => exclusive(() => raw.execute(query)),
+    batch: (queries) => exclusive(() => raw.batch(queries)),
+    transaction: (run) =>
+      exclusive(async () => {
+        if (isLocal) {
+          await client.execute("BEGIN IMMEDIATE");
+          const tx: DbExecutor = {
+            ...raw,
+            batch: async (queries) => {
+              for (const query of queries) await raw.execute(query);
+            },
+          };
+          try {
+            const result = await run(tx);
+            await client.execute("COMMIT");
+            return result;
+          } catch (error) {
+            await client.execute("ROLLBACK");
+            throw error;
+          }
+        }
+        const tx = await client.transaction("write");
+        try {
+          const result = await run(executorFor(tx));
+          await tx.commit();
+          return result;
+        } catch (error) {
+          await tx.rollback();
+          throw error;
+        } finally {
+          tx.close();
+        }
+      }),
   };
 
   console.error(`✅ Using ${isLocal ? "local" : "remote"} database`);

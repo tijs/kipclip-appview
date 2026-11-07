@@ -92,8 +92,11 @@ export function ImportBookmarks() {
       let lastResult: ImportResult | undefined;
       const maxIterations = totalChunks + 2;
       let iterations = 0;
+      const processingDeadline = Date.now() + 5 * 60_000;
 
-      while (!done && iterations < maxIterations) {
+      while (
+        !done && iterations < maxIterations && Date.now() < processingDeadline
+      ) {
         iterations++;
         const processRes = await apiPost(`/api/import/${jobId}/process`);
         const process: ImportProcessResponse = await processRes.json();
@@ -104,6 +107,14 @@ export function ImportBookmarks() {
             message: process.error || "Import processing failed",
           });
           return;
+        }
+
+        if (process.retryAfterMs) {
+          iterations--;
+          await new Promise((resolve) =>
+            setTimeout(resolve, process.retryAfterMs)
+          );
+          continue;
         }
 
         setImportState((prev) => {

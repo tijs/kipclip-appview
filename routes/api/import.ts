@@ -22,7 +22,6 @@ import {
   isUserSupporter,
 } from "../../lib/atprotofans.ts";
 import { normalizeUrlForMatching } from "../../shared/url-utils.ts";
-import { generateTidForTimestamp } from "../../lib/tid.ts";
 import {
   isKnownDefaultYouTubeDescription,
   isKnownDefaultYouTubeTitle,
@@ -37,13 +36,14 @@ import type {
   ImportProcessResponse,
 } from "../../shared/types.ts";
 import {
+  checkpointImportChunk,
   cleanupOldJobs,
   completeChunk,
   createImportJob,
-  deleteJobsForDid,
   getImportJob,
   getNextPendingChunk,
   markJobCompleted,
+  renewImportChunk,
 } from "../../lib/import-jobs.ts";
 
 /** 403 response for endpoints that require supporter status. */
@@ -182,11 +182,6 @@ export function registerImportRoutes(app: App<any>): App<any> {
           console.error("Failed to cleanup old import jobs:", err)
         );
       }
-      // Always clean up existing pending jobs for this user
-      await deleteJobsForDid(oauthSession.did).catch((err) =>
-        console.error("Failed to delete existing import jobs:", err)
-      );
-
       // Create the import job with chunked bookmarks
       const job = await createImportJob(
         oauthSession.did,
@@ -277,7 +272,20 @@ export function registerImportRoutes(app: App<any>): App<any> {
 
       if (!chunk) {
         // No pending chunks left — mark job completed and create tags
-        await markJobCompleted(jobId);
+        const finished = await markJobCompleted(jobId);
+        if (!finished) {
+          return setSessionCookie(
+            Response.json({
+              success: true,
+              done: false,
+              retryAfterMs: 1000,
+              totalImported: job.imported,
+              totalFailed: job.failed,
+              remaining: job.totalChunks - job.processedChunks,
+            }),
+            setCookieHeader,
+          );
+        }
         const finalJob = await getImportJob(jobId);
 
         if (finalJob && finalJob.tags.length > 0) {
@@ -309,17 +317,12 @@ export function registerImportRoutes(app: App<any>): App<any> {
       const MAX_WRITES = 10;
 
       // Group writes per bookmark so we can track imported/failed per bookmark
-      const usedRkeys = new Set<string>();
       const bookmarkWrites: {
         bookmark: typeof chunk.bookmarks[0];
         ops: any[];
-      }[] = chunk.bookmarks.map((b) => {
+      }[] = chunk.bookmarks.slice(chunk.processedBookmarks).map((b) => {
         const createdAt = b.createdAt || new Date().toISOString();
-        let rkey = generateTidForTimestamp(new Date(createdAt));
-        for (let attempt = 0; usedRkeys.has(rkey) && attempt < 50; attempt++) {
-          rkey = generateTidForTimestamp(new Date(createdAt));
-        }
-        usedRkeys.add(rkey);
+        const rkey = b.rkey;
         const bookmarkUri = `at://${did}/${BOOKMARK_COLLECTION}/${rkey}`;
 
         const ops: any[] = [
@@ -383,20 +386,70 @@ export function registerImportRoutes(app: App<any>): App<any> {
       }
       if (currentBatch.length > 0) subBatches.push(currentBatch);
 
-      let chunkImported = 0;
-      let chunkFailed = 0;
+      let chunkImported = chunk.imported;
+      let chunkFailed = chunk.failed;
+      let processed = chunk.processedBookmarks;
 
       for (const batch of subBatches) {
+        if (!await renewImportChunk(chunk)) {
+          throw new Error("Import ownership changed; retry to resume");
+        }
         const writes = batch.flatMap((bw) => bw.ops);
+        // A killed request may have committed externally before its checkpoint.
+        // Recover only identical records at the persisted identities; never overwrite edits.
+        if (chunk.reclaimed) {
+          for (let i = writes.length - 1; i >= 0; i--) {
+            const op = writes[i];
+            const query = new URLSearchParams({
+              repo: did,
+              collection: op.collection,
+              rkey: op.rkey,
+            });
+            const res = await oauthSession.makeRequest(
+              "GET",
+              `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.getRecord?${query}`,
+            );
+            if (res.ok) {
+              const record = (await res.json()).value;
+              if (
+                !Object.entries(op.value).filter(([, value]) =>
+                  value !== undefined
+                ).every(([key, value]) =>
+                  JSON.stringify(record?.[key]) === JSON.stringify(value)
+                )
+              ) {
+                throw new Error(
+                  "Imported record changed during recovery; refusing to overwrite it",
+                );
+              }
+              writes.splice(i, 1);
+            } else {
+              const error = await res.json().catch(() => ({}));
+              if (
+                res.status !== 404 &&
+                !(res.status === 400 && error.error === "RecordNotFound")
+              ) {
+                throw new Error(
+                  "Could not verify import recovery; retry later",
+                );
+              }
+            }
+          }
+        }
+        if (!await renewImportChunk(chunk)) {
+          throw new Error("Import ownership changed; retry to resume");
+        }
         try {
-          const res = await oauthSession.makeRequest(
-            "POST",
-            `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.applyWrites`,
-            {
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ repo: did, writes }),
-            },
-          );
+          const res = writes.length === 0
+            ? new Response(null, { status: 200 })
+            : await oauthSession.makeRequest(
+              "POST",
+              `${oauthSession.pdsUrl}/xrpc/com.atproto.repo.applyWrites`,
+              {
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ repo: did, writes }),
+              },
+            );
 
           if (res.ok) {
             chunkImported += batch.length;
@@ -409,10 +462,23 @@ export function registerImportRoutes(app: App<any>): App<any> {
           console.error("Import applyWrites error:", err);
           chunkFailed += batch.length;
         }
+        processed += batch.length;
+        if (
+          !await checkpointImportChunk(
+            chunk,
+            processed,
+            chunkImported,
+            chunkFailed,
+          )
+        ) {
+          throw new Error("Import ownership changed; retry to resume");
+        }
       }
 
-      // Update chunk and job counters
-      await completeChunk(chunk.id, jobId, chunkImported, chunkFailed);
+      // Update chunk and job counters exactly once for this owner.
+      if (!await completeChunk(chunk, chunkImported, chunkFailed)) {
+        throw new Error("Import ownership changed");
+      }
 
       // Reload job for updated counters
       const updatedJob = await getImportJob(jobId);
