@@ -248,7 +248,7 @@ for (const mutation of ["create", "update", "delete"] as const) {
       await snapshotRead;
       if (mutation === "delete") {
         await deleteBookmark(bookmarkRec("concurrent").uri, DID);
-      } else await seedBookmark("concurrent");
+      } else if (mutation === "create") await seedBookmark("concurrent");
       // Use a raw SQL writer as well: the fence is database-visible, not a
       // process-local flag or a convention restricted to upsert helpers.
       if (mutation === "update") {
@@ -276,6 +276,48 @@ for (const mutation of ["create", "update", "delete"] as const) {
         });
         assertEquals(row.rows[0][0], "https://new.example");
       }
+    } finally {
+      release();
+      globalThis.fetch = original;
+    }
+  });
+}
+
+for (const table of ["annotations", "tags", "preferences"] as const) {
+  Deno.test(`raw ${table} writer invalidates an in-flight reconciliation snapshot`, async () => {
+    await clearMirrorTables();
+    const original = globalThis.fetch;
+    let release!: () => void, captured!: () => void;
+    const blocked = new Promise<void>((r) => release = r),
+      ready = new Promise<void>((r) => captured = r);
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      if (
+        new URL(String(input)).searchParams.get("collection") ===
+          "com.kipclip.preferences"
+      ) {
+        captured();
+        await blocked;
+      }
+      return Response.json({ records: [] });
+    }) as typeof fetch;
+    try {
+      const pending = reconcileDid(DID, PDS);
+      await ready;
+      const sql = table === "preferences"
+        ? "INSERT INTO preferences (did,cid,updated_at) VALUES (?, 'new', 0)"
+        : table === "tags"
+        ? "INSERT INTO tags (did,uri,rkey,cid,value,created_at,updated_at) VALUES (?, 'at://raw/tag', 'raw', 'new', 'raw', '', 0)"
+        : "INSERT INTO annotations (did,uri,rkey,cid,subject,updated_at) VALUES (?, 'at://raw/annotation', 'raw', 'new', 'at://raw/bookmark', 0)";
+      await db.execute({ sql, args: [DID] });
+      release();
+      await assertRejects(() => pending, Error, "Mirror changed");
+      assertEquals(
+        (await db.execute({
+          sql: `SELECT COUNT(*) FROM ${table} WHERE did = ?`,
+          args: [DID],
+        })).rows[0][0],
+        1,
+      );
     } finally {
       release();
       globalThis.fetch = original;

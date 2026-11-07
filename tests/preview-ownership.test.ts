@@ -99,23 +99,23 @@ Deno.test("preview source and absent annotation are fenced in the actual PDS put
   const session = {
     did,
     pdsUrl: "https://pds.test",
-    makeRequest: async (_method: string, endpoint: string, options?: any) => {
+    makeRequest: (_method: string, endpoint: string, options?: any) => {
       if (endpoint.includes("getLatestCommit")) {
-        return Response.json({
+        return Promise.resolve(Response.json({
           cid: "commit-before-reads",
-        });
+        }));
       }
       if (endpoint.includes("getRecord")) {
-        return Response.json({
+        return Promise.resolve(Response.json({
           cid: job.sourceCid,
           value: { subject: job.subject },
-        });
+        }));
       }
       payload = JSON.parse(options.body);
-      return Response.json({
+      return Promise.resolve(Response.json({
         uri: `at://${did}/com.kipclip.annotation/a`,
         cid: "annotation",
-      });
+      }));
     },
   };
   await processPreviewEnrichmentJob(job, {

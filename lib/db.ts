@@ -70,11 +70,11 @@ if (isTestDb) {
   // Local libSQL transaction() detaches its connection, which also loses an
   // anonymous in-memory database; use BEGIN/COMMIT on the existing connection.
   let tail = Promise.resolve();
-  function exclusive<T>(run: () => Promise<T>): Promise<T> {
+  const exclusive = <T>(run: () => Promise<T>): Promise<T> => {
     const result = tail.then(run);
     tail = result.then(() => {}, () => {});
     return result;
-  }
+  };
   db = {
     execute: (query) => exclusive(() => raw.execute(query)),
     batch: (queries) => exclusive(() => raw.batch(queries)),

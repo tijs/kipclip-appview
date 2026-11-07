@@ -693,6 +693,7 @@
       "npm:esbuild@0.28.1",
       "npm:html-entities@2.6.0",
       "npm:react-dom@19.2.3",
+      "npm:react-test-renderer@19.2.3",
       "npm:react@19",
       "npm:react@19.2.3",
       "npm:sonner@2",

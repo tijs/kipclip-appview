@@ -44,9 +44,9 @@ Deno.test("a failed run still serves retained newer intent and a later call can 
   reject(new Error("obsolete failed attempt"));
   assertEquals(await a, 2);
   let fails = true;
-  const retry = createTrailingTask(async () => {
-    if (fails) throw new Error("failure");
-    return 1;
+  const retry = createTrailingTask(() => {
+    if (fails) return Promise.reject(new Error("failure"));
+    return Promise.resolve(1);
   });
   await assertRejects(retry, Error, "failure");
   fails = false;
