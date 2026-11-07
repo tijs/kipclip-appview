@@ -4,6 +4,7 @@
  * Generates content-hashed filenames for optimal caching.
  */
 
+import { createTrailingTask } from "../shared/async-work.ts";
 import * as esbuild from "esbuild";
 import { encodeHex } from "@std/encoding/hex";
 
@@ -128,7 +129,7 @@ async function cleanOldBundles(currentBundleName: string): Promise<void> {
   }
 }
 
-export async function buildFrontend(): Promise<void> {
+async function buildFrontendOnce(): Promise<void> {
   const startTime = Date.now();
   // Build to memory first to get the content for hashing
   const result = await esbuild.build({
@@ -212,7 +213,13 @@ export async function buildFrontend(): Promise<void> {
     sha,
     builtAt,
   };
-  await Deno.writeTextFile("static/manifest.json", JSON.stringify(manifest));
+  const manifestTemp = `static/.manifest-${crypto.randomUUID()}.json`;
+  try {
+    await Deno.writeTextFile(manifestTemp, JSON.stringify(manifest));
+    await Deno.rename(manifestTemp, "static/manifest.json");
+  } finally {
+    await Deno.remove(manifestTemp).catch(() => {});
+  }
 
   // Clean up old bundles
   await cleanOldBundles(bundleFileName);
@@ -227,6 +234,9 @@ export async function buildFrontend(): Promise<void> {
   console.log(`   Version: ${version} (sha ${sha})`);
 }
 
+// Programmatic and watch callers share one publication owner.
+export const buildFrontend = createTrailingTask(buildFrontendOnce);
+
 /**
  * Watch mode: rebuild the bundle whenever frontend/ or shared/ source
  * changes. Used by the dev orchestrator (scripts/dev.ts). The esbuild
@@ -234,14 +244,13 @@ export async function buildFrontend(): Promise<void> {
  * rebuilds and is reclaimed when the process exits.
  */
 async function runWatch(): Promise<void> {
-  try {
-    await buildFrontend();
-  } catch (error) {
-    console.error("❌ [build] initial build failed:", error);
-  }
+  // Subscribe before starting the initial build so edits made during it are retained.
+  const watcher = Deno.watchFs(["frontend", "shared"]);
+  buildFrontend().catch((error) =>
+    console.error("❌ [build] initial build failed:", error)
+  );
   console.log("👀 [build] watching frontend/ and shared/ for changes...");
   let timer: number | undefined;
-  const watcher = Deno.watchFs(["frontend", "shared"]);
   for await (const event of watcher) {
     if (!event.paths.some((p) => /\.(ts|tsx|css)$/.test(p))) continue;
     clearTimeout(timer);
