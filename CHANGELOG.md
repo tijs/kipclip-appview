@@ -4,6 +4,34 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.28.2] - 2026-11-07
+
+### Fixed
+
+- Keep imports safe when requests overlap or a server response is lost. Resume
+  using stable bookmark identities and saved progress, preserve totals from
+  imports started before the upgrade, and keep progressing imports running.
+- Keep live changes visible when another refresh is already running, and catch
+  up after reconnecting. Clear account data on logout and ignore responses from
+  an earlier session.
+- Keep Undo attached to the correct reading-list action, including after a
+  refresh, and preserve newer bookmark details. Keep swipe gestures stable when
+  starting from an open row and when a touch is cancelled.
+- Show preference-save failures with a retry action. Keep successful imports and
+  tag edits successful when the follow-up refresh fails, with a separate refresh
+  retry.
+- Prevent older preview jobs from applying metadata to a changed or deleted
+  bookmark, or settling replacement work. Protect newly created notes and
+  concurrent edits with PDS record and commit conditions.
+- Stop reconciliation from applying an older snapshot over concurrent mirror
+  changes. Keep unresolved PDS authority distinct from a confirmed server.
+- Acknowledge all bookmark-related webhook collections after durable writes.
+  Recover interrupted Deno and TAP updates before version shortcuts, and roll
+  back failed restarts with their previous binary and provenance intact.
+- Validate OAuth popup messages and clean up login polling and timers reliably,
+  including when login finishes immediately. Serialize development rebuilds and
+  publish bundle manifests atomically.
+
 ## [0.28.1] - 2026-11-07
 
 ### Fixed
@@ -1621,7 +1649,8 @@ timeout can also lead to a retry.
 - Responsive mobile and desktop layouts
 - Kip logo and "Find it, Kip it" tagline
 
-[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.28.1...HEAD
+[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.28.2...HEAD
+[0.28.2]: https://github.com/tijs/kipclip-appview/compare/v0.28.1...v0.28.2
 [0.28.1]: https://github.com/tijs/kipclip-appview/compare/v0.28.0...v0.28.1
 [0.28.0]: https://github.com/tijs/kipclip-appview/compare/v0.27.2...v0.28.0
 [0.24.36]: https://github.com/tijs/kipclip-appview/compare/v0.24.35...v0.24.36

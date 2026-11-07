@@ -410,11 +410,11 @@ dropping `kipclip` group access. Fix:
 The box also runs three weekly auto-update timers, independent of the kipclip
 release flow above:
 
-| Timer                       | When           | Updates                                               | Rollback path                                                                                      |
-| --------------------------- | -------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `tap-update.timer`          | Sun 04:00 UTC  | TAP binary (pinned immutable base + downstream patch) | `/opt/tap/tap.prev` + `.version.prev`/`.patches.sha256.prev`/`.binary.sha256.prev` if health fails |
-| `deno-update.timer`         | Sun 04:30 UTC  | Deno runtime at `/opt/deno/bin/deno` (patch only)     | `/opt/deno/bin/deno.prev` on `/api/health` failure                                                 |
-| `unattended-upgrades.timer` | Daily (Debian) | Debian security packages                              | `apt-get install <pkg>=<oldver>`                                                                   |
+| Timer                       | When           | Updates                                               | Rollback path                                                                                       |
+| --------------------------- | -------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `tap-update.timer`          | Sun 04:00 UTC  | TAP binary (pinned immutable base + downstream patch) | durable activation snapshot restores binary + provenance on restart/health failure or interruption  |
+| `deno-update.timer`         | Sun 04:30 UTC  | Deno runtime at `/opt/deno/bin/deno` (patch only)     | durable activation snapshot restores the previous runtime on restart/health failure or interruption |
+| `unattended-upgrades.timer` | Daily (Debian) | Debian security packages                              | `apt-get install <pkg>=<oldver>`                                                                    |
 
 > **TAP builds are pinned since v0.24.38.** `tap-update.sh` no longer tracks
 > `origin/main`. It builds an immutable documented base sha
@@ -424,6 +424,13 @@ release flow above:
 > `.patches.sha256` + `.binary.sha256` for the running binary — rollback
 > restores all three. Full runbook, rollback and post-deploy measurements:
 > **`deploy/tap/README.md`**.
+
+Since v0.28.2, both updaters save an immutable rollback snapshot before changing
+active files. Recovery runs before version shortcuts and restores/restarts the
+previous verified binary; an interrupted TAP update restores source, patch and
+binary provenance together. An unverified restore keeps the journal and fails
+closed. Successful recovery defers a new update until a later tick. The isolated
+regressions are in `tests/shell/runtime-updaters.test.sh`.
 
 `deno-update.timer` only auto-applies **patch** releases (e.g.
 `v2.8.0 → v2.8.1`). Cross-minor and cross-major jumps refuse to run without a
