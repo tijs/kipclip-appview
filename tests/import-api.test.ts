@@ -503,14 +503,14 @@ Deno.test({
 });
 
 Deno.test({
-  name: "Process: handles applyWrites failure gracefully",
+  name: "Process: counts a confirmed applyWrites rejection as failed",
   async fn() {
     const pdsResponses = new Map<string, Response>();
     pdsResponses.set("listRecords", listRecordsResponse([]));
     pdsResponses.set(
       "applyWrites",
       new Response(JSON.stringify({ error: "Internal error" }), {
-        status: 500,
+        status: 400,
         headers: { "Content-Type": "application/json" },
       }),
     );

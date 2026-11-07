@@ -40,6 +40,7 @@ import {
   cleanupOldJobs,
   completeChunk,
   createImportJob,
+  deferImportChunk,
   getImportJob,
   getNextPendingChunk,
   markJobCompleted,
@@ -454,13 +455,32 @@ export function registerImportRoutes(app: App<any>): App<any> {
           if (res.ok) {
             chunkImported += batch.length;
           } else {
+            if (res.status >= 500 || res.status === 429 || res.status === 408) {
+              throw new Error(
+                `Import write outcome unconfirmed (HTTP ${res.status})`,
+              );
+            }
             const errorText = await res.text();
             console.error(`Import applyWrites failed: ${errorText}`);
             chunkFailed += batch.length;
           }
         } catch (err) {
-          console.error("Import applyWrites error:", err);
-          chunkFailed += batch.length;
+          console.warn("Import applyWrites outcome unconfirmed:", err);
+          await deferImportChunk(chunk);
+          const current = await getImportJob(jobId);
+          return setSessionCookie(
+            Response.json({
+              success: true,
+              done: false,
+              retryAfterMs: 1000,
+              totalImported: current?.imported ?? chunkImported,
+              totalFailed: current?.failed ?? chunkFailed,
+              remaining: current
+                ? current.totalChunks - current.processedChunks
+                : 0,
+            }),
+            setCookieHeader,
+          );
         }
         processed += batch.length;
         if (

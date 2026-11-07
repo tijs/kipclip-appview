@@ -232,6 +232,15 @@ export async function renewImportChunk(
   return result.rowsAffected === 1;
 }
 
+/** An uncertain external result must recover at the same IDs, not count as failure. */
+export async function deferImportChunk(chunk: ImportChunk): Promise<void> {
+  await db.execute({
+    sql: `UPDATE import_chunks SET lease_until = 0
+    WHERE id = ? AND job_id = ? AND status = 'running' AND lease_token = ?`,
+    args: [chunk.id, chunk.jobId, chunk.leaseToken],
+  });
+}
+
 /** Checkpoint only the current owner; a late result must not settle replacement work. */
 export async function checkpointImportChunk(
   chunk: ImportChunk,
@@ -261,8 +270,8 @@ export async function checkpointImportChunk(
     if (result.rowsAffected !== 1) return false;
     await tx.execute({
       sql: `UPDATE import_jobs SET
-      imported = (SELECT COALESCE(SUM(imported), 0) FROM import_chunks WHERE job_id = ?),
-      failed = (SELECT COALESCE(SUM(failed), 0) FROM import_chunks WHERE job_id = ?),
+      imported = imported_baseline + (SELECT COALESCE(SUM(imported), 0) FROM import_chunks WHERE job_id = ?),
+      failed = failed_baseline + (SELECT COALESCE(SUM(failed), 0) FROM import_chunks WHERE job_id = ?),
       processed_chunks = (SELECT COUNT(*) FROM import_chunks WHERE job_id = ? AND status = 'done'),
       status = 'processing', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
       args: [chunk.jobId, chunk.jobId, chunk.jobId, chunk.jobId],

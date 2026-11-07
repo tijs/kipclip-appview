@@ -107,7 +107,10 @@ const NON_MIRROR_MIGRATIONS: Array<{
       ALTER TABLE import_chunks ADD COLUMN lease_until INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE import_chunks ADD COLUMN imported INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE import_chunks ADD COLUMN failed INTEGER NOT NULL DEFAULT 0;
-      ALTER TABLE import_chunks ADD COLUMN processed_bookmarks INTEGER NOT NULL DEFAULT 0
+      ALTER TABLE import_chunks ADD COLUMN processed_bookmarks INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE import_jobs ADD COLUMN imported_baseline INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE import_jobs ADD COLUMN failed_baseline INTEGER NOT NULL DEFAULT 0;
+      UPDATE import_jobs SET imported_baseline = imported, failed_baseline = failed
     `,
   },
 ];

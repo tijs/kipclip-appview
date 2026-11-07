@@ -125,21 +125,21 @@ Deno.test("process retry recovers externally committed records at stable IDs ins
   const bookmark = old.bookmarks[0];
   let creates = 0;
   const mock = createMockSessionResult();
-  mock.session!.makeRequest = async (_method: string, endpoint: string) => {
+  mock.session!.makeRequest = (_method: string, endpoint: string) => {
     if (endpoint.includes("getRecord")) {
-      return Response.json({
+      return Promise.resolve(Response.json({
         value: {
           subject: bookmark.url,
           createdAt: bookmark.createdAt,
           tags: [],
         },
-      });
+      }));
     }
     if (endpoint.includes("applyWrites")) {
       creates++;
-      return Response.json({ results: [] });
+      return Promise.resolve(Response.json({ results: [] }));
     }
-    return Response.json({});
+    return Promise.resolve(Response.json({}));
   };
   setTestSessionProvider(() => Promise.resolve(mock));
   try {
@@ -163,3 +163,108 @@ Deno.test("process retry recovers externally committed records at stable IDs ins
     setTestSessionProvider(null);
   }
 });
+
+Deno.test("upgrading an unfinished import preserves completed aggregate totals", async () => {
+  await reset();
+  const job = await createImportJob(did, "test", 201, 0, entries(201), []);
+  await db.execute({
+    sql:
+      "UPDATE import_chunks SET status='done' WHERE job_id=? AND chunk_index=0",
+    args: [job.id],
+  });
+  await db.execute({
+    sql: "UPDATE import_jobs SET imported=200, processed_chunks=1 WHERE id=?",
+    args: [job.id],
+  });
+  // Restore the actual pre-016 schema, then run the production migration.
+  for (
+    const column of [
+      "lease_token",
+      "lease_until",
+      "imported",
+      "failed",
+      "processed_bookmarks",
+    ]
+  ) {
+    await db.execute({
+      sql: `ALTER TABLE import_chunks DROP COLUMN ${column}`,
+      args: [],
+    });
+  }
+  for (const column of ["imported_baseline", "failed_baseline"]) {
+    await db.execute({
+      sql: `ALTER TABLE import_jobs DROP COLUMN ${column}`,
+      args: [],
+    });
+  }
+  await db.execute({
+    sql: "DELETE FROM migrations WHERE version='016'",
+    args: [],
+  });
+  const { runMigrations } = await import("../lib/migrations.ts");
+  await runMigrations();
+  const next = await getNextPendingChunk(job.id);
+  assert(next);
+  assert(await completeChunk(next, 1, 0));
+  assertEquals((await getImportJob(job.id))?.imported, 201);
+  assertEquals((await getImportJob(job.id))?.processedChunks, 2);
+});
+
+for (const uncertain of ["lost-response", "server-error"] as const) {
+  Deno.test(`import recovers ${uncertain} at persisted record IDs without false failure`, async () => {
+    await reset();
+    const job = await createImportJob(did, "test", 1, 0, entries(1), []);
+    const records = new Map<string, unknown>();
+    let attempts = 0, commits = 0;
+    const mock = createMockSessionResult();
+    mock.session!.makeRequest = (
+      _method: string,
+      endpoint: string,
+      options?: any,
+    ) => {
+      if (endpoint.includes("getRecord")) {
+        const query = new URL(endpoint).searchParams;
+        const key = `${query.get("collection")}/${query.get("rkey")}`;
+        return Promise.resolve(
+          records.has(key)
+            ? Response.json({ value: records.get(key) })
+            : new Response(null, { status: 404 }),
+        );
+      }
+      if (endpoint.includes("applyWrites")) {
+        attempts++;
+        if (attempts === 1 && uncertain === "server-error") {
+          return Promise.resolve(new Response(null, { status: 503 }));
+        }
+        const writes = JSON.parse(options.body).writes;
+        writes.forEach((op: any) =>
+          records.set(`${op.collection}/${op.rkey}`, op.value)
+        );
+        commits++;
+        if (attempts === 1) {
+          return Promise.reject(new Error("response lost after commit"));
+        }
+        return Promise.resolve(Response.json({ results: [] }));
+      }
+      return Promise.resolve(Response.json({}));
+    };
+    setTestSessionProvider(() => Promise.resolve(mock));
+    try {
+      const handler = app.handler(),
+        url = `https://kipclip.com/api/import/${job.id}/process`;
+      const first = await (await handler(new Request(url, { method: "POST" })))
+        .json();
+      assertEquals(first.done, false);
+      assertEquals(first.totalFailed, 0);
+      assertEquals(first.retryAfterMs, 1000);
+      const recovered =
+        await (await handler(new Request(url, { method: "POST" }))).json();
+      assertEquals(recovered.done, true);
+      assertEquals(recovered.totalImported, 1);
+      assertEquals(recovered.totalFailed, 0);
+      assertEquals(commits, 1);
+    } finally {
+      setTestSessionProvider(null);
+    }
+  });
+}
