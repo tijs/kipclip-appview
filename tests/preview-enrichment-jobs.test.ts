@@ -16,9 +16,17 @@ import {
 } from "../lib/preview-enrichment-jobs.ts";
 import {
   mergePreviewAnnotation,
-  processPreviewEnrichmentJob,
+  processPreviewEnrichmentJob as processJob,
   runPreviewEnrichmentTick,
 } from "../lib/preview-enrichment-worker.ts";
+
+// Stub only the new external source-commit boundary in unit worker tests.
+// Dedicated source-fencing tests exercise the real reader and put payload.
+const processPreviewEnrichmentJob: typeof processJob = (job, deps = {}) =>
+  processJob(job, {
+    readSource: () => Promise.resolve("bafysnapshot"),
+    ...deps,
+  });
 
 const DID = "did:plc:previewtest";
 const OTHER_DID = "did:plc:previewother";
@@ -106,7 +114,7 @@ Deno.test("missing preview query excludes annotation with preview data", async (
   );
 });
 
-Deno.test("claim returns runnable pending jobs without persistent running state", async () => {
+Deno.test("claim persists running ownership and prevents a second claimant", async () => {
   await clearMirrorTables();
   await bookmark("a");
   await enqueueMissingPreviewJobsForDid(DID, 10);
@@ -119,7 +127,7 @@ Deno.test("claim returns runnable pending jobs without persistent running state"
     sql: "SELECT status FROM preview_enrichment_jobs WHERE bookmark_uri = ?",
     args: [jobs[0].bookmarkUri],
   });
-  assertEquals(rows.rows[0][0], "pending");
+  assertEquals(rows.rows[0][0], "running");
 });
 
 Deno.test("retry schedule stops after third failure", async () => {
@@ -139,7 +147,7 @@ Deno.test("retry schedule stops after third failure", async () => {
   });
   assertEquals(rows.rows[0], ["pending", 1, 86_401_000]);
 
-  job = { ...job, attempts: 1 };
+  job = (await claimPreviewEnrichmentJobs(1, 86_401_000))[0];
   assertEquals(
     await markPreviewJobRetry(job, new Error("second"), 1_000),
     "pending",
@@ -151,7 +159,7 @@ Deno.test("retry schedule stops after third failure", async () => {
   });
   assertEquals(rows.rows[0], ["pending", 2, 604_801_000]);
 
-  job = { ...job, attempts: 2 };
+  job = (await claimPreviewEnrichmentJobs(1, 604_801_000))[0];
   assertEquals(
     await markPreviewJobRetry(job, new Error("third"), 1_000),
     "failed",
@@ -254,7 +262,7 @@ Deno.test("worker writes annotation and marks job done", async () => {
         annotation.subject,
         `at://${DID}/community.lexicon.bookmarks.bookmark/a`,
       );
-      assertEquals(options?.swapRecord, undefined);
+      assertEquals(options?.swapRecord, null);
       return Promise.resolve({
         ok: true,
         uri: `at://${DID}/com.kipclip.annotation/a`,
@@ -335,7 +343,7 @@ Deno.test("periodic enqueue does not reopen a done preview job", async () => {
   await bookmark("a");
   await enqueueMissingPreviewJobsForDid(DID, 10);
   const job = (await claimPreviewEnrichmentJobs(1))[0];
-  await markPreviewJobDone(job.bookmarkUri);
+  await markPreviewJobDone(job);
 
   await enqueueMissingPreviewJobsForDid(DID, 10);
   const rows = await db.execute({
@@ -417,7 +425,7 @@ Deno.test("periodic enqueue resets a done job when bookmark subject changes", as
   await bookmark("a", "https://example.com/old");
   await enqueueMissingPreviewJobsForDid(DID, 10);
   const job = (await claimPreviewEnrichmentJobs(1))[0];
-  await markPreviewJobDone(job.bookmarkUri);
+  await markPreviewJobDone(job);
 
   await bookmark("a", "https://example.com/new");
   await enqueueMissingPreviewJobsForDid(DID, 10);
@@ -509,7 +517,7 @@ Deno.test("explicit reactivation leaves a done preview job unchanged", async () 
   await bookmark("a");
   await enqueueMissingPreviewJobsForDid(DID, 10);
   const job = (await claimPreviewEnrichmentJobs(1))[0];
-  await markPreviewJobDone(job.bookmarkUri);
+  await markPreviewJobDone(job);
 
   await enqueueMissingPreviewJobsForDid(DID, 10, { reactivate: true });
   const rows = await db.execute({
@@ -566,7 +574,7 @@ async function annotation(
     note: fields.note,
     image: fields.image,
     favicon: fields.favicon,
-  });
+  }, { clearPreviewJob: false });
 }
 
 Deno.test("missing query treats a legacy '- YouTube' placeholder annotation as missing", async () => {
@@ -1925,7 +1933,7 @@ Deno.test(
 );
 
 Deno.test(
-  "worker treats a PDS 404 as no annotation and creates a fresh record without swapRecord",
+  "worker treats a PDS 404 as no annotation and creates a fresh record with an absence precondition",
   async () => {
     await clearMirrorTables();
     await bookmark("a");
@@ -1954,7 +1962,7 @@ Deno.test(
     });
     assertEquals(stats.success, 1);
     assertEquals(written.note, undefined);
-    assertEquals(swapSeen, undefined, "no existing record → no swapRecord");
+    assertEquals(swapSeen, null, "no existing record → expect absence");
     const createdAt = Date.parse(written.createdAt);
     assert(
       !Number.isNaN(createdAt) && createdAt >= before - 5_000 &&
@@ -2094,7 +2102,14 @@ Deno.test(
           "SELECT status, attempts FROM preview_enrichment_jobs WHERE bookmark_uri = ?",
         args: [job.bookmarkUri],
       });
-      job = { ...job, attempts: Number(rows.rows[0][1]) };
+      if (i < 2) {
+        await db.execute({
+          sql:
+            "UPDATE preview_enrichment_jobs SET next_run_at = 0 WHERE bookmark_uri = ?",
+          args: [job.bookmarkUri],
+        });
+        job = (await claimPreviewEnrichmentJobs(1))[0];
+      }
       if (i < 2) assertEquals(rows.rows[0][0], "pending");
       else assertEquals(rows.rows[0][0], "failed");
     }

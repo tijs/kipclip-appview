@@ -73,7 +73,9 @@ export interface WriteAnnotationOptions {
    * silently overwriting the newer record — the caller treats the failure as
    * retryable and re-reads before merging again.
    */
-  swapRecord?: string;
+  swapRecord?: string | null;
+  /** Fence cross-record source changes since the authoritative snapshot. */
+  swapCommit?: string;
 }
 
 /** Authoritative PDS annotation read: the record plus its CID for swapRecord. */
@@ -168,7 +170,8 @@ export async function writeAnnotation(
     rkey,
     record: annotation,
   };
-  if (options.swapRecord) payload.swapRecord = options.swapRecord;
+  if (options.swapRecord !== undefined) payload.swapRecord = options.swapRecord;
+  if (options.swapCommit) payload.swapCommit = options.swapCommit;
   try {
     const response = await oauthSession.makeRequest(
       "POST",

@@ -298,4 +298,14 @@ export const MIRROR_MIGRATIONS: MigrationEntry[] = [
       ),
     ],
   },
+  {
+    version: "018",
+    description: "Fence preview jobs to source revisions and leased owners",
+    sql: `
+      ALTER TABLE preview_enrichment_jobs ADD COLUMN source_cid TEXT NOT NULL DEFAULT '';
+      ALTER TABLE preview_enrichment_jobs ADD COLUMN lease_token TEXT;
+      ALTER TABLE preview_enrichment_jobs ADD COLUMN lease_until INTEGER NOT NULL DEFAULT 0;
+      UPDATE preview_enrichment_jobs SET source_cid = COALESCE((SELECT cid FROM bookmarks WHERE uri = bookmark_uri), '')
+    `,
+  },
 ];
