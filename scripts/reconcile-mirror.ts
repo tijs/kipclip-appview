@@ -29,19 +29,13 @@ import "../runtime/deno/install.ts";
  */
 
 import { db } from "../lib/db.ts";
-import {
-  type ReconcileCounts,
-  reconcileDid,
-  type ReconcileResult,
-} from "../lib/reconcile.ts";
+import { type ReconcileCounts, reconcileCurrentDid } from "../lib/reconcile.ts";
 import { auditTrackedDrift } from "../lib/drift-audit.ts";
 import { auditForwardingDrift } from "../lib/forwarding-audit.ts";
-import { resolveDid } from "../lib/plc-resolver.ts";
 import { captureMessage } from "../lib/sentry.ts";
 
 interface Target {
   did: string;
-  pdsUrl: string | null;
 }
 
 interface TargetResolution {
@@ -74,39 +68,6 @@ async function mirrorCounts(did: string): Promise<ReconcileCounts> {
   };
 }
 
-async function storedPdsUrl(did: string): Promise<string | null> {
-  const res = await db.execute({
-    sql: "SELECT pds_url FROM tracked_dids WHERE did = ?",
-    args: [did],
-  });
-  return (res.rows[0]?.[0] as string | undefined) ?? null;
-}
-
-/**
- * Reconcile one DID, resolving its current PDS via PLC if the stored host is
- * missing or errors. On a detected migration the corrected host is persisted
- * to tracked_dids so subsequent runs (and the enroll backfill) hit it directly.
- */
-async function reconcileWithResolve(
-  t: Target,
-  dryRun: boolean,
-): Promise<ReconcileResult> {
-  try {
-    if (!t.pdsUrl) throw new Error("no stored pds_url");
-    return await reconcileDid(t.did, t.pdsUrl, { dryRun });
-  } catch (firstErr) {
-    const resolved = await resolveDid(t.did);
-    if (!resolved) throw firstErr;
-    if (!dryRun && resolved.pdsUrl !== t.pdsUrl) {
-      await db.execute({
-        sql: "UPDATE tracked_dids SET pds_url = ? WHERE did = ?",
-        args: [resolved.pdsUrl, t.did],
-      });
-    }
-    return await reconcileDid(t.did, resolved.pdsUrl, { dryRun });
-  }
-}
-
 async function resolveTargets(args: string[]): Promise<TargetResolution> {
   const didIdx = args.indexOf("--did");
   if (didIdx >= 0) {
@@ -116,27 +77,28 @@ async function resolveTargets(args: string[]): Promise<TargetResolution> {
       Deno.exit(2);
     }
     return {
-      targets: [{ did, pdsUrl: await storedPdsUrl(did) }],
+      targets: [{ did }],
       skipped: [],
     };
   }
 
   if (args.includes("--all")) {
     const res = await db.execute({
-      sql: "SELECT did, pds_url FROM tracked_dids ORDER BY added_at ASC",
+      sql: "SELECT did FROM tracked_dids ORDER BY added_at ASC",
       args: [],
     });
     return {
       targets: res.rows.map((r) => ({
         did: String(r[0]),
-        pdsUrl: (r[1] as string | undefined) ?? null,
       })),
       skipped: [],
     };
   }
 
   // Default: audit first, reconcile only divergent DIDs (either direction).
-  const audit = await auditTrackedDrift();
+  const audit = await auditTrackedDrift(undefined, {
+    persist: !args.includes("--dry-run"),
+  });
   if (audit.errors.length || audit.skipped.length) {
     console.warn(
       `[reconcile] ${audit.errors.length} DID(s) had PDS errors and ` +
@@ -154,7 +116,7 @@ async function resolveTargets(args: string[]): Promise<TargetResolution> {
 
   const targets = new Map<string, Target>();
   for (const d of [...audit.recoverable, ...audit.ahead]) {
-    targets.set(d.did, { did: d.did, pdsUrl: d.pdsUrl });
+    targets.set(d.did, { did: d.did });
   }
 
   const forwarding = await auditForwardingDrift();
@@ -167,7 +129,6 @@ async function resolveTargets(args: string[]): Promise<TargetResolution> {
       if (!targets.has(row.did)) {
         targets.set(row.did, {
           did: row.did,
-          pdsUrl: await storedPdsUrl(row.did),
         });
       }
     }
@@ -220,7 +181,7 @@ async function main() {
   for (const t of targets) {
     const before = await mirrorCounts(t.did);
     try {
-      const res = await reconcileWithResolve(t, dryRun);
+      const res = await reconcileCurrentDid(t.did, { dryRun });
       const after = dryRun ? before : await mirrorCounts(t.did);
       if (
         countTotal(before) !== countTotal(after) ||

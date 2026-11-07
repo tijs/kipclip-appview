@@ -26,6 +26,7 @@
  */
 
 import { db } from "./db.ts";
+import { currentPdsUrl } from "./current-pds.ts";
 import {
   deleteAnnotation,
   deleteBookmark,
@@ -53,6 +54,24 @@ export interface ReconcileResult {
   deleted: ReconcileCounts;
   /** What the PDS currently holds (post-upsert mirror target). */
   live: ReconcileCounts;
+}
+
+/** Operator entry point: resolve authority before fetching or deleting records.
+ * An old PDS returning HTTP 200 must never suppress migration discovery.
+ */
+export async function reconcileCurrentDid(
+  did: string,
+  opts: { dryRun?: boolean } = {},
+): Promise<ReconcileResult> {
+  const pdsUrl = await currentPdsUrl(did);
+  const result = await reconcileDid(did, pdsUrl, opts);
+  if (!opts.dryRun) {
+    await db.execute({
+      sql: "UPDATE tracked_dids SET pds_url = ? WHERE did = ?",
+      args: [pdsUrl, did],
+    });
+  }
+  return result;
 }
 
 /** Delete mirror rows for `did` whose URI isn't in the live set. Returns the

@@ -10,7 +10,7 @@ import {
   assertNotEquals,
   assertStringIncludes,
 } from "@std/assert";
-import { auditTrackedDrift } from "../lib/drift-audit.ts";
+import { auditTrackedDrift as runAudit } from "../lib/drift-audit.ts";
 import {
   MISSING_REPO_RECHECK_COOLDOWN_MS,
   recordMissingRepo,
@@ -18,6 +18,28 @@ import {
 
 const DID = "did:plc:drift123";
 const PDS = "https://pds.example.test";
+
+// Existing PDS fixtures now also supply a canonical DID document. Tests of
+// migration/resolution itself call runAudit with their explicit resolver stub.
+async function auditTrackedDrift() {
+  const pdsFetch = globalThis.fetch;
+  globalThis.fetch = ((input, init) => {
+    if (String(input).startsWith("https://plc.directory/")) {
+      return Promise.resolve(Response.json({
+        service: [{
+          id: "#atproto_pds",
+          serviceEndpoint: PDS,
+        }],
+      }));
+    }
+    return pdsFetch(input, init);
+  }) as typeof fetch;
+  try {
+    return await runAudit();
+  } finally {
+    globalThis.fetch = pdsFetch;
+  }
+}
 
 async function withClean<T>(fn: () => Promise<T>): Promise<T> {
   await clearMirrorTables();
@@ -293,7 +315,7 @@ Deno.test("auditTrackedDrift migrates PDS instead of marking missing when old PD
       return Promise.resolve(new Response("Not found", { status: 404 }));
     }) as typeof globalThis.fetch;
     try {
-      const result = await auditTrackedDrift();
+      const result = await runAudit();
       assertEquals(result.rows.length, 1);
       assertEquals(result.rows[0].did, DID);
       assertEquals(result.rows[0].pdsError, null);
@@ -417,7 +439,7 @@ Deno.test("auditTrackedDrift records missing repo when resolved PDS also returns
       return Promise.resolve(repoNotFoundResponse());
     }) as typeof globalThis.fetch;
     try {
-      const result = await auditTrackedDrift();
+      const result = await runAudit();
       assertEquals(result.rows.length, 1);
       assertEquals(result.rows[0].did, DID);
       assertStringIncludes(result.rows[0].pdsError ?? "", "RepoNotFound");

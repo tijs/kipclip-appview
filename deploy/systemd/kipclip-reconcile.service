@@ -7,6 +7,10 @@ Wants=network-online.target
 Type=oneshot
 User=kipclip
 Group=kipclip
+# Forwarding audit SELECTs TAP's tap:tap 0660 database under its 2770 dir.
+# Grant directory traversal/read access without making /var/lib/tap writable
+# in this unit's ProtectSystem=strict namespace.
+SupplementaryGroups=tap
 WorkingDirectory=/var/lib/kipclip/current
 EnvironmentFile=/etc/kipclip/env
 ExecStart=/opt/deno/bin/deno run --allow-net --allow-env --allow-read --allow-write --allow-sys --allow-ffi scripts/reconcile-mirror.ts

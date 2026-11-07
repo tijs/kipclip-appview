@@ -118,6 +118,10 @@ install -m 0644 "${SOURCE_DIR}/deploy/systemd/kipclip-drift-alert.service" \
   /etc/systemd/system/kipclip-drift-alert.service
 install -m 0644 "${SOURCE_DIR}/deploy/systemd/kipclip-drift-alert.timer" \
   /etc/systemd/system/kipclip-drift-alert.timer
+# Refresh the reconcile unit too: its forwarding audit needs TAP group access.
+# Preserve the existing reconcile timer's enabled state and schedule.
+install -m 0644 "${SOURCE_DIR}/deploy/systemd/kipclip-reconcile.service" \
+  /etc/systemd/system/kipclip-reconcile.service
 
 # journald drop-in: bound on-disk log size. Restart journald so the new
 # limits apply immediately rather than at next boot.
