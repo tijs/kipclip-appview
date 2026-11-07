@@ -184,13 +184,33 @@ export async function getNextPendingChunk(
     if (!rows.rows.length) return null;
     const row = rows.rows[0];
     // Older prepared jobs receive stable identities once, before any new side effect.
-    const bookmarks = JSON.parse(String(row[2])).map((
-      b: ImportedBookmark & { rkey?: string },
-    ) => ({
-      ...b,
-      createdAt: b.createdAt || new Date(now).toISOString(),
-      rkey: b.rkey || generateTidForTimestamp(new Date(b.createdAt || now)),
-    }));
+    const stored = await tx.execute({
+      sql: "SELECT bookmarks FROM import_chunks WHERE job_id = ?",
+      args: [jobId],
+    });
+    const used = new Set<string>(
+      stored.rows.flatMap(([json]) =>
+        JSON.parse(String(json)).flatMap((b: { rkey?: string }) =>
+          b.rkey ? [b.rkey] : []
+        )
+      ),
+    );
+    const bookmarks = JSON.parse(String(row[2])).map(
+      (b: ImportedBookmark & { rkey?: string }) => {
+        const createdAt = b.createdAt || new Date(now).toISOString();
+        let rkey = b.rkey;
+        let offset = 0;
+        if (!rkey) {
+          do {
+            rkey = generateTidForTimestamp(
+              new Date(Date.parse(createdAt) + offset++),
+            );
+          } while (used.has(rkey));
+          used.add(rkey);
+        }
+        return { ...b, createdAt, rkey };
+      },
+    );
     await tx.execute({
       sql: `UPDATE import_chunks SET status = 'running', lease_token = ?,
       lease_until = ?, bookmarks = ? WHERE id = ?`,

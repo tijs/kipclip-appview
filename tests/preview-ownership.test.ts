@@ -172,3 +172,57 @@ Deno.test("remote source change or deletion stops preview before any put", async
   });
   assertEquals(writes, 0);
 });
+
+Deno.test("PDS commit conflict after source reads retries without mirroring stale metadata", async () => {
+  await clearMirrorTables();
+  await seed();
+  const [job] = await claimPreviewEnrichmentJobs();
+  let currentCommit = "first", puts = 0;
+  const session = {
+    did,
+    pdsUrl: "https://pds.test",
+    makeRequest: (_method: string, url: string, options?: any) => {
+      if (url.includes("getLatestCommit")) {
+        return Promise.resolve(
+          Response.json({ cid: currentCommit }),
+        );
+      }
+      if (url.includes("getRecord")) {
+        return Promise.resolve(
+          Response.json({
+            cid: job.sourceCid,
+            value: { subject: job.subject },
+          }),
+        );
+      }
+      puts++;
+      const body = JSON.parse(options.body);
+      assertEquals(body.swapCommit, "first");
+      assertEquals(currentCommit, "changed-after-read");
+      return Promise.resolve(
+        Response.json({ error: "InvalidSwap" }, { status: 400 }),
+      );
+    },
+  };
+  await processPreviewEnrichmentJob(job, {
+    restoreSession: () => Promise.resolve(session),
+    extractUrlMetadata: () => Promise.resolve({ title: "Stale" }),
+    readAnnotation: () => {
+      currentCommit = "changed-after-read";
+      return Promise.resolve(null);
+    },
+  });
+  assertEquals(puts, 1);
+  assertEquals(
+    (await db.execute({ sql: "SELECT COUNT(*) FROM annotations", args: [] }))
+      .rows[0][0],
+    0,
+  );
+  assertEquals(
+    (await db.execute({
+      sql: "SELECT status, attempts FROM preview_enrichment_jobs",
+      args: [],
+    })).rows[0],
+    ["pending", 1],
+  );
+});

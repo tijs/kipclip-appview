@@ -268,3 +268,25 @@ for (const uncertain of ["lost-response", "server-error"] as const) {
     }
   });
 }
+
+Deno.test("legacy prepared chunks receive unique identities even with identical timestamps and clocks", async () => {
+  await reset();
+  const job = await createImportJob(did, "test", 200, 0, entries(200), []);
+  const legacy = entries(200).map((b) => ({
+    ...b,
+    createdAt: "2026-01-01T00:00:00Z",
+  }));
+  await db.execute({
+    sql: "UPDATE import_chunks SET bookmarks=? WHERE job_id=?",
+    args: [JSON.stringify(legacy), job.id],
+  });
+  const random = Math.random;
+  Math.random = () => 0;
+  try {
+    const chunk = await getNextPendingChunk(job.id);
+    assert(chunk);
+    assertEquals(new Set(chunk.bookmarks.map((b) => b.rkey)).size, 200);
+  } finally {
+    Math.random = random;
+  }
+});
