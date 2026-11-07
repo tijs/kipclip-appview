@@ -7,6 +7,7 @@
 #
 # Polled by deno-update.timer weekly. Each tick:
 #   1. Acquire the install lock.
+#      Recover any interrupted activation before resolving versions.
 #   2. Resolve desired version. Pin file overrides "release-latest".
 #   3. If desired matches /opt/deno/bin/deno --version, exit 0.
 #   4. Refuse any cross-minor (or cross-major) jump unless pin file is set.
@@ -15,13 +16,16 @@
 #      operator ack and a controlled rollout. Only patch updates ride the
 #      timer.
 #   5. Download zip + sha256, verify, unzip to /opt/deno/bin/deno.new.
-#   6. Save current as /opt/deno/bin/deno.prev for rollback.
+#   6. Commit and flush .deno-update-txn with the previous binary.
 #   7. Atomic rename, restart kipclip.
-#   8. Health check /api/health. Rollback on failure.
+#   8. Health check /api/health. Rollback on restart/health failure; retain
+#      the journal until activation or rollback has been verified.
 #
 # Env knobs:
 #   DENO_UPDATE_PIN_FILE  default /etc/kipclip/deno-version
 #   DENO_UPDATE_ARCH      default aarch64-unknown-linux-gnu
+#   DENO_UPDATE_BIN_DIR   default /opt/deno/bin (isolated staging/tests)
+#   DENO_UPDATE_LOCK_FILE default /var/lib/kipclip/.deno-update-lock
 #
 # Required tools on PATH: curl, unzip, sha256sum, systemctl, install,
 # flock.
@@ -30,11 +34,11 @@ set -euo pipefail
 PIN_FILE="${DENO_UPDATE_PIN_FILE:-/etc/kipclip/deno-version}"
 ARCH="${DENO_UPDATE_ARCH:-aarch64-unknown-linux-gnu}"
 
-DENO_DIR="/opt/deno/bin"
+DENO_DIR="${DENO_UPDATE_BIN_DIR:-/opt/deno/bin}"
 DENO_BIN="${DENO_DIR}/deno"
 DENO_NEW="${DENO_DIR}/deno.new"
-DENO_PREV="${DENO_DIR}/deno.prev"
-LOCK_FILE="/var/lib/kipclip/.deno-update-lock"
+TXN_DIR="${DENO_DIR}/.deno-update-txn"
+LOCK_FILE="${DENO_UPDATE_LOCK_FILE:-/var/lib/kipclip/.deno-update-lock}"
 
 LATEST_URL="https://dl.deno.land/release-latest.txt"
 ZIP_URL_BASE="https://github.com/denoland/deno/releases/download"
@@ -63,6 +67,52 @@ same_minor() {
   [[ "$a_major" == "$b_major" && "$a_minor" == "$b_minor" ]]
 }
 
+health_ok() {
+  local attempt
+  for attempt in 1 2 3 4 5 6 7 8; do
+    sleep 1
+    if curl -fsS --max-time 3 "$HEALTH_URL" >/dev/null 2>&1; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Commit an immutable rollback snapshot before touching the active binary.
+# A killed tick can leave only staging litter (no mutation yet), or a complete
+# journal. Never consume the snapshot while restoring: a failed rollback must
+# remain retryable on the next tick.
+begin_activation() {
+  rm -rf "${TXN_DIR}.new"
+  mkdir -m 0700 "${TXN_DIR}.new"
+  cp -p "$DENO_BIN" "${TXN_DIR}.new/deno"
+  (cd "${TXN_DIR}.new" && sha256sum deno > SHA256SUMS)
+  mv "${TXN_DIR}.new" "$TXN_DIR"
+  sync
+}
+
+rollback_deno() {
+  if ! (cd "$TXN_DIR" && sha256sum -c SHA256SUMS >/dev/null) ||
+    [[ ! -x "$TXN_DIR/deno" ]]; then
+    err "invalid Deno activation journal — manual recovery required"
+    return 1
+  fi
+  err "rolling back to previous Deno binary"
+  cp -p "$TXN_DIR/deno" "$DENO_NEW" || return 1
+  mv "$DENO_NEW" "$DENO_BIN" || return 1
+  if ! systemctl restart kipclip; then
+    err "rollback restart FAILED — journal kept; manual recovery required"
+    return 1
+  fi
+  if ! health_ok; then
+    err "rollback ALSO failed health check — journal kept; manual recovery required"
+    return 1
+  fi
+  sync || return 1
+  rm -rf "$TXN_DIR" || return 1
+  err "rollback restored kipclip successfully"
+}
+
 main() {
   require_tool curl
   require_tool unzip
@@ -70,11 +120,22 @@ main() {
   require_tool systemctl
   require_tool install
   require_tool flock
+  require_tool sync
 
   exec 9>"$LOCK_FILE"
   if ! flock -n 9; then
     exit 0
   fi
+
+  # Recovery precedes version reads and the already-on shortcut. Always
+  # restore/restart the last verified binary; on success defer updates until
+  # the next tick. Failed recovery retains the same immutable snapshot.
+  if [[ -e "$TXN_DIR" ]]; then
+    log "Recovering interrupted Deno activation"
+    rollback_deno || exit 1
+    exit 0
+  fi
+  rm -rf "${TXN_DIR}.new"
 
   CURRENT_VERSION=""
   if [[ -x "$DENO_BIN" ]]; then
@@ -152,46 +213,28 @@ main() {
 
   install -m 0755 "$TMP_DIR/deno" "$DENO_NEW"
 
-  if [[ -x "$DENO_BIN" ]]; then
-    cp -p "$DENO_BIN" "$DENO_PREV"
-  fi
+  begin_activation
 
   log "Atomic swap: $DENO_BIN -> $DESIRED"
   mv "$DENO_NEW" "$DENO_BIN"
 
   log "Restarting kipclip"
-  systemctl restart kipclip
+  if ! systemctl restart kipclip; then
+    err "systemctl restart kipclip FAILED — entering rollback"
+    rollback_deno || err "rollback could not be verified — journal kept at $TXN_DIR"
+    exit 1
+  fi
 
   log "Health-checking $HEALTH_URL"
-  HEALTH_OK=0
-  for attempt in 1 2 3 4 5 6 7 8; do
-    sleep 1
-    if curl -fsS --max-time 3 "$HEALTH_URL" >/dev/null 2>&1; then
-      sublog "✅ health OK on attempt $attempt"
-      HEALTH_OK=1
-      break
-    fi
-    sublog "attempt $attempt/8: not yet"
-  done
-
-  if [[ "$HEALTH_OK" != "1" ]]; then
+  if ! health_ok; then
     err "kipclip failed health check on Deno $DESIRED"
-    if [[ -x "$DENO_PREV" ]]; then
-      err "rolling back to $CURRENT_VERSION"
-      mv "$DENO_PREV" "$DENO_BIN"
-      systemctl restart kipclip
-      sleep 2
-      if curl -fsS --max-time 3 "$HEALTH_URL" >/dev/null 2>&1; then
-        err "rollback restored kipclip successfully"
-      else
-        err "rollback ALSO failed health check — manual recovery required"
-      fi
-    else
-      err "no previous binary to roll back to; manual recovery required"
-    fi
+    rollback_deno || err "rollback could not be verified — journal kept at $TXN_DIR"
     err "check: journalctl -u kipclip -n 50"
     exit 1
   fi
+
+  sync
+  rm -rf "$TXN_DIR"
 
   log "✅ Deno updated to $DESIRED"
 }
