@@ -17,6 +17,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 BOOTSTRAP="$ROOT/deploy/release/bootstrap.sh"
 TAP_SERVICE="$ROOT/deploy/systemd/tap.service"
 DRIFT_SERVICE="$ROOT/deploy/systemd/kipclip-drift-alert.service"
+RECONCILE_SERVICE="$ROOT/deploy/systemd/kipclip-reconcile.service"
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 ok() { echo "ok: $*"; }
@@ -52,6 +53,18 @@ grep -q 'SupplementaryGroups=tap' "$DRIFT_SERVICE" ||
 grep -q 'ReadWritePaths=.*/var/lib/tap' "$DRIFT_SERVICE" ||
   fail "kipclip-drift-alert.service must allow writing /var/lib/tap"
 grep -q '/var/lib/tap' "$DRIFT_SERVICE" || fail "drift-alert unit must reference the tap db path"
+
+# Reconcile's SELECT-only forwarding audit needs TAP DAC access, while the
+# systemd mount namespace must still forbid TAP writes. Bootstrap must refresh
+# the unit or the checked-in fix will never reach an existing installation.
+grep -q 'deploy/systemd/kipclip-reconcile\.service' "$BOOTSTRAP" ||
+  fail "bootstrap must refresh kipclip-reconcile.service"
+grep -qx 'SupplementaryGroups=tap' "$RECONCILE_SERVICE" ||
+  fail "reconcile forwarding audit must have TAP group access"
+grep -qx 'User=kipclip' "$RECONCILE_SERVICE" || fail "reconcile must remain unprivileged"
+grep -qx 'ProtectSystem=strict' "$RECONCILE_SERVICE" || fail "reconcile must retain strict filesystem protection"
+grep -qx 'ReadWritePaths=/var/lib/kipclip' "$RECONCILE_SERVICE" ||
+  fail "reconcile must not gain TAP filesystem write access"
 
 echo
 echo "ALL BOOTSTRAP WIRING TESTS PASSED"

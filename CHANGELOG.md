@@ -4,6 +4,17 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.28.1] - 2026-11-07
+
+### Fixed
+
+- Resolve the current PDS before mirror audits and reconciliation, even when a
+  previous server still returns old records successfully after a migration. Stop
+  safely if the current PDS cannot be resolved, and keep dry runs from updating
+  the stored host or audit bookkeeping.
+- Give the scheduled reconcile service TAP group access for its read-only
+  forwarding audit, and refresh that service through the deployment bootstrap.
+
 ## [0.28.0] - 2026-11-02
 
 ### Added

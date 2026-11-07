@@ -174,6 +174,14 @@ and a failed/unverifiable delete exits 2 (`AUDIT-FAILED`) — never a clean run.
 (`SupplementaryGroups=tap`) so the delete can reach TAP's repo table without
 broadening access.
 
+Reconcile also uses `SupplementaryGroups=tap` for its SELECT-only forwarding
+audit. Unlike drift-alert, its `ProtectSystem=strict` sandbox keeps
+`/var/lib/tap` read-only (`ReadWritePaths` contains only `/var/lib/kipclip`).
+Bootstrap refreshes both service units; it preserves the reconcile timer's
+existing enabled state and schedule. If reconcile reports SQLite error 14 for
+TAP while drift-alert succeeds, check the installed unit's supplementary groups
+before changing database permissions or granting filesystem write access.
+
 ## Rollback paths
 
 - **App**: pin a previous tag via `/etc/kipclip/release-pin`. Next 60s tick

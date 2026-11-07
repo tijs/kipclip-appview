@@ -24,7 +24,7 @@
  */
 
 import { db } from "./db.ts";
-import { resolveDid } from "./plc-resolver.ts";
+import { currentPdsUrl } from "./current-pds.ts";
 import { listAll } from "./mirror-sync.ts";
 import {
   classifyPdsError,
@@ -34,7 +34,6 @@ import {
 import {
   forgetMissingRepo,
   isMissingRepo,
-  isRepoNotFoundError,
   MISSING_REPO_RECHECK_COOLDOWN_MS,
   recordMissingRepo,
 } from "./missing-repo.ts";
@@ -118,6 +117,7 @@ async function recordPdsFailure(
  */
 export async function auditTrackedDrift(
   onProgress?: (row: DriftRow, index: number, total: number) => void,
+  opts: { persist?: boolean } = {},
 ): Promise<DriftAuditResult> {
   const tracked = await db.execute({
     sql: "SELECT did, pds_url FROM tracked_dids ORDER BY added_at ASC",
@@ -156,58 +156,32 @@ export async function auditTrackedDrift(
         skipped = true;
       } else {
         try {
-          pds = await countPdsBookmarks(pdsUrl, did);
-          await forgetMissingRepo(did);
-          await markRepoHealthy(did);
-        } catch (firstErr) {
-          // PDS unreachable or rejected the request. The most common
-          // recoverable cause is that the user migrated their PDS after
-          // first enrollment, leaving a stale URL in tracked_dids. Try
-          // resolving the current PDS via PLC and retry once. If the
-          // resolved URL differs, persist it so subsequent audits +
-          // backfills hit the right host. Only mark the repo missing if
-          // the current PDS also reports RepoNotFound.
+          resolvedPdsUrl = await currentPdsUrl(did);
+        } catch (err) {
+          // Resolution uncertainty is not evidence of a missing repository.
+          pdsError = errorSummary(err);
+          pdsErrorClass = "resolve-failed";
+        }
+        if (!pdsError) {
           try {
-            const resolved = await resolveDid(did);
-            if (resolved && resolved.pdsUrl !== pdsUrl) {
-              try {
-                pds = await countPdsBookmarks(resolved.pdsUrl, did);
-                await forgetMissingRepo(did);
-                await markRepoHealthy(did);
-                migrated = { from: pdsUrl, to: resolved.pdsUrl };
-                resolvedPdsUrl = resolved.pdsUrl;
+            pds = await countPdsBookmarks(resolvedPdsUrl!, did);
+            if (opts.persist !== false) {
+              await forgetMissingRepo(did);
+              await markRepoHealthy(did);
+            }
+            if (resolvedPdsUrl !== pdsUrl) {
+              migrated = { from: pdsUrl, to: resolvedPdsUrl! };
+              if (opts.persist !== false) {
                 await db.execute({
                   sql: "UPDATE tracked_dids SET pds_url = ? WHERE did = ?",
-                  args: [resolved.pdsUrl, did],
+                  args: [resolvedPdsUrl, did],
                 });
-              } catch (retryErr) {
-                await recordPdsFailure(did, retryErr);
-                pdsError = isRepoNotFoundError(retryErr)
-                  ? errorSummary(retryErr)
-                  : `${errorSummary(firstErr)}; retry: ${
-                    errorSummary(retryErr)
-                  }`;
-                pdsErrorClass = classifyPdsError(retryErr);
               }
-            } else if (isRepoNotFoundError(firstErr)) {
-              await recordPdsFailure(did, firstErr);
-              pdsError = errorSummary(firstErr);
-              pdsErrorClass = "reponotfound";
-            } else {
-              // No migration detected — surface the original error and
-              // persist the classification (unavailable w/ cooldown).
-              await recordPdsFailure(did, firstErr);
-              pdsError = errorSummary(firstErr);
-              pdsErrorClass = classifyPdsError(firstErr);
             }
-          } catch (retryErr) {
-            // resolveDid itself failed (PLC unreachable etc.) — the PDS
-            // error stands; classify the probe failure, not the resolver.
-            await recordPdsFailure(did, firstErr);
-            pdsError = `${errorSummary(firstErr)}; retry: ${
-              errorSummary(retryErr)
-            }`;
-            pdsErrorClass = classifyPdsError(firstErr);
+          } catch (err) {
+            if (opts.persist !== false) await recordPdsFailure(did, err);
+            pdsError = errorSummary(err);
+            pdsErrorClass = classifyPdsError(err);
           }
         }
       }
