@@ -1621,7 +1621,8 @@ timeout can also lead to a retry.
 - Responsive mobile and desktop layouts
 - Kip logo and "Find it, Kip it" tagline
 
-[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.28.0...HEAD
+[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.28.1...HEAD
+[0.28.1]: https://github.com/tijs/kipclip-appview/compare/v0.28.0...v0.28.1
 [0.28.0]: https://github.com/tijs/kipclip-appview/compare/v0.27.2...v0.28.0
 [0.24.36]: https://github.com/tijs/kipclip-appview/compare/v0.24.35...v0.24.36
 [0.24.35]: https://github.com/tijs/kipclip-appview/compare/v0.24.34...v0.24.35
