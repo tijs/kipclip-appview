@@ -22,33 +22,40 @@ export function SwipeableRow(
 
   const containerRef = useRef<HTMLDivElement>(null);
   const startX = useRef(0);
+  const startOffset = useRef(0);
+  const currentOffset = useRef(0);
+  const deleting = useRef(false);
   const startY = useRef(0);
   const currentX = useRef(0);
   const directionLocked = useRef<"horizontal" | "vertical" | null>(null);
   const isSwiping = useRef(false);
 
   const animateClose = useCallback(() => {
+    currentOffset.current = 0;
     setOffsetX(0);
     setState("idle");
   }, []);
 
   const handleDelete = useCallback(async () => {
-    if (state === "deleting" || state === "removing") return;
+    if (disabled || deleting.current) return;
+    deleting.current = true;
     setState("deleting");
     try {
       await onDelete();
       setState("removing");
       setRemoving(true);
     } catch {
+      deleting.current = false;
       // Delete failed, snap back
       animateClose();
     }
-  }, [onDelete, state, animateClose]);
+  }, [onDelete, disabled, animateClose]);
 
   const onTouchStart = useCallback(
     (e: TouchEvent) => {
       if (disabled || state === "deleting" || state === "removing") return;
       const touch = e.touches[0];
+      startOffset.current = currentOffset.current;
       startX.current = touch.clientX;
       startY.current = touch.clientY;
       currentX.current = touch.clientX;
@@ -82,7 +89,7 @@ export function SwipeableRow(
       setState("swiping");
 
       // Calculate offset based on whether we started from open or idle
-      const baseOffset = state === "open" ? -BUTTON_WIDTH : 0;
+      const baseOffset = startOffset.current;
       let newOffset = baseOffset + dx;
 
       // Don't allow swiping to the right past origin
@@ -96,6 +103,7 @@ export function SwipeableRow(
         newOffset = -(maxSwipe + overflow * 0.3);
       }
 
+      currentOffset.current = newOffset;
       setOffsetX(newOffset);
     },
     [disabled, state],
@@ -116,12 +124,14 @@ export function SwipeableRow(
     const containerWidth = containerRef.current?.offsetWidth ?? 300;
     const fullSwipeThreshold = containerWidth * FULL_SWIPE_RATIO;
 
-    if (-offsetX >= fullSwipeThreshold) {
+    if (-currentOffset.current >= fullSwipeThreshold) {
       // Full swipe — trigger delete
+      currentOffset.current = -containerWidth;
       setOffsetX(-containerWidth);
       handleDelete();
-    } else if (-offsetX >= BUTTON_WIDTH / 2) {
+    } else if (-currentOffset.current >= BUTTON_WIDTH / 2) {
       // Partial swipe — snap open to reveal button
+      currentOffset.current = -BUTTON_WIDTH;
       setOffsetX(-BUTTON_WIDTH);
       setState("open");
     } else {
@@ -215,6 +225,14 @@ export function SwipeableRow(
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
+        onTouchCancel={() => {
+          if (deleting.current) return;
+          directionLocked.current = null;
+          isSwiping.current = false;
+          currentOffset.current = startOffset.current;
+          setOffsetX(startOffset.current);
+          setState(startOffset.current < 0 ? "open" : "idle");
+        }}
         onClick={onContentClick}
       >
         {children}

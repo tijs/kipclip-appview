@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { Key } from "react";
 import { useApp } from "../context/AppContext.tsx";
 import { type DateFormatOption, formatDate } from "../../shared/date-format.ts";
@@ -250,17 +250,19 @@ export function ReadingList() {
   const dateFormat = preferences.dateFormat as DateFormatOption;
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const { markAsRead, undo, pending } = useMarkAsRead();
-  const prevPendingRef = useRef<string | null>(null);
-
   useEffect(() => {
-    const pendingUri = pending?.bookmark.uri ?? null;
-    if (pendingUri && pendingUri !== prevPendingRef.current) {
-      toast(`"${pending!.bookmark.title || "Bookmark"}" marked as read`, {
-        action: { label: "Undo", onClick: undo },
-        duration: 5000,
-      });
+    if (!pending) {
+      toast.dismiss("mark-as-read");
+      return;
     }
-    prevPendingRef.current = pendingUri;
+    toast(`"${pending.bookmark.title || "Bookmark"}" marked as read`, {
+      id: "mark-as-read",
+      action: { label: "Undo", onClick: () => undo(pending.id) },
+      duration: 5000,
+    });
+    return () => {
+      toast.dismiss("mark-as-read");
+    };
   }, [pending, undo]);
 
   // If there are no reading list bookmarks at all, show empty state

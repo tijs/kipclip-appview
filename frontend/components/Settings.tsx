@@ -1,10 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useApp } from "../context/AppContext.tsx";
 import {
   DATE_FORMATS,
   type DateFormatOption,
-  setDateFormat,
 } from "../../shared/date-format.ts";
 import { apiPost } from "../utils/api.ts";
 import { ImportBookmarks } from "./ImportBookmarks.tsx";
@@ -47,6 +46,32 @@ export function Settings() {
     MergeTagDuplicatesResponse | null
   >(null);
   const [mergeError, setMergeError] = useState<string | null>(null);
+
+  const [preferenceError, setPreferenceError] = useState<string | null>(null);
+  const [savingPreferences, setSavingPreferences] = useState(false);
+  const preferenceSaveId = useRef(0);
+  const lastPreferenceUpdate = useRef<Parameters<typeof updatePreferences>[0]>(
+    {},
+  );
+  async function savePreferences(
+    updates: Parameters<typeof updatePreferences>[0],
+  ) {
+    const id = ++preferenceSaveId.current;
+    lastPreferenceUpdate.current = updates;
+    setPreferenceError(null);
+    setSavingPreferences(true);
+    try {
+      await updatePreferences(updates);
+    } catch (error) {
+      if (id === preferenceSaveId.current) {
+        setPreferenceError(
+          error instanceof Error ? error.message : "Preferences were not saved",
+        );
+      }
+    } finally {
+      if (id === preferenceSaveId.current) setSavingPreferences(false);
+    }
+  }
 
   // Sync local state when settings/preferences from context change
   useEffect(() => {
@@ -169,6 +194,21 @@ export function Settings() {
             </p>
           </section>
 
+          {savingPreferences && <p role="status">Saving preferences...</p>}
+          {preferenceError && (
+            <div role="alert" className="p-4 rounded-lg bg-red-50 text-red-800">
+              {preferenceError}
+              <button
+                type="button"
+                className="ml-2 underline"
+                onClick={() =>
+                  void savePreferences(lastPreferenceUpdate.current)}
+              >
+                Retry save
+              </button>
+            </div>
+          )}
+
           {/* Date Format — instant apply, no save button needed */}
           <section className="bg-white rounded-lg shadow-md p-6 space-y-4">
             <div>
@@ -187,8 +227,7 @@ export function Settings() {
                       type="button"
                       onClick={() => {
                         setDateFormatState(fmt.id);
-                        setDateFormat(fmt.id);
-                        updatePreferences({ dateFormat: fmt.id });
+                        void savePreferences({ dateFormat: fmt.id });
                       }}
                       className={`px-4 py-2.5 rounded-lg text-sm font-medium transition border ${
                         isActive
@@ -245,7 +284,7 @@ export function Settings() {
                       trimmed.length > 0 &&
                       trimmed !== preferences.readingListTag
                     ) {
-                      updatePreferences({ readingListTag: trimmed });
+                      void savePreferences({ readingListTag: trimmed });
                     }
                   }}
                   placeholder="toread"
