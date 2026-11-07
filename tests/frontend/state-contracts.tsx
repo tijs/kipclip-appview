@@ -641,3 +641,43 @@ Deno.test("a healthy import can keep progressing beyond five minutes", async () 
     Date.now = originalNow;
   }
 });
+
+Deno.test("stale reading-list enrichment preserves a newer bookmark and stops its cancelled batch", async () => {
+  const response = deferred<Response>(), started = deferred<void>();
+  let requests = 0;
+  const view = await mount((url) => {
+    if (url.endsWith("/enrich")) {
+      requests++;
+      started.resolve();
+      return response.promise;
+    }
+    return Promise.resolve(Response.json({ tags: [] }));
+  });
+  try {
+    const a = { ...bookmark("a"), tags: ["toread"] },
+      b = { ...bookmark("b"), tags: ["toread"] };
+    await act(() => view.api.setBookmarks([a, b]));
+    await act(async () => {
+      await started.promise;
+    });
+    const newer = {
+      ...a,
+      cid: "new",
+      subject: "https://changed.test",
+      note: "new note",
+    };
+    await act(() => view.api.updateBookmark(newer));
+    await act(async () => {
+      response.resolve(
+        Response.json({
+          bookmark: { ...a, title: "OLD", image: "https://old.test/image" },
+        }),
+      );
+      await Promise.resolve();
+    });
+    assertEquals(view.api.bookmarks[0], newer);
+    assertEquals(requests, 1);
+  } finally {
+    await view.close();
+  }
+});
