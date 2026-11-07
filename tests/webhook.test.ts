@@ -18,7 +18,7 @@ import {
   markPreviewJobRetry,
 } from "../lib/preview-enrichment-jobs.ts";
 import { upsertAnnotation, upsertBookmark } from "../mirror/upserts.ts";
-import { processEvent } from "../worker/webhook.ts";
+import { handleWebhookRequest, processEvent } from "../worker/webhook.ts";
 
 const DID = "did:plc:webhooktest001";
 const RKEY = "abc123";
@@ -662,4 +662,59 @@ Deno.test({
       "a complete annotation echo must still cancel queued preview work",
     );
   },
+});
+
+Deno.test("non-bookmark webhook failures remain retryable despite the obsolete async setting", async () => {
+  await clearMirrorTables();
+  const old = Deno.env.get("MIRROR_WEBHOOK_ACK_ASYNC");
+  const secret = Deno.env.get("TAP_ADMIN_PASSWORD");
+  Deno.env.set("MIRROR_WEBHOOK_ACK_ASYNC", "1");
+  Deno.env.delete("TAP_ADMIN_PASSWORD");
+  const request = () =>
+    new Request("https://kipclip.com/api/sync/hook", {
+      method: "POST",
+      body: JSON.stringify({
+        id: 456789,
+        type: "record",
+        record: {
+          live: true,
+          did: DID,
+          collection: "com.kipclip.tag",
+          rkey: "durable",
+          cid: "tag-cid",
+          action: "create",
+          record: { value: "new", createdAt: new Date().toISOString() },
+        },
+      }),
+    });
+  const original = db.execute;
+  try {
+    db.execute = (query) =>
+      query.sql.includes("INSERT INTO tags")
+        ? Promise.reject(new Error("fixture write failure"))
+        : original(query);
+    assertEquals((await handleWebhookRequest(request())).status, 500);
+    db.execute = original;
+    assertEquals(
+      (await db.execute({
+        sql: "SELECT COUNT(*) FROM seen_webhook_deliveries",
+        args: [],
+      })).rows[0][0],
+      0,
+    );
+    assertEquals((await handleWebhookRequest(request())).status, 200);
+    assertEquals(
+      (await db.execute({
+        sql: "SELECT value FROM tags WHERE did = ?",
+        args: [DID],
+      })).rows[0][0],
+      "new",
+    );
+  } finally {
+    db.execute = original;
+    if (old === undefined) Deno.env.delete("MIRROR_WEBHOOK_ACK_ASYNC");
+    else Deno.env.set("MIRROR_WEBHOOK_ACK_ASYNC", old);
+    if (secret === undefined) Deno.env.delete("TAP_ADMIN_PASSWORD");
+    else Deno.env.set("TAP_ADMIN_PASSWORD", secret);
+  }
 });

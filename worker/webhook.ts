@@ -80,12 +80,6 @@ export interface WebhookResult {
   replayed?: boolean;
 }
 
-// Read fresh per-request (not cached at module load) so tests can toggle the
-// flag between cases. Sub-µs cost; this is a DB-bound path.
-function ackAsync(): boolean {
-  return getHost().env.get("MIRROR_WEBHOOK_ACK_ASYNC") === "1";
-}
-
 async function webhookEventKey(id: number, payload: string): Promise<string> {
   const digest = new Uint8Array(
     await crypto.subtle.digest("SHA-256", new TextEncoder().encode(payload)),
@@ -221,29 +215,8 @@ export async function handleWebhookRequest(req: Request): Promise<Response> {
     }
   }
 
-  // Bookmark events must be durable before acknowledging delivery. Other
-  // collections retain the legacy optional fast-ack backfill behavior.
-  if (ackAsync() && body.record?.collection !== BOOKMARK_COLLECTION) {
-    // Ack immediately so TAP advances its outbox cursor; process in background.
-    // Required during backfill when burst load exceeds TAP's
-    // 30s webhook timeout. Idempotent upserts make at-least-once writes safe;
-    // event loss on Deno crash is acceptable since owner can re-track.
-    queueMicrotask(() => {
-      processEvent(body).then(async () => {
-        if (eventKey !== undefined) await markWebhookEventSeen(eventKey);
-      }).catch((err) => {
-        console.error(
-          "[webhook] async dispatch error",
-          err,
-          summarizeEvent(body),
-        );
-        // Bounded diagnostics only — never the raw event payload.
-        captureError(err as Error, { event: summarizeEvent(body) });
-      });
-    });
-    return Response.json({ id: body.id, type: body.type, applied: true });
-  }
-
+  // Every collection must commit before acknowledging TAP. The former async
+  // option could lose an acknowledged event on process failure.
   try {
     const result = await processEvent(body);
     // Failed mirror/event transactions must remain retryable. Marking a key
