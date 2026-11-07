@@ -212,3 +212,23 @@ Deno.test("evaluate: mutating + not migrated → no block, refresh from session"
     stub.restore();
   }
 });
+
+Deno.test("unknown PDS authority permits request without persisting the old session URL", async () => {
+  _resetPdsMigrationCache();
+  const stub = stubFetch(() => new Response("not found", { status: 404 }));
+  try {
+    const check = await checkPdsMigration(DID, "https://old.example.test");
+    assertEquals(check, { migrated: false, authority: "unknown" });
+    assertEquals(
+      await evaluatePdsMigration("POST", DID, "https://old.example.test"),
+      {
+        refreshPdsUrl: null,
+      },
+    );
+    assertEquals(await evaluatePdsMigration("POST", DID, "not a URL"), {
+      refreshPdsUrl: null,
+    });
+  } finally {
+    stub.restore();
+  }
+});

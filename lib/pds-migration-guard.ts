@@ -15,7 +15,7 @@
  * session predates a migration and the caller must re-auth.
  *
  * Fail-open by design: any resolution error, timeout, unparseable URL, or
- * unresolvable DID returns `migrated: false`. A PLC outage must never log users
+ * unresolvable DID returns an unknown authority result. A PLC outage must never log users
  * out — the reconciler + drift monitor are the correctness backstop.
  */
 
@@ -58,11 +58,13 @@ export async function resolveCurrentPds(did: string) {
   }
 }
 
-export interface PdsMigrationResult {
-  migrated: boolean;
-  /** The DID's current PDS — set only when a migration is detected. */
-  currentPdsUrl?: string;
-}
+export type PdsMigrationResult =
+  | {
+    migrated: false;
+    authority: "matched" | "unknown";
+    currentPdsUrl?: undefined;
+  }
+  | { migrated: true; currentPdsUrl: string };
 
 /**
  * Returns `migrated: true` when the DID's current PDS is a different host than
@@ -73,7 +75,7 @@ export async function checkPdsMigration(
   sessionPdsUrl: string,
 ): Promise<PdsMigrationResult> {
   const sessionHost = hostOf(sessionPdsUrl);
-  if (!sessionHost) return { migrated: false };
+  if (!sessionHost) return { migrated: false, authority: "unknown" };
 
   const cached = confirmedMatch.get(did);
   if (
@@ -81,17 +83,17 @@ export async function checkPdsMigration(
     cached.host === sessionHost &&
     Date.now() - cached.checkedAt < TTL_MS
   ) {
-    return { migrated: false };
+    return { migrated: false, authority: "matched" };
   }
 
   const resolved = await resolveCurrentPds(did);
-  if (!resolved) return { migrated: false }; // fail-open on unresolvable/slow DID
+  if (!resolved) return { migrated: false, authority: "unknown" }; // fail-open on unresolvable/slow DID
   const currentHost = hostOf(resolved.pdsUrl);
-  if (!currentHost) return { migrated: false };
+  if (!currentHost) return { migrated: false, authority: "unknown" };
 
   if (currentHost === sessionHost) {
     confirmedMatch.set(did, { host: sessionHost, checkedAt: Date.now() });
-    return { migrated: false };
+    return { migrated: false, authority: "matched" };
   }
 
   // Different host: the session is bound to a PDS the account no longer uses.
@@ -147,9 +149,11 @@ export async function evaluatePdsMigration(
   if (!isMutation(method)) return { refreshPdsUrl: null };
 
   const migration = await checkPdsMigration(did, sessionPdsUrl);
-  if (!migration.migrated) {
+  if (migration.migrated === false) {
     // session.pdsUrl confirmed current → safe to persist.
-    return { refreshPdsUrl: sessionPdsUrl };
+    return {
+      refreshPdsUrl: migration.authority === "matched" ? sessionPdsUrl : null,
+    };
   }
   return {
     refreshPdsUrl: migration.currentPdsUrl ?? null,
