@@ -15,7 +15,7 @@
 export interface MigrationEntry {
   version: string;
   description: string;
-  sql: string;
+  sql: string | string[];
 }
 
 export const MIRROR_MIGRATIONS: MigrationEntry[] = [
@@ -278,5 +278,24 @@ export const MIRROR_MIGRATIONS: MigrationEntry[] = [
         PRIMARY KEY (bookmark_uri, subject, account_key)
       )
     `,
+  },
+  {
+    version: "017",
+    description:
+      "Track mirror mutation generations across all database writers",
+    sql: [
+      `CREATE TABLE IF NOT EXISTS mirror_generations (did TEXT PRIMARY KEY, generation INTEGER NOT NULL DEFAULT 0)`,
+      ...["bookmarks", "annotations", "tags", "preferences"].flatMap((table) =>
+        ["INSERT", "UPDATE", "DELETE"].map((op) =>
+          `CREATE TRIGGER IF NOT EXISTS ${table}_generation_${op.toLowerCase()}
+          AFTER ${op} ON ${table} BEGIN
+            INSERT INTO mirror_generations (did, generation) VALUES (${
+            op === "DELETE" ? "OLD" : "NEW"
+          }.did, 1)
+            ON CONFLICT(did) DO UPDATE SET generation = generation + 1;
+          END`
+        )
+      ),
+    ],
   },
 ];

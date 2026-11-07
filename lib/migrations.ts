@@ -19,7 +19,7 @@ const MIGRATIONS_TABLE = `
 const NON_MIRROR_MIGRATIONS: Array<{
   version: string;
   description: string;
-  sql: string;
+  sql: string | string[];
 }> = [
   {
     version: "001",
@@ -124,7 +124,7 @@ interface DbClient {
 interface MigrationEntry {
   version: string;
   description: string;
-  sql: string;
+  sql: string | string[];
 }
 
 async function runMigrationSet(
@@ -163,10 +163,10 @@ async function runMigrationSet(
       `📝 Running migration on ${label}: ${migration.version} - ${migration.description}`,
     );
 
-    const statements = migration.sql
-      .split(";")
-      .map((stmt) => stmt.trim())
-      .filter((stmt) => stmt.length > 0);
+    const statements =
+      (Array.isArray(migration.sql) ? migration.sql : migration.sql.split(";"))
+        .map((stmt) => stmt.trim())
+        .filter((stmt) => stmt.length > 0);
 
     let migrationSucceeded = true;
     for (const statement of statements) {

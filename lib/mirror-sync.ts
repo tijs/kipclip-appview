@@ -1,3 +1,4 @@
+import { db, type DbExecutor } from "./db.ts";
 /**
  * Shared PDS → mirror sync primitives.
  *
@@ -163,6 +164,7 @@ export function liveUrisOf(repo: LiveRepo): LiveUris {
 export async function upsertLiveRepo(
   did: string,
   repo: LiveRepo,
+  store: DbExecutor = db,
 ): Promise<LiveUris> {
   for (const r of repo.bookmarks) {
     const rkey = (r.uri as string).split("/").pop() ?? "";
@@ -181,25 +183,29 @@ export async function upsertLiveRepo(
       enrichedDescription: str(enriched, "description") ?? null,
       enrichedFavicon: str(enriched, "favicon") ?? null,
       enrichedImage: str(enriched, "image") ?? null,
-    });
+    }, store);
   }
 
   for (const r of [...repo.kipclipAnnotations, ...repo.legacyAnnotations]) {
     const rkey = (r.uri as string).split("/").pop() ?? "";
     const v = r.value ?? {};
     // pi-lens-ignore: await-in-loop
-    await upsertAnnotation({
-      uri: r.uri,
-      did,
-      rkey,
-      cid: r.cid,
-      subject: str(v, "subject") ?? "",
-      title: str(v, "title") ?? null,
-      description: str(v, "description") ?? null,
-      favicon: str(v, "favicon") ?? null,
-      image: str(v, "image") ?? null,
-      note: str(v, "note") ?? null,
-    });
+    await upsertAnnotation(
+      {
+        uri: r.uri,
+        did,
+        rkey,
+        cid: r.cid,
+        subject: str(v, "subject") ?? "",
+        title: str(v, "title") ?? null,
+        description: str(v, "description") ?? null,
+        favicon: str(v, "favicon") ?? null,
+        image: str(v, "image") ?? null,
+        note: str(v, "note") ?? null,
+      },
+      {},
+      store,
+    );
   }
 
   for (const r of repo.tags) {
@@ -213,7 +219,7 @@ export async function upsertLiveRepo(
       cid: r.cid,
       value: str(v, "value") ?? "",
       createdAt: str(v, "createdAt") ?? "",
-    });
+    }, store);
   }
 
   for (const r of repo.preferences) {
@@ -224,7 +230,7 @@ export async function upsertLiveRepo(
       cid: r.cid,
       dateFormat: str(v, "dateFormat") ?? null,
       readingListTag: str(v, "readingListTag") ?? null,
-    });
+    }, store);
   }
 
   return liveUrisOf(repo);

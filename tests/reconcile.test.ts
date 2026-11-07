@@ -21,6 +21,7 @@ import { assertEquals, assertRejects } from "@std/assert";
 
 import { reconcileDid } from "../lib/reconcile.ts";
 import {
+  deleteBookmark,
   upsertAnnotation,
   upsertBookmark,
   upsertPreferences,
@@ -219,3 +220,65 @@ Deno.test("reconcile deletes preferences only when the PDS holds none", async ()
   });
   assertEquals(Number(remaining.rows[0][0]), 0);
 });
+
+for (const mutation of ["create", "update", "delete"] as const) {
+  Deno.test(`reconciliation rejects a stale snapshot after concurrent ${mutation}`, async () => {
+    await clearMirrorTables();
+    if (mutation !== "create") await seedBookmark("concurrent");
+    const original = globalThis.fetch;
+    let release!: () => void;
+    let captured!: () => void;
+    const blocked = new Promise<void>((r) => release = r);
+    const snapshotRead = new Promise<void>((r) => captured = r);
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const collection = new URL(String(input)).searchParams.get("collection");
+      if (collection === "com.kipclip.preferences") {
+        captured();
+        await blocked;
+      }
+      return Response.json({
+        records: collection === "community.lexicon.bookmarks.bookmark" &&
+            mutation !== "create"
+          ? [bookmarkRec("concurrent")]
+          : [],
+      });
+    }) as typeof fetch;
+    try {
+      const pending = reconcileDid(DID, PDS);
+      await snapshotRead;
+      if (mutation === "delete") {
+        await deleteBookmark(bookmarkRec("concurrent").uri, DID);
+      } else await seedBookmark("concurrent");
+      // Use a raw SQL writer as well: the fence is database-visible, not a
+      // process-local flag or a convention restricted to upsert helpers.
+      if (mutation === "update") {
+        await db.execute({
+          sql:
+            "UPDATE bookmarks SET subject = 'https://new.example' WHERE did = ?",
+          args: [DID],
+        });
+      }
+      release();
+      await assertRejects(() => pending, Error, "Mirror changed");
+      assertEquals(
+        await mirrorRkeys("bookmarks"),
+        mutation === "delete" ? [] : ["concurrent"],
+      );
+      const events = await db.execute({
+        sql: "SELECT COUNT(*) FROM app_events WHERE did = ?",
+        args: [DID],
+      });
+      assertEquals(Number(events.rows[0][0]), mutation === "delete" ? 0 : 1);
+      if (mutation === "update") {
+        const row = await db.execute({
+          sql: "SELECT subject FROM bookmarks WHERE did = ?",
+          args: [DID],
+        });
+        assertEquals(row.rows[0][0], "https://new.example");
+      }
+    } finally {
+      release();
+      globalThis.fetch = original;
+    }
+  });
+}

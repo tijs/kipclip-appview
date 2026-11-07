@@ -11,7 +11,7 @@
  * before writing — defends against caller bugs that would mix DIDs across rows.
  */
 
-import { db } from "../lib/db.ts";
+import { db, type DbExecutor } from "../lib/db.ts";
 import { bookmarkEventStatements } from "../lib/bookmark-events.ts";
 import { eventStatements } from "../lib/events.ts";
 
@@ -76,10 +76,13 @@ function assertDidMatchesUri(uri: string, did: string): void {
   }
 }
 
-export async function upsertBookmark(record: BookmarkUpsert): Promise<void> {
+export async function upsertBookmark(
+  record: BookmarkUpsert,
+  store: DbExecutor = db,
+): Promise<void> {
   assertDidMatchesUri(record.uri, record.did);
   const tagsJson = JSON.stringify(record.tags ?? []);
-  await db.batch([{
+  await store.batch([{
     sql: `
       INSERT INTO bookmarks (
         uri, did, rkey, cid, subject, created_at, tags,
@@ -139,9 +142,13 @@ export async function upsertBookmarkRecord(
   });
 }
 
-export async function deleteBookmark(uri: string, did: string): Promise<void> {
+export async function deleteBookmark(
+  uri: string,
+  did: string,
+  store: DbExecutor = db,
+): Promise<void> {
   assertDidMatchesUri(uri, did);
-  await db.batch([{
+  await store.batch([{
     sql: "DELETE FROM bookmarks WHERE uri = ? AND did = ?",
     args: [uri, did],
   }, {
@@ -176,9 +183,10 @@ export interface AnnotationUpsertOptions {
 export async function upsertAnnotation(
   record: AnnotationUpsert,
   options: AnnotationUpsertOptions = {},
+  store: DbExecutor = db,
 ): Promise<void> {
   assertDidMatchesUri(record.uri, record.did);
-  await db.execute({
+  await store.execute({
     sql: `
       INSERT INTO annotations (
         uri, did, rkey, cid, subject,
@@ -212,7 +220,7 @@ export async function upsertAnnotation(
     ],
   });
   if (options.clearPreviewJob !== false) {
-    await db
+    await store
       .execute({
         sql: "DELETE FROM preview_enrichment_jobs WHERE bookmark_uri = ?",
         args: [record.subject],
@@ -224,17 +232,21 @@ export async function upsertAnnotation(
 export async function deleteAnnotation(
   uri: string,
   did: string,
+  store: DbExecutor = db,
 ): Promise<void> {
   assertDidMatchesUri(uri, did);
-  await db.execute({
+  await store.execute({
     sql: "DELETE FROM annotations WHERE uri = ? AND did = ?",
     args: [uri, did],
   });
 }
 
-export async function upsertTag(record: TagUpsert): Promise<void> {
+export async function upsertTag(
+  record: TagUpsert,
+  store: DbExecutor = db,
+): Promise<void> {
   assertDidMatchesUri(record.uri, record.did);
-  await db.execute({
+  await store.execute({
     sql: `
       INSERT INTO tags (uri, did, rkey, cid, value, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -258,9 +270,13 @@ export async function upsertTag(record: TagUpsert): Promise<void> {
   });
 }
 
-export async function deleteTag(uri: string, did: string): Promise<void> {
+export async function deleteTag(
+  uri: string,
+  did: string,
+  store: DbExecutor = db,
+): Promise<void> {
   assertDidMatchesUri(uri, did);
-  await db.execute({
+  await store.execute({
     sql: "DELETE FROM tags WHERE uri = ? AND did = ?",
     args: [uri, did],
   });
@@ -268,8 +284,9 @@ export async function deleteTag(uri: string, did: string): Promise<void> {
 
 export async function upsertPreferences(
   record: PreferencesUpsert,
+  store: DbExecutor = db,
 ): Promise<void> {
-  await db.batch([
+  await store.batch([
     ...eventStatements({
       type: "preferences.changed",
       key: `at://${record.did}/com.kipclip.preferences/self`,
@@ -300,8 +317,11 @@ export async function upsertPreferences(
   ]);
 }
 
-export async function deletePreferences(did: string): Promise<void> {
-  await db.batch([
+export async function deletePreferences(
+  did: string,
+  store: DbExecutor = db,
+): Promise<void> {
+  await store.batch([
     {
       sql: "DELETE FROM preferences WHERE did = ?",
       args: [did],

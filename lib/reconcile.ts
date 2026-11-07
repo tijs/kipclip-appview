@@ -25,7 +25,7 @@
  * PDS host they've confirmed is the DID's current one (resolve via PLC).
  */
 
-import { db } from "./db.ts";
+import { db, type DbExecutor } from "./db.ts";
 import { currentPdsUrl } from "./current-pds.ts";
 import {
   deleteAnnotation,
@@ -80,10 +80,11 @@ async function deleteMissing(
   table: "bookmarks" | "annotations" | "tags",
   did: string,
   live: Set<string>,
-  del: (uri: string, did: string) => Promise<void>,
+  del: (uri: string, did: string, store?: DbExecutor) => Promise<void>,
   dryRun: boolean,
+  store: DbExecutor,
 ): Promise<number> {
-  const res = await db.execute({
+  const res = await store.execute({
     sql: `SELECT uri FROM ${table} WHERE did = ?`,
     args: [did],
   });
@@ -91,7 +92,7 @@ async function deleteMissing(
   for (const row of res.rows) {
     const uri = String(row[0]);
     if (!live.has(uri)) {
-      if (!dryRun) await del(uri, did);
+      if (!dryRun) await del(uri, did, store);
       removed++;
     }
   }
@@ -112,54 +113,78 @@ export async function reconcileDid(
 ): Promise<ReconcileResult> {
   const dryRun = opts.dryRun ?? false;
 
-  // Read-only PDS pass FIRST. A throw here aborts before any delete — this is
-  // the property that makes delete-missing safe against transient failures.
-  const repo = await fetchLiveRepo(pdsUrl, did);
-  const uris: LiveUris = dryRun
-    ? liveUrisOf(repo)
-    : await upsertLiveRepo(did, repo);
-
-  const deleted: ReconcileCounts = {
-    bookmarks: await deleteMissing(
-      "bookmarks",
-      did,
-      uris.bookmarks,
-      deleteBookmark,
-      dryRun,
-    ),
-    annotations: await deleteMissing(
-      "annotations",
-      did,
-      uris.annotations,
-      deleteAnnotation,
-      dryRun,
-    ),
-    tags: await deleteMissing("tags", did, uris.tags, deleteTag, dryRun),
-    preferences: 0,
-  };
-
-  // Preferences is one row per DID (no URI). Delete it only when the PDS holds
-  // no preferences record AND the mirror currently has one.
-  if (!uris.hasPreferences) {
-    const pref = await db.execute({
-      sql: "SELECT COUNT(*) FROM preferences WHERE did = ?",
+  const generationOf = async (store: DbExecutor) => {
+    const row = await store.execute({
+      sql: "SELECT generation FROM mirror_generations WHERE did = ?",
       args: [did],
     });
-    if (Number(pref.rows[0]?.[0] ?? 0) > 0) {
-      if (!dryRun) await deletePreferences(did);
-      deleted.preferences = 1;
-    }
-  }
-
-  return {
-    did,
-    dryRun,
-    deleted,
-    live: {
-      bookmarks: uris.bookmarks.size,
-      annotations: uris.annotations.size,
-      tags: uris.tags.size,
-      preferences: uris.hasPreferences ? 1 : 0,
-    },
+    return Number(row.rows[0]?.[0] ?? 0);
   };
+  const generation = await generationOf(db);
+  // Network I/O stays outside the write transaction. Triggers cover webhook,
+  // direct and operator writes, including deletions which leave no row behind.
+  const repo = await fetchLiveRepo(pdsUrl, did);
+  return await db.transaction(async (store) => {
+    if (await generationOf(store) !== generation) {
+      throw new Error(
+        "Mirror changed while fetching the PDS snapshot; retry reconciliation",
+      );
+    }
+    return await applySnapshot(store);
+  });
+
+  async function applySnapshot(store: DbExecutor): Promise<ReconcileResult> {
+    const uris: LiveUris = dryRun
+      ? liveUrisOf(repo)
+      : await upsertLiveRepo(did, repo, store);
+
+    const deleted: ReconcileCounts = {
+      bookmarks: await deleteMissing(
+        "bookmarks",
+        did,
+        uris.bookmarks,
+        deleteBookmark,
+        dryRun,
+        store,
+      ),
+      annotations: await deleteMissing(
+        "annotations",
+        did,
+        uris.annotations,
+        deleteAnnotation,
+        dryRun,
+        store,
+      ),
+      tags: await deleteMissing(
+        "tags",
+        did,
+        uris.tags,
+        deleteTag,
+        dryRun,
+        store,
+      ),
+      preferences: 0,
+    };
+    if (!uris.hasPreferences) {
+      const pref = await store.execute({
+        sql: "SELECT COUNT(*) FROM preferences WHERE did = ?",
+        args: [did],
+      });
+      if (Number(pref.rows[0]?.[0] ?? 0) > 0) {
+        if (!dryRun) await deletePreferences(did, store);
+        deleted.preferences = 1;
+      }
+    }
+    return {
+      did,
+      dryRun,
+      deleted,
+      live: {
+        bookmarks: uris.bookmarks.size,
+        annotations: uris.annotations.size,
+        tags: uris.tags.size,
+        preferences: uris.hasPreferences ? 1 : 0,
+      },
+    };
+  }
 }
