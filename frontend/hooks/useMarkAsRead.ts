@@ -14,6 +14,15 @@ interface PendingAction {
   timerId: ReturnType<typeof setTimeout>;
 }
 
+function ownsTags(
+  current: EnrichedBookmark | undefined,
+  action: PendingAction,
+): current is EnrichedBookmark {
+  return !!current && current.cid === action.optimistic.cid &&
+    current.subject === action.optimistic.subject &&
+    JSON.stringify(current.tags ?? []) === JSON.stringify(action.newTags);
+}
+
 export function computeNewTags(
   currentTags: string[],
   readingListTag: string,
@@ -66,11 +75,11 @@ export function useMarkAsRead() {
 
   const flush = useCallback((action: PendingAction) => {
     persistAction(action, (next) => {
-      if (
-        bookmarksRef.current.find((b) => b.uri === action.bookmark.uri) !==
-          action.optimistic
-      ) return;
-      updateBookmarkRef.current(next);
+      const current = bookmarksRef.current.find((b) =>
+        b.uri === action.bookmark.uri
+      );
+      if (!ownsTags(current, action)) return;
+      updateBookmarkRef.current({ ...current, cid: next.cid, tags: next.tags });
       if (next.tags === action.originalTags) {
         toast.error("Could not mark bookmark as read");
       }
@@ -121,14 +130,11 @@ export function useMarkAsRead() {
     clearTimeout(current.timerId);
     pendingRef.current = null;
     setPendingState(null);
-    if (
-      bookmarksRef.current.find((b) => b.uri === current.bookmark.uri) ===
-        current.optimistic
-    ) {
-      updateBookmarkRef.current({
-        ...current.optimistic,
-        tags: current.originalTags,
-      });
+    const bookmark = bookmarksRef.current.find((b) =>
+      b.uri === current.bookmark.uri
+    );
+    if (ownsTags(bookmark, current)) {
+      updateBookmarkRef.current({ ...bookmark, tags: current.originalTags });
     }
   }, []);
 

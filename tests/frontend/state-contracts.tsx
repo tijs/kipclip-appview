@@ -368,8 +368,17 @@ Deno.test("an obsolete Undo action cannot undo the next bookmark", async () => {
     const current = actions.pending!.id;
     await act(() => actions.undo(old));
     assertEquals(view.api.bookmarks.map((b) => b.tags), [["read"], ["read"]]);
+    await act(() =>
+      view.api.setBookmarks(
+        view.api.bookmarks.map((b) => ({ ...b, note: "new metadata" })),
+      )
+    );
     await act(() => actions.undo(current));
     assertEquals(view.api.bookmarks.map((b) => b.tags), [["read"], ["toread"]]);
+    assertEquals(view.api.bookmarks.map((b) => b.note), [
+      "new metadata",
+      "new metadata",
+    ]);
   } finally {
     await view.close();
   }
@@ -564,5 +573,71 @@ Deno.test("settings expose failed preference save and a working retry", async ()
     await view.close();
     if (descriptor) Object.defineProperty(globalThis, "history", descriptor);
     else delete (globalThis as any).history;
+  }
+});
+
+Deno.test("a healthy import can keep progressing beyond five minutes", async () => {
+  const originalNow = Date.now;
+  let clock = originalNow(), processed = 0;
+  Date.now = () => clock;
+  const result = {
+    imported: 4,
+    skipped: 0,
+    failed: 0,
+    total: 4,
+    format: "pinboard",
+  };
+  const view = await mount((url) => {
+    if (url === "/api/import") {
+      return Promise.resolve(
+        Response.json({
+          success: true,
+          jobId: "long",
+          toImport: 4,
+          totalChunks: 4,
+          format: "pinboard",
+          skipped: 0,
+        }),
+      );
+    }
+    if (url.includes("/process")) {
+      processed++;
+      clock += 3 * 60_000;
+      return Promise.resolve(
+        Response.json({
+          success: true,
+          done: processed === 4,
+          totalImported: processed,
+          totalFailed: 0,
+          result: processed === 4 ? result : undefined,
+        }),
+      );
+    }
+    if (url.startsWith("/api/initial-data")) {
+      return Promise.resolve(
+        Response.json({ bookmarks: [], preferences: prefs, isSupporter: true }),
+      );
+    }
+    return Promise.resolve(Response.json({ tags: [] }));
+  }, React.createElement(ImportBookmarks));
+  try {
+    await act(() => view.api.loadInitialData());
+    await act(() =>
+      view.root.root.findByProps({ type: "file" }).props.onChange({
+        target: { files: [new File(["[]"], "pinboard.json")] },
+      })
+    );
+    const button = view.root.root.findAllByType("button").find((n: any) =>
+      JSON.stringify(n.props.children).includes("Import Bookmarks")
+    );
+    await act(() => button.props.onClick());
+    assertEquals(processed, 4);
+    assertEquals(
+      JSON.stringify(view.root.toJSON()).includes("Import stalled"),
+      false,
+    );
+  } finally {
+    await view.close();
+    Date.now = originalNow;
   }
 });
