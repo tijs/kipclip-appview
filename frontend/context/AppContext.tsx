@@ -31,7 +31,11 @@ import {
   toggleTagInQuery,
 } from "../../shared/search-query.ts";
 import { connectLiveEvents, type LiveEvent } from "../lib/live-events.ts";
-import { refreshLivePreferences } from "../lib/preferences-response.ts";
+import { createTrailingTask } from "../../shared/async-work.ts";
+import {
+  preferencesFromResponse,
+  refreshLivePreferences,
+} from "../lib/preferences-response.ts";
 import {
   loadRecentTags,
   nextRecentTags,
@@ -283,7 +287,7 @@ interface AppContextValue extends AppState {
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<SessionInfo | null>(null);
+  const [session, setSessionRaw] = useState<SessionInfo | null>(null);
   const [bookmarks, setBookmarks] = useState<EnrichedBookmark[]>([]);
   const [tags, setTagsRaw] = useState<EnrichedTag[]>([]);
   const sortTags = (t: EnrichedTag[]) =>
@@ -328,50 +332,159 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // spinner and reveal bookmarks while background pagination keeps running.
   const [firstPageReady, setFirstPageReady] = useState(false);
 
-  // Bookmark actions
-  async function loadBookmarks() {
-    try {
-      const response = await apiGet("/api/bookmarks");
-      if (!response.ok) {
-        throw new Error("Failed to load bookmarks");
-      }
-      const data = await response.json();
-      setBookmarks(data.bookmarks);
-    } catch (err) {
-      console.error("Failed to load bookmarks:", err);
-      throw err;
+  const sessionRef = useRef<SessionInfo | null>(null);
+  const sessionEpoch = useRef(0);
+  const dataRevision = useRef(0);
+  const preferenceRevision = useRef(0);
+  const preferenceSaves = useRef(0);
+  const preferenceTail = useRef<Promise<void>>(Promise.resolve());
+  const confirmedPreferences = useRef(DEFAULT_PREFERENCES);
+  const fullQueue = useRef<(() => Promise<void>) | null>(null);
+  const bookmarkQueue = useRef<(() => Promise<void>) | null>(null);
+  const tagQueue = useRef<(() => Promise<void>) | null>(null);
+  const preferenceQueue = useRef<(() => Promise<void>) | null>(null);
+  const refreshInFlightRef = useRef(false);
+  const bookmarkLoadActive = useRef(false);
+  const tagLoadActive = useRef(false);
+  const fullGeneration = useRef(0);
+
+  function setSession(next: SessionInfo | null) {
+    if (sessionRef.current?.did !== next?.did) {
+      sessionEpoch.current++;
+      dataRevision.current++;
+      preferenceRevision.current++;
+      fullQueue.current =
+        bookmarkQueue.current =
+        tagQueue.current =
+        preferenceQueue.current =
+          null;
+      preferenceTail.current = Promise.resolve();
+      preferenceSaves.current = 0;
+      refreshInFlightRef.current =
+        bookmarkLoadActive.current =
+        tagLoadActive
+          .current =
+          false;
+      setBookmarks([]);
+      setTagsRaw([]);
+      setSettings(DEFAULT_SETTINGS);
+      setPreferences(DEFAULT_PREFERENCES);
+      confirmedPreferences.current = DEFAULT_PREFERENCES;
+      setIsSupporter(false);
+      setMirrorSyncing(false);
+      setIsSyncing(false);
+      setFirstPageReady(false);
+      setReadingListSelectedTags(new Set());
+      if (sessionRef.current) setBookmarkSearchQuery("");
+      setReadingListSearchQuery("");
+      enrichingRef.current.clear();
+      failedAttemptsRef.current.clear();
+    }
+    sessionRef.current = next;
+    setSessionRaw(next);
+  }
+  useEffect(() => () => {
+    sessionEpoch.current++;
+    fullQueue.current =
+      bookmarkQueue.current =
+      tagQueue.current =
+      preferenceQueue.current =
+        null;
+  }, []);
+
+  function noteMutation() {
+    dataRevision.current++;
+    // Preserve newer local intent while an older snapshot is in flight.
+    if (refreshInFlightRef.current) void runFullRefresh().catch(() => {});
+    else {
+      if (bookmarkLoadActive.current) void loadBookmarks().catch(() => {});
+      if (tagLoadActive.current) void loadTags().catch(() => {});
     }
   }
 
+  // Bookmark actions
+  async function loadBookmarks() {
+    if (refreshInFlightRef.current) return await runFullRefresh();
+    if (!bookmarkQueue.current) {
+      const owner = sessionEpoch.current;
+      bookmarkQueue.current = createTrailingTask(async () => {
+        if (owner !== sessionEpoch.current) return;
+        const revision = dataRevision.current,
+          generation = fullGeneration.current;
+        bookmarkLoadActive.current = true;
+        try {
+          const response = await apiGet("/api/bookmarks");
+          if (!response.ok) throw new Error("Failed to load bookmarks");
+          const data = await response.json();
+          if (
+            owner === sessionEpoch.current &&
+            revision === dataRevision.current &&
+            generation === fullGeneration.current
+          ) setBookmarks(data.bookmarks);
+        } finally {
+          if (owner === sessionEpoch.current) {
+            bookmarkLoadActive.current = false;
+          }
+        }
+      });
+    }
+    await bookmarkQueue.current();
+  }
+
   function addBookmark(bookmark: EnrichedBookmark) {
+    noteMutation();
     setBookmarks((prev) => [bookmark, ...prev]);
   }
 
   function updateBookmark(bookmark: EnrichedBookmark) {
+    noteMutation();
     setBookmarks((prev) =>
       prev.map((b) => (b.uri === bookmark.uri ? bookmark : b))
     );
   }
 
   function deleteBookmark(uri: string) {
+    noteMutation();
     setBookmarks((prev) => prev.filter((b) => b.uri !== uri));
   }
 
   // Tag actions
   async function loadTags() {
-    const tagsList = await fetchTagsList();
-    setTags(tagsList);
+    if (refreshInFlightRef.current) return await runFullRefresh();
+    if (!tagQueue.current) {
+      const owner = sessionEpoch.current;
+      tagQueue.current = createTrailingTask(async () => {
+        if (owner !== sessionEpoch.current) return;
+        const revision = dataRevision.current,
+          generation = fullGeneration.current;
+        tagLoadActive.current = true;
+        try {
+          const tagsList = await fetchTagsList();
+          if (
+            owner === sessionEpoch.current &&
+            revision === dataRevision.current &&
+            generation === fullGeneration.current
+          ) setTags(tagsList);
+        } finally {
+          if (owner === sessionEpoch.current) tagLoadActive.current = false;
+        }
+      });
+    }
+    await tagQueue.current();
   }
 
   function addTag(tag: EnrichedTag) {
+    noteMutation();
     setTags((prev) => [tag, ...prev]);
   }
 
   function updateTag(tag: EnrichedTag) {
+    noteMutation();
     setTags((prev) => prev.map((t) => (t.uri === tag.uri ? tag : t)));
   }
 
   function deleteTag(uri: string) {
+    noteMutation();
     setTags((prev) => prev.filter((t) => t.uri !== uri));
   }
 
@@ -380,23 +493,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (data.settings) setSettings(data.settings);
     if (typeof data.isSupporter === "boolean") setIsSupporter(data.isSupporter);
     setMirrorSyncing(data.syncing ?? false);
-    if (data.preferences) {
+    if (data.preferences && preferenceSaves.current === 0) {
       const localFormat = getDateFormat();
       const pdsFormat = data.preferences.dateFormat;
       if (localFormat !== "us" && pdsFormat === "us") {
-        setPreferences({ ...data.preferences, dateFormat: localFormat });
-        apiPut("/api/preferences", { dateFormat: localFormat }).catch(() => {});
+        const value = { ...data.preferences, dateFormat: localFormat };
+        confirmedPreferences.current = value;
+        setPreferences(value);
+        void updatePreferences({ dateFormat: localFormat }).catch(() =>
+          toast.error("Date format was not saved")
+        );
       } else {
+        confirmedPreferences.current = data.preferences;
         setPreferences(data.preferences);
         setDateFormat(pdsFormat as any);
       }
     }
   }
-
-  // Shared in-flight guard: prevents concurrent loadInitialData /
-  // refreshData. Mount-time load, visibility refresh, pull-to-refresh,
-  // and post-import refresh all funnel through the same flag.
-  const refreshInFlightRef = useRef(false);
 
   /**
    * Streaming fetch-and-apply.
@@ -410,14 +523,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
    * 4. Tags resolve whenever they resolve and are merged in.
    */
   async function fetchAndApply(
+    owner: number,
     onProgress?: (page: number) => void,
   ): Promise<{ bookmarkCount: number; pagesLoaded: number }> {
+    const revision = dataRevision.current;
+    const preferenceVersion = preferenceRevision.current;
+    const current = () =>
+      owner === sessionEpoch.current && revision === dataRevision.current;
     const tagsPromise = fetchTagsList().then((tagsList) => {
-      setTags(tagsList);
+      if (current()) setTags(tagsList);
     });
+    void tagsPromise.catch(() => {});
 
     const first = await fetchFirstPage();
-    applyServerMeta(first);
+    if (!current()) {
+      await tagsPromise;
+      return { bookmarkCount: 0, pagesLoaded: 0 };
+    }
+    applyServerMeta(
+      preferenceVersion === preferenceRevision.current
+        ? first
+        : { ...first, preferences: undefined },
+    );
     // Bookmarks arrive in PDS rkey-ascending order; filteredBookmarks re-sorts
     // by createdAt DESC so the final rendered list is always newest-first.
     setBookmarks(first.bookmarks);
@@ -443,7 +570,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         clearTimeout(flushTimer);
         flushTimer = undefined;
       }
-      if (pending.length === 0) return;
+      if (!current() || pending.length === 0) return;
       const chunk = pending.splice(0, pending.length);
       pagesSinceFlush = 0;
       setBookmarks((prev) => prev.concat(chunk));
@@ -455,6 +582,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const result = await streamRemainingPages(
         first,
         (chunk) => {
+          if (!current()) return;
           pending.push(...chunk);
           pagesSinceFlush++;
           if (pagesSinceFlush >= BATCH_PAGES) {
@@ -488,66 +616,50 @@ export function AppProvider({ children }: { children: ReactNode }) {
    * surfaces as a hard error rather than a stale-cache render. See plan
    * 2026-05-05-001-refactor-phase-4 for the accepted regression.
    */
+  function runFullRefresh(): Promise<void> {
+    if (!fullQueue.current) {
+      const owner = sessionEpoch.current;
+      fullQueue.current = createTrailingTask(async () => {
+        if (owner !== sessionEpoch.current) return;
+        fullGeneration.current++;
+        refreshInFlightRef.current = true;
+        setIsSyncing(true);
+        try {
+          await fetchAndApply(owner);
+        } finally {
+          if (owner === sessionEpoch.current) {
+            refreshInFlightRef.current = false;
+            setIsSyncing(false);
+          }
+        }
+      });
+    }
+    return fullQueue.current();
+  }
+
   async function loadInitialData() {
-    if (refreshInFlightRef.current) return;
-    refreshInFlightRef.current = true;
-    // Reset firstPageReady so a retry after a load error re-shows the
-    // full-screen spinner instead of leaving the prior partial library
-    // visible while the new fetch is in flight.
-    setFirstPageReady(false);
+    const owner = sessionEpoch.current;
     perf.start("loadInitialData");
-    setIsSyncing(true);
-    let pagesLoaded = 0;
-    let bookmarkCount = 0;
     try {
-      const result = await fetchAndApply((page) => {
-        pagesLoaded = page;
-      });
-      bookmarkCount = result.bookmarkCount;
-      pagesLoaded = result.pagesLoaded;
-    } catch (err) {
-      console.error("Failed to load initial data:", err);
-      throw err;
+      await runFullRefresh();
     } finally {
-      refreshInFlightRef.current = false;
-      setIsSyncing(false);
-      perf.end("loadInitialData");
-      // Ship perf bundle once initial load lands. Subsequent activity
-      // (INP, late CLS) is captured by the pagehide flush in perf.ts.
-      perf.flush({
-        bookmarks: bookmarkCount,
-        pagesLoaded: pagesLoaded || 1,
-        visibility: "load",
-      });
+      if (owner === sessionEpoch.current) {
+        perf.end("loadInitialData");
+        perf.flush({ visibility: "load" });
+      }
     }
   }
 
-  // Manual refresh: full re-fetch + repaginate. Shares refreshInFlightRef
-  // with loadInitialData so visibilitychange + pull-to-refresh + initial
-  // mount can't race each other.
   async function refreshData(toastId?: string | number) {
-    if (refreshInFlightRef.current) return;
-    refreshInFlightRef.current = true;
-    setIsSyncing(true);
+    const owner = sessionEpoch.current;
     try {
-      await fetchAndApply((page) => {
-        if (toastId) {
-          toast(`Syncing bookmarks... (page ${page})`, { id: toastId });
-        }
-      });
-      if (toastId) {
+      await runFullRefresh();
+      if (toastId !== undefined && owner === sessionEpoch.current) {
         toast.success("Bookmarks up to date", { id: toastId });
       }
-    } catch (err) {
-      // Mid-pagination failure: dismiss the progress toast and surface an
-      // error one. Without this the "Syncing... (page N)" toast leaks.
-      if (toastId) {
-        toast.error("Refresh failed", { id: toastId });
-      }
-      throw err;
-    } finally {
-      refreshInFlightRef.current = false;
-      setIsSyncing(false);
+    } catch (error) {
+      if (toastId !== undefined) toast.error("Refresh failed", { id: toastId });
+      throw error;
     }
   }
 
@@ -565,7 +677,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // Don't claim the 60s window if a refresh is already running —
       // otherwise a short-circuited call would consume the slot and the
       // user would wait another full window for the next refresh attempt.
-      if (refreshInFlightRef.current) return;
       lastSyncCheckRef.current = now;
       refreshData().catch((err) => {
         console.warn("Tab-focus sync failed:", err);
@@ -590,65 +701,64 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // mutations (e.g. tag counts after a bookmark edit) and PDS-side edits
   // from another device propagate without a manual refresh.
   //
-  // The in-flight refs collapse overlapping live-driven refetches into one.
-  // Without them, two bursts arriving 101ms apart (each carrying both a
-  // tag and a bookmark event) would fire 4 fetches; with them, a fresh
-  // refetch is only kicked off when the previous one has settled.
-  const liveTagsInFlightRef = useRef(false);
-  const liveBookmarksInFlightRef = useRef(false);
-  const livePreferencesInFlightRef = useRef(false);
+  async function loadPreferences() {
+    if (refreshInFlightRef.current) return await runFullRefresh();
+    if (!preferenceQueue.current) {
+      const owner = sessionEpoch.current;
+      preferenceQueue.current = createTrailingTask(async () => {
+        if (owner !== sessionEpoch.current) return;
+        const version = preferenceRevision.current;
+        await refreshLivePreferences(
+          () => apiGet("/api/preferences"),
+          (value) => {
+            if (
+              owner === sessionEpoch.current &&
+              version === preferenceRevision.current &&
+              preferenceSaves.current === 0
+            ) {
+              confirmedPreferences.current = value;
+              setPreferences(value);
+              setDateFormat(value.dateFormat as any);
+            }
+          },
+        );
+      });
+    }
+    await preferenceQueue.current();
+  }
+
   useEffect(() => {
     if (!session) return;
+    const owner = sessionEpoch.current;
+    let opened = false;
     const conn = connectLiveEvents({
+      onStateChange: (state) => {
+        if (state !== "open" || owner !== sessionEpoch.current) return;
+        // First open belongs to bootstrap; subsequent opens must recover
+        // events missed while disconnected or hidden.
+        if (opened) void refreshData().catch(() => {});
+        opened = true;
+      },
       onEvents: (events: LiveEvent[]) => {
-        let needsTags = false;
-        let needsBookmarks = false;
-        let needsPreferences = false;
+        if (owner !== sessionEpoch.current) return;
+        let needsTags = false, needsBookmarks = false, needsPreferences = false;
         for (const ev of events) {
           if (ev.type !== "record" || !ev.collection) continue;
-          if (ev.collection === "com.kipclip.tag") {
-            needsTags = true;
-          } else if (ev.collection === "community.lexicon.bookmarks.bookmark") {
-            // Bookmark mutations affect tag counts in the sidebar; refresh
-            // the bookmark list and the tag list together.
+          if (ev.collection === "com.kipclip.tag") needsTags = true;
+          else if (ev.collection === "community.lexicon.bookmarks.bookmark") {
             needsBookmarks = true;
             needsTags = true;
           } else if (
             ev.collection === "com.kipclip.annotation" ||
             ev.collection === "app.bookmark.annotation"
-          ) {
-            needsBookmarks = true;
-          } else if (ev.collection === "com.kipclip.preferences") {
+          ) needsBookmarks = true;
+          else if (ev.collection === "com.kipclip.preferences") {
             needsPreferences = true;
           }
         }
-        if (needsTags && !liveTagsInFlightRef.current) {
-          liveTagsInFlightRef.current = true;
-          loadTags()
-            .catch(() => {})
-            .finally(() => {
-              liveTagsInFlightRef.current = false;
-            });
-        }
-        if (needsBookmarks && !liveBookmarksInFlightRef.current) {
-          liveBookmarksInFlightRef.current = true;
-          loadBookmarks()
-            .catch(() => {})
-            .finally(() => {
-              liveBookmarksInFlightRef.current = false;
-            });
-        }
-        if (needsPreferences && !livePreferencesInFlightRef.current) {
-          livePreferencesInFlightRef.current = true;
-          refreshLivePreferences(
-            () => apiGet("/api/preferences"),
-            setPreferences,
-          )
-            .catch(() => {})
-            .finally(() => {
-              livePreferencesInFlightRef.current = false;
-            });
-        }
+        if (needsTags) void loadTags().catch(() => {});
+        if (needsBookmarks) void loadBookmarks().catch(() => {});
+        if (needsPreferences) void loadPreferences().catch(() => {});
       },
     });
     return () => conn.close();
@@ -656,17 +766,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Supporter actions
   async function refreshSupporterStatus(): Promise<boolean> {
+    const owner = sessionEpoch.current;
     const response = await apiGet("/api/user/supporter-status");
     if (!response.ok) {
       throw new Error("Failed to refresh supporter status");
     }
     const data: SupporterStatusResponse = await response.json();
-    setIsSupporter(data.isSupporter);
+    if (owner === sessionEpoch.current) setIsSupporter(data.isSupporter);
     return data.isSupporter;
   }
 
   // Settings actions
   async function updateSettings(updates: Partial<UserSettings>) {
+    const owner = sessionEpoch.current;
     try {
       const response = await apiPatch("/api/settings", updates);
       if (!response.ok) {
@@ -674,7 +786,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw new Error(data.error || "Failed to update settings");
       }
       const data = await response.json();
-      if (data.settings) {
+      if (data.settings && owner === sessionEpoch.current) {
         setSettings(data.settings);
       }
     } catch (err) {
@@ -685,22 +797,41 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Preferences actions
   async function updatePreferences(updates: Partial<UserPreferences>) {
+    const owner = sessionEpoch.current, version = ++preferenceRevision.current;
+    preferenceSaves.current++;
     setPreferences((prev) => ({ ...prev, ...updates }));
-    if (updates.dateFormat) {
-      setDateFormat(updates.dateFormat as any);
-    }
-
-    try {
+    if (updates.dateFormat) setDateFormat(updates.dateFormat as any);
+    const save = preferenceTail.current.catch(() => {}).then(async () => {
+      if (owner !== sessionEpoch.current) return;
       const response = await apiPut("/api/preferences", updates);
       if (!response.ok) {
-        throw new Error("Failed to update preferences");
+        throw new Error("Preferences were not saved. Please try again.");
       }
-      const data = await response.json();
-      if (data.preferences) {
-        setPreferences(data.preferences);
+      const saved = preferencesFromResponse(await response.json());
+      if (!saved) {
+        throw new Error("Preferences were not saved. Please try again.");
       }
-    } catch {
-      // PDS write failed — optimistic update already applied
+      if (owner === sessionEpoch.current) {
+        confirmedPreferences.current = saved;
+        if (version === preferenceRevision.current) {
+          setPreferences(saved);
+          setDateFormat(saved.dateFormat as any);
+        }
+      }
+    });
+    preferenceTail.current = save;
+    try {
+      await save;
+    } catch (error) {
+      if (
+        owner === sessionEpoch.current && version === preferenceRevision.current
+      ) {
+        setPreferences(confirmedPreferences.current);
+        setDateFormat(confirmedPreferences.current.dateFormat as any);
+      }
+      throw error;
+    } finally {
+      if (owner === sessionEpoch.current) preferenceSaves.current--;
     }
   }
 
@@ -836,10 +967,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     if (bookmarksNeedingEnrichment.length === 0) return;
 
+    const owner = sessionEpoch.current;
+    let cancelled = false;
     const enrichBatch = async () => {
       const batch = bookmarksNeedingEnrichment.slice(0, 3);
 
       for (const bookmark of batch) {
+        if (cancelled || owner !== sessionEpoch.current) break;
+        if (enrichingRef.current.has(bookmark.uri)) continue;
         enrichingRef.current.add(bookmark.uri);
 
         try {
@@ -850,10 +985,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
 
           const response = await apiPost(`/api/bookmarks/${rkey}/enrich`);
+          if (owner !== sessionEpoch.current) continue;
           if (response.ok) {
             const data = await response.json();
+            if (owner !== sessionEpoch.current) continue;
             if (data.bookmark) {
-              updateBookmark(data.bookmark);
+              noteMutation();
+              // Apply metadata only to the exact source revision we enriched;
+              // preserve current tags/notes and any intervening local edit.
+              setBookmarks((current) =>
+                current.map((b) =>
+                  b.uri === bookmark.uri &&
+                    b.cid === bookmark.cid && b.subject === bookmark.subject &&
+                    b === bookmark
+                    ? {
+                      ...b,
+                      title: data.bookmark.title,
+                      description: data.bookmark.description,
+                      image: data.bookmark.image,
+                      favicon: data.bookmark.favicon,
+                    }
+                    : b
+                )
+              );
               if (data.bookmark.image) {
                 failedAttemptsRef.current.delete(bookmark.uri);
               } else {
@@ -874,11 +1028,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
             failedAttemptsRef.current.set(bookmark.uri, attempts + 1);
           }
         } catch (err) {
+          if (owner !== sessionEpoch.current) continue;
           console.error("Failed to enrich bookmark:", err);
           const attempts = failedAttemptsRef.current.get(bookmark.uri) || 0;
           failedAttemptsRef.current.set(bookmark.uri, attempts + 1);
         } finally {
-          enrichingRef.current.delete(bookmark.uri);
+          if (owner === sessionEpoch.current) {
+            enrichingRef.current.delete(bookmark.uri);
+          }
         }
       }
     };
@@ -903,6 +1060,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // a busy tab could starve enrichment forever.
       handle = ric(enrichBatch, { timeout: 5000 });
       return () => {
+        cancelled = true;
         if (handle !== undefined && typeof cic === "function") {
           cic(handle);
         }
@@ -910,6 +1068,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     handle = setTimeout(enrichBatch, 1000) as unknown as number;
     return () => {
+      cancelled = true;
       if (handle !== undefined) clearTimeout(handle);
     };
   }, [readingListBookmarks, isSyncing]);

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Home } from "./Home.tsx";
 import { Login } from "./Login.tsx";
 import { BookmarkList } from "./BookmarkList.tsx";
@@ -33,6 +33,8 @@ export function App() {
     mirrorSyncing,
     firstPageReady,
   } = useApp();
+  const sessionDidRef = useRef(session?.did);
+  sessionDidRef.current = session?.did;
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   // True while initial /api/initial-data is in-flight (kept alongside
@@ -65,26 +67,29 @@ export function App() {
   }, []);
 
   function runInitialLoad() {
+    const owner = session?.did;
     setLoadError(null);
     setInitialLoadInFlight(true);
     loadInitialData()
       .catch((error) => {
+        if (owner !== sessionDidRef.current) return;
         console.error("Failed to load initial data:", error);
         setLoadError(
           error instanceof Error ? error.message : String(error),
         );
       })
       .finally(() => {
+        if (owner !== sessionDidRef.current) return;
         setInitialLoadInFlight(false);
       });
   }
 
   // Load initial data after session is confirmed
   useEffect(() => {
-    if (session && !initialLoadInFlight && !firstPageReady) {
-      runInitialLoad();
-    }
-  }, [session]);
+    setLoadError(null);
+    if (session) runInitialLoad();
+    else setInitialLoadInFlight(false);
+  }, [session?.did]);
 
   async function checkSession() {
     try {
