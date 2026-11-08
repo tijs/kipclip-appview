@@ -56,13 +56,6 @@ export function connectLiveEvents(
   let reconnectTimer: number | null = null;
   let coalesceBuf: LiveEvent[] = [];
   let coalesceTimer: number | null = null;
-  // Flips true while we are explicitly closing the socket because the tab
-  // went hidden. Stays true through the ensuing `close` event so we know
-  // not to schedule a server-driven reconnect, and through the next
-  // `visibilitychange` so the reopen knows to reset backoff. Cleared once
-  // we either (a) successfully reopen on visibility, or (b) the close
-  // event has been handled.
-  let closedByVisibility = false;
   // Tracks whether the last close was triggered by an actual server/network
   // event (vs. a clean visibility-driven close). When true, a subsequent
   // visibility-driven reopen MUST NOT reset backoff — we'd otherwise hammer
@@ -116,8 +109,9 @@ export function connectLiveEvents(
   }
 
   function openSocket() {
-    if (stopped) return;
+    if (stopped || socket) return;
     if (typeof document !== "undefined" && document.hidden) return;
+    clearReconnect();
     opts.onStateChange?.("connecting");
     let next: WebSocket;
     try {
@@ -130,11 +124,13 @@ export function connectLiveEvents(
     }
     socket = next;
     next.onopen = () => {
+      if (stopped || socket !== next) return;
       backoffMs = INITIAL_BACKOFF_MS;
       lastCloseWasServerDriven = false;
       opts.onStateChange?.("open");
     };
     next.onmessage = (ev) => {
+      if (stopped || socket !== next) return;
       if (typeof ev.data !== "string") return;
       let data: unknown;
       try {
@@ -158,26 +154,16 @@ export function connectLiveEvents(
       }
     };
     next.onclose = () => {
+      if (stopped || socket !== next) return;
+      socket = null;
       opts.onStateChange?.("closed");
-      if (socket === next) socket = null;
-      if (closedByVisibility) {
-        // Clean close — the next reopen happens on `visible` and resets
-        // backoff there.
-        closedByVisibility = false;
-      } else {
-        // Server-driven close (network outage, server restart, idle
-        // timeout). Keep the existing backoff schedule. If the tab is
-        // currently visible, schedule the next reconnect now; if hidden,
-        // skip — visibility handler will reopen on focus and the open
-        // path will keep the existing backoff because
-        // lastCloseWasServerDriven is true.
-        lastCloseWasServerDriven = true;
-        if (typeof document === "undefined" || !document.hidden) {
-          scheduleReconnect();
-        }
+      lastCloseWasServerDriven = true;
+      if (typeof document === "undefined" || !document.hidden) {
+        scheduleReconnect();
       }
     };
     next.onerror = (ev) => {
+      if (stopped || socket !== next) return;
       console.warn("[live] socket error", ev);
       // Browser fires `close` right after `error`; reconnection happens there.
     };
@@ -189,9 +175,10 @@ export function connectLiveEvents(
       if (document.hidden) {
         clearReconnect();
         if (socket !== null) {
-          closedByVisibility = true;
+          const previous = socket;
+          socket = null;
           try {
-            socket.close();
+            previous.close();
           } catch {
             // Already closing/closed.
           }
@@ -213,6 +200,7 @@ export function connectLiveEvents(
 
   return {
     close() {
+      if (stopped) return;
       stopped = true;
       clearReconnect();
       if (coalesceTimer !== null) {
@@ -230,6 +218,7 @@ export function connectLiveEvents(
         // Already closing/closed.
       }
       socket = null;
+      opts.onStateChange?.("closed");
     },
   };
 }

@@ -27,12 +27,27 @@ export function ImportBookmarks() {
   const [importState, setImportState] = useState<ImportState>({
     status: "idle",
   });
+  const [refreshError, setRefreshError] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { loadInitialData, isSupporter } = useApp();
 
+  async function refreshLibrary() {
+    setRefreshError(false);
+    setRefreshing(true);
+    try {
+      await loadInitialData();
+    } catch {
+      setRefreshError(true);
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   function handleFileSelect(file: File | null) {
+    setRefreshError(false);
     setSelectedFile(file);
     setImportState({ status: "idle" });
   }
@@ -66,7 +81,7 @@ export function ImportBookmarks() {
         setImportState({ status: "complete", result: prepare.result });
         setSelectedFile(null);
         if (fileInputRef.current) fileInputRef.current.value = "";
-        await loadInitialData();
+        await refreshLibrary();
         return;
       }
 
@@ -92,6 +107,7 @@ export function ImportBookmarks() {
       let lastResult: ImportResult | undefined;
       const maxIterations = totalChunks + 2;
       let iterations = 0;
+      let lastProgressAt = Date.now();
 
       while (!done && iterations < maxIterations) {
         iterations++;
@@ -106,6 +122,16 @@ export function ImportBookmarks() {
           return;
         }
 
+        if (process.retryAfterMs) {
+          if (Date.now() - lastProgressAt > 5 * 60_000) break;
+          iterations--;
+          await new Promise((resolve) =>
+            setTimeout(resolve, process.retryAfterMs)
+          );
+          continue;
+        }
+
+        lastProgressAt = Date.now();
         setImportState((prev) => {
           if (prev.status !== "importing") return prev;
           return {
@@ -134,7 +160,7 @@ export function ImportBookmarks() {
       }
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
-      await loadInitialData();
+      await refreshLibrary();
     } catch (err: any) {
       setImportState({
         status: "error",
@@ -410,6 +436,23 @@ export function ImportBookmarks() {
         )}
 
         {/* Import result */}
+        {refreshError && (
+          <div
+            role="alert"
+            className="p-4 rounded-lg bg-amber-50 text-amber-900"
+          >
+            Import completed, but bookmarks could not refresh.
+            <button
+              type="button"
+              onClick={() => void refreshLibrary()}
+              disabled={refreshing}
+              className="ml-2 underline"
+            >
+              {refreshing ? "Refreshing..." : "Retry refresh"}
+            </button>
+          </div>
+        )}
+
         {importState.status === "complete" && importState.result && (
           <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
             <p className="text-green-800 font-medium">

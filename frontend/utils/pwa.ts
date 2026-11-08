@@ -55,7 +55,9 @@ export function openOAuthPopup(
 ): Promise<{ did: string; handle: string }> {
   return new Promise((resolve, reject) => {
     // Clear any previous OAuth result
-    localStorage.removeItem("pwa-oauth-result");
+    try {
+      localStorage.removeItem("pwa-oauth-result");
+    } catch { /* postMessage can still work */ }
 
     // Calculate popup position (centered)
     const width = 500;
@@ -77,17 +79,30 @@ export function openOAuthPopup(
       return;
     }
 
+    let settled = false;
+    let pollTimer: ReturnType<typeof setTimeout> | undefined;
+    const successful = (data: any) =>
+      data?.type === "oauth-callback" && data.success === true &&
+      typeof data.did === "string" && typeof data.handle === "string";
+
     // Handle successful OAuth result
     function handleSuccess(data: { did: string; handle: string }) {
+      if (settled) return;
+      settled = true;
       cleanup();
-      localStorage.removeItem("pwa-oauth-result");
+      try {
+        localStorage.removeItem("pwa-oauth-result");
+      } catch { /* storage may be disabled */ }
       resolve(data);
     }
 
     // Listen for postMessage from popup (works if opener relationship preserved)
     function handleMessage(event: MessageEvent) {
       const data = event.data;
-      if (data?.type === "oauth-callback" && data.success) {
+      if (
+        event.origin === globalThis.location.origin && event.source === popup &&
+        successful(data)
+      ) {
         handleSuccess({ did: data.did, handle: data.handle });
       }
     }
@@ -97,7 +112,7 @@ export function openOAuthPopup(
       if (event.key === "pwa-oauth-result" && event.newValue) {
         try {
           const data = JSON.parse(event.newValue);
-          if (data?.type === "oauth-callback" && data.success) {
+          if (successful(data)) {
             handleSuccess({ did: data.did, handle: data.handle });
           }
         } catch {
@@ -117,23 +132,20 @@ export function openOAuthPopup(
         const result = localStorage.getItem("pwa-oauth-result");
         if (result) {
           const data = JSON.parse(result);
-          if (data?.type === "oauth-callback" && data.success) {
+          if (successful(data)) {
             handleSuccess({ did: data.did, handle: data.handle });
             return;
           }
         }
         // Schedule next poll
-        setTimeout(pollForResult, 200);
+        pollTimer = setTimeout(pollForResult, 200);
       } catch {
         // Continue polling despite error
         if (!pollingStopped) {
-          setTimeout(pollForResult, 200);
+          pollTimer = setTimeout(pollForResult, 200);
         }
       }
     }
-
-    // Start polling immediately
-    pollForResult();
 
     // Don't rely on popup.closed - it returns true when popup navigates cross-origin
     // Instead, use a timeout. OAuth should complete within 5 minutes max.
@@ -141,7 +153,8 @@ export function openOAuthPopup(
     const startTime = Date.now();
 
     const checkTimeout = setInterval(() => {
-      if (Date.now() - startTime > OAUTH_TIMEOUT_MS) {
+      if (!settled && Date.now() - startTime > OAUTH_TIMEOUT_MS) {
+        settled = true;
         cleanup();
         reject(new Error("Login timed out"));
         clearInterval(checkTimeout);
@@ -153,9 +166,13 @@ export function openOAuthPopup(
       globalThis.removeEventListener("message", handleMessage);
       globalThis.removeEventListener("storage", handleStorage);
       clearInterval(checkTimeout);
+      clearTimeout(pollTimer);
     }
 
     globalThis.addEventListener("message", handleMessage);
     globalThis.addEventListener("storage", handleStorage);
+    // Timers/listeners exist before polling: a very fast popup may already
+    // have stored its result when open() returns.
+    pollForResult();
   });
 }

@@ -19,7 +19,7 @@ const MIGRATIONS_TABLE = `
 const NON_MIRROR_MIGRATIONS: Array<{
   version: string;
   description: string;
-  sql: string;
+  sql: string | string[];
 }> = [
   {
     version: "001",
@@ -99,6 +99,20 @@ const NON_MIRROR_MIGRATIONS: Array<{
       ALTER TABLE iron_session_storage ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''
     `,
   },
+  {
+    version: "016",
+    description: "Fence import chunk ownership and persist resumable progress",
+    sql: `
+      ALTER TABLE import_chunks ADD COLUMN lease_token TEXT;
+      ALTER TABLE import_chunks ADD COLUMN lease_until INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE import_chunks ADD COLUMN imported INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE import_chunks ADD COLUMN failed INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE import_chunks ADD COLUMN processed_bookmarks INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE import_jobs ADD COLUMN imported_baseline INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE import_jobs ADD COLUMN failed_baseline INTEGER NOT NULL DEFAULT 0;
+      UPDATE import_jobs SET imported_baseline = imported, failed_baseline = failed
+    `,
+  },
 ];
 
 // Combined list applied to the primary db.
@@ -113,7 +127,7 @@ interface DbClient {
 interface MigrationEntry {
   version: string;
   description: string;
-  sql: string;
+  sql: string | string[];
 }
 
 async function runMigrationSet(
@@ -152,10 +166,10 @@ async function runMigrationSet(
       `📝 Running migration on ${label}: ${migration.version} - ${migration.description}`,
     );
 
-    const statements = migration.sql
-      .split(";")
-      .map((stmt) => stmt.trim())
-      .filter((stmt) => stmt.length > 0);
+    const statements =
+      (Array.isArray(migration.sql) ? migration.sql : migration.sql.split(";"))
+        .map((stmt) => stmt.trim())
+        .filter((stmt) => stmt.length > 0);
 
     let migrationSucceeded = true;
     for (const statement of statements) {

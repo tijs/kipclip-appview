@@ -176,8 +176,8 @@ try {
       sql: "SELECT version FROM migrations ORDER BY version",
       args: [],
     })).rows;
-    assert.equal(rows.length, 15);
-    assert.equal(rows.at(-1)[0], "015");
+    assert.equal(rows.length, 18);
+    assert.equal(rows.at(-1)[0], "018");
   });
   await test("native SQLite file persistence/close/reopen", async () => {
     const root = await mkdtemp(

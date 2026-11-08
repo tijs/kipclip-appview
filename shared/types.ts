@@ -268,6 +268,7 @@ export interface ImportPrepareResponse {
 }
 
 export interface ImportProcessResponse {
+  retryAfterMs?: number; // another request owns the current chunk
   success: boolean;
   imported?: number; // this chunk
   failed?: number; // this chunk

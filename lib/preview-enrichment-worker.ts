@@ -1,3 +1,4 @@
+import { db } from "./db.ts";
 import { getHost } from "../runtime/host.ts";
 import {
   type PdsAnnotationRead,
@@ -13,6 +14,7 @@ import {
   claimPreviewEnrichmentJobs,
   enqueueMissingPreviewJobsForSessionDids,
   hasUsableAnnotation,
+  isPreviewJobCurrent,
   markPreviewJobBlockedNoSession,
   markPreviewJobDone,
   markPreviewJobRetry,
@@ -46,6 +48,7 @@ export interface PreviewWorkerOptions {
 
 export interface PreviewWorkerDeps {
   restoreSession?: (did: string) => Promise<any | null>;
+  readSource?: typeof readPreviewSource;
   hasUsableAnnotation?: (bookmarkUri: string) => Promise<boolean>;
   /**
    * Authoritative annotation read for the merge base. Defaults to a
@@ -60,6 +63,39 @@ export interface PreviewWorkerDeps {
   extractUrlMetadata?: typeof extractUrlMetadataRecord;
   writeAnnotation?: typeof writeAnnotationRecord;
   upsertAnnotation?: typeof upsertAnnotationRecord;
+}
+
+/** Capture a commit before source/annotation reads, then fence the put to it.
+ * A remote bookmark edit/deletion between these reads and put must reject the write. */
+export async function readPreviewSource(
+  session: any,
+  job: PreviewEnrichmentJob,
+): Promise<string> {
+  const query = new URLSearchParams({ did: job.did });
+  const latest = await session.makeRequest(
+    "GET",
+    `${session.pdsUrl}/xrpc/com.atproto.sync.getLatestCommit?${query}`,
+  );
+  if (!latest.ok) throw new Error("Could not read preview source commit");
+  const commit = (await latest.json()).cid;
+  if (typeof commit !== "string" || !commit) {
+    throw new Error("Invalid preview source commit");
+  }
+  const recordQuery = new URLSearchParams({
+    repo: job.did,
+    collection: "community.lexicon.bookmarks.bookmark",
+    rkey: job.rkey,
+  });
+  const source = await session.makeRequest(
+    "GET",
+    `${session.pdsUrl}/xrpc/com.atproto.repo.getRecord?${recordQuery}`,
+  );
+  if (!source.ok) throw new Error("Preview source no longer available");
+  const record = await source.json();
+  if (record.cid !== job.sourceCid || record.value?.subject !== job.subject) {
+    throw new Error("Preview source changed");
+  }
+  return commit;
 }
 
 /** Normalize a stored field to undefined when it carries no value. */
@@ -168,7 +204,7 @@ export async function processPreviewEnrichmentJob(
 
   try {
     if (await checkAnnotation(job.bookmarkUri)) {
-      await markPreviewJobDone(job.bookmarkUri);
+      await markPreviewJobDone(job);
       stats.skippedExisting = 1;
       return stats;
     }
@@ -189,7 +225,7 @@ export async function processPreviewEnrichmentJob(
       throw new Error("no usable metadata obtained");
     }
     if (await checkAnnotation(job.bookmarkUri)) {
-      await markPreviewJobDone(job.bookmarkUri);
+      await markPreviewJobDone(job);
       stats.skippedExisting = 1;
       return stats;
     }
@@ -199,6 +235,11 @@ export async function processPreviewEnrichmentJob(
     // and is retried — a stale mirror is never used as the merge base or to
     // overwrite after a PDS error. YouTube-default classification uses the
     // bookmarked subject URL, not the AT-URI.
+    if (!await isPreviewJobCurrent(job)) return stats;
+    const sourceCommit = await (deps.readSource ?? readPreviewSource)(
+      oauthSession,
+      job,
+    );
     const pdsAnnotation = await readExisting(oauthSession, job.rkey);
     const annotation = mergePreviewAnnotation(
       pdsAnnotation?.value ?? null,
@@ -210,32 +251,41 @@ export async function processPreviewEnrichmentJob(
     // Pass the fetched PDS CID as putRecord's swapRecord: a concurrent edit
     // between our read and this write fails safely (InvalidSwap → retry) on
     // the next attempt instead of being silently overwritten.
+    if (!await isPreviewJobCurrent(job)) return stats;
     const result = await putAnnotation(oauthSession, job.rkey, annotation, {
-      swapRecord: pdsAnnotation?.cid,
+      swapRecord: pdsAnnotation?.cid ?? null,
+      swapCommit: sourceCommit,
     });
     if (!result.ok) throw new Error("annotation write failed");
+    if (!await isPreviewJobCurrent(job)) return stats;
 
     // Mirror the write WITHOUT clearing the job: the worker decides completion
     // itself below. Clearing here would delete the job before the decision,
     // and the next tick would re-enqueue a fresh attempts=0 job whenever the
     // annotation is still incomplete (e.g. the watch page had no usable
     // description), looping external fetches and PDS writes forever.
-    await mirrorAnnotation(
-      {
-        uri: result.uri ??
-          `at://${job.did}/${ANNOTATION_COLLECTION}/${job.rkey}`,
-        did: job.did,
-        rkey: job.rkey,
-        cid: result.cid ?? "",
-        subject: job.bookmarkUri,
-        title: annotation.title ?? null,
-        description: annotation.description ?? null,
-        favicon: annotation.favicon ?? null,
-        image: annotation.image ?? null,
-        note: annotation.note ?? null,
-      },
-      { clearPreviewJob: false },
-    );
+    const mirrored = await db.transaction(async (store) => {
+      if (!await isPreviewJobCurrent(job, store)) return false;
+      await mirrorAnnotation(
+        {
+          uri: result.uri ??
+            `at://${job.did}/${ANNOTATION_COLLECTION}/${job.rkey}`,
+          did: job.did,
+          rkey: job.rkey,
+          cid: result.cid ?? "",
+          subject: job.bookmarkUri,
+          title: annotation.title ?? null,
+          description: annotation.description ?? null,
+          favicon: annotation.favicon ?? null,
+          image: annotation.image ?? null,
+          note: annotation.note ?? null,
+        },
+        { clearPreviewJob: false },
+        store,
+      );
+      return true;
+    });
+    if (!mirrored) return stats;
 
     // Completion decision AFTER the write: if the merged annotation now
     // satisfies the same YouTube completeness predicate (read back through
@@ -244,7 +294,7 @@ export async function processPreviewEnrichmentJob(
     // once for this attempt and the job keeps its bounded retry/backoff
     // (three attempts) instead of being marked done and looping forever.
     if (await checkAnnotation(job.bookmarkUri)) {
-      await markPreviewJobDone(job.bookmarkUri);
+      await markPreviewJobDone(job);
       stats.success = 1;
     } else {
       const status = await markPreviewJobRetry(

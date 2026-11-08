@@ -15,7 +15,7 @@
 export interface MigrationEntry {
   version: string;
   description: string;
-  sql: string;
+  sql: string | string[];
 }
 
 export const MIRROR_MIGRATIONS: MigrationEntry[] = [
@@ -277,6 +277,35 @@ export const MIRROR_MIGRATIONS: MigrationEntry[] = [
         delivered_at INTEGER,
         PRIMARY KEY (bookmark_uri, subject, account_key)
       )
+    `,
+  },
+  {
+    version: "017",
+    description:
+      "Track mirror mutation generations across all database writers",
+    sql: [
+      `CREATE TABLE IF NOT EXISTS mirror_generations (did TEXT PRIMARY KEY, generation INTEGER NOT NULL DEFAULT 0)`,
+      ...["bookmarks", "annotations", "tags", "preferences"].flatMap((table) =>
+        ["INSERT", "UPDATE", "DELETE"].map((op) =>
+          `CREATE TRIGGER IF NOT EXISTS ${table}_generation_${op.toLowerCase()}
+          AFTER ${op} ON ${table} BEGIN
+            INSERT INTO mirror_generations (did, generation) VALUES (${
+            op === "DELETE" ? "OLD" : "NEW"
+          }.did, 1)
+            ON CONFLICT(did) DO UPDATE SET generation = generation + 1;
+          END`
+        )
+      ),
+    ],
+  },
+  {
+    version: "018",
+    description: "Fence preview jobs to source revisions and leased owners",
+    sql: `
+      ALTER TABLE preview_enrichment_jobs ADD COLUMN source_cid TEXT NOT NULL DEFAULT '';
+      ALTER TABLE preview_enrichment_jobs ADD COLUMN lease_token TEXT;
+      ALTER TABLE preview_enrichment_jobs ADD COLUMN lease_until INTEGER NOT NULL DEFAULT 0;
+      UPDATE preview_enrichment_jobs SET source_cid = COALESCE((SELECT cid FROM bookmarks WHERE uri = bookmark_uri), '')
     `,
   },
 ];

@@ -1,5 +1,5 @@
 import type { AnnotationRecord } from "../shared/types.ts";
-import { db } from "./db.ts";
+import { db, type DbExecutor } from "./db.ts";
 import {
   isKnownDefaultYouTubeDescription,
   isKnownDefaultYouTubeTitle,
@@ -11,6 +11,7 @@ import {
 
 export type PreviewJobStatus =
   | "pending"
+  | "running"
   | "done"
   | "failed"
   | "blocked_no_session";
@@ -24,6 +25,8 @@ export interface PreviewEnrichmentJob {
   attempts: number;
   nextRunAt: number;
   lastError: string | null;
+  sourceCid: string;
+  leaseToken: string;
 }
 
 export interface MissingPreviewBookmark {
@@ -31,6 +34,7 @@ export interface MissingPreviewBookmark {
   did: string;
   rkey: string;
   subject: string;
+  cid: string;
 }
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -45,6 +49,8 @@ function rowToJob(row: unknown[]): PreviewEnrichmentJob {
     attempts: Number(row[5]),
     nextRunAt: Number(row[6]),
     lastError: row[7] === null ? null : String(row[7]),
+    sourceCid: String(row[8]),
+    leaseToken: String(row[9]),
   };
 }
 
@@ -263,7 +269,7 @@ export async function findMissingPreviewBookmarks(
   const incomplete = incompleteAnnotationConditionSql();
   const result = await db.execute({
     sql: `
-      SELECT b.uri, b.did, b.rkey, b.subject
+      SELECT b.uri, b.did, b.rkey, b.subject, b.cid
       FROM bookmarks b
       LEFT JOIN annotations a ON a.subject = b.uri AND a.did = b.did
       WHERE b.did = ?
@@ -286,6 +292,7 @@ export async function findMissingPreviewBookmarks(
     did: String(row[1]),
     rkey: String(row[2]),
     subject: String(row[3]),
+    cid: String(row[4]),
   }));
 }
 
@@ -318,62 +325,29 @@ export async function enqueueMissingPreviewJobsForDid(
   // rkey/subject but never reopen terminal jobs (done/failed/blocked_no_session).
   // Explicit reactivation reopens failed and blocked_no_session jobs as a fresh
   // pending attempt: attempts reset to 0 and next_run_at scheduled immediately.
-  const onConflict = reactivate
-    ? `
-        ON CONFLICT(bookmark_uri) DO UPDATE SET
-          subject = excluded.subject,
-          rkey = excluded.rkey,
-          status = CASE
-            WHEN preview_enrichment_jobs.status IN ('failed', 'blocked_no_session')
-              THEN 'pending'
-            ELSE preview_enrichment_jobs.status
-          END,
-          attempts = CASE
-            WHEN preview_enrichment_jobs.status IN ('failed', 'blocked_no_session') THEN 0
-            WHEN preview_enrichment_jobs.subject != excluded.subject THEN 0
-            ELSE preview_enrichment_jobs.attempts
-          END,
-          next_run_at = CASE
-            WHEN preview_enrichment_jobs.status IN ('failed', 'blocked_no_session')
-              THEN excluded.next_run_at
-            WHEN preview_enrichment_jobs.subject != excluded.subject THEN excluded.next_run_at
-            ELSE preview_enrichment_jobs.next_run_at
-          END,
-          last_error = CASE
-            WHEN preview_enrichment_jobs.status IN ('failed', 'blocked_no_session') THEN NULL
-            ELSE preview_enrichment_jobs.last_error
-          END,
-          updated_at = excluded.updated_at
-      `
-    : `
-        ON CONFLICT(bookmark_uri) DO UPDATE SET
-          subject = excluded.subject,
-          rkey = excluded.rkey,
-          status = CASE
-            WHEN preview_enrichment_jobs.subject != excluded.subject THEN 'pending'
-            ELSE preview_enrichment_jobs.status
-          END,
-          attempts = CASE
-            WHEN preview_enrichment_jobs.subject != excluded.subject THEN 0
-            ELSE preview_enrichment_jobs.attempts
-          END,
-          next_run_at = CASE
-            WHEN preview_enrichment_jobs.subject != excluded.subject THEN excluded.next_run_at
-            ELSE preview_enrichment_jobs.next_run_at
-          END,
-          last_error = CASE
-            WHEN preview_enrichment_jobs.subject != excluded.subject THEN NULL
-            ELSE preview_enrichment_jobs.last_error
-          END,
-          updated_at = excluded.updated_at
-      `;
+  const reset = `(preview_enrichment_jobs.subject != excluded.subject
+    OR preview_enrichment_jobs.source_cid != excluded.source_cid
+    ${
+    reactivate
+      ? "OR preview_enrichment_jobs.status IN ('failed', 'blocked_no_session')"
+      : ""
+  })`;
+  const onConflict = `ON CONFLICT(bookmark_uri) DO UPDATE SET
+    subject = excluded.subject, rkey = excluded.rkey, source_cid = excluded.source_cid,
+    status = CASE WHEN ${reset} THEN 'pending' ELSE preview_enrichment_jobs.status END,
+    attempts = CASE WHEN ${reset} THEN 0 ELSE preview_enrichment_jobs.attempts END,
+    next_run_at = CASE WHEN ${reset} THEN excluded.next_run_at ELSE preview_enrichment_jobs.next_run_at END,
+    last_error = CASE WHEN ${reset} THEN NULL ELSE preview_enrichment_jobs.last_error END,
+    lease_token = CASE WHEN ${reset} THEN NULL ELSE preview_enrichment_jobs.lease_token END,
+    lease_until = CASE WHEN ${reset} THEN 0 ELSE preview_enrichment_jobs.lease_until END,
+    updated_at = excluded.updated_at`;
   for (const bookmark of missing) {
     const result = await db.execute({
       sql: `
         INSERT INTO preview_enrichment_jobs (
           bookmark_uri, did, rkey, subject, status, attempts,
-          next_run_at, last_error, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, 'pending', 0, ?, NULL, ?, ?)
+          next_run_at, last_error, created_at, updated_at, source_cid
+        ) VALUES (?, ?, ?, ?, 'pending', 0, ?, NULL, ?, ?, ?)
         ${onConflict}
       `,
       args: [
@@ -384,6 +358,7 @@ export async function enqueueMissingPreviewJobsForDid(
         now,
         now,
         now,
+        bookmark.cid,
       ],
     });
     if (result.rowsAffected > 0) enqueued++;
@@ -423,47 +398,105 @@ export async function enqueueMissingPreviewJobsForSessionDids(
   return { enqueued, dids: dids.length };
 }
 
+const PREVIEW_LEASE_MS = 60_000;
+
 export async function claimPreviewEnrichmentJobs(
   limit = 5,
   now = Date.now(),
 ): Promise<PreviewEnrichmentJob[]> {
+  const token = crypto.randomUUID();
   const result = await db.execute({
-    sql: `
-      SELECT bookmark_uri, did, rkey, subject, status, attempts,
-             next_run_at, last_error
-      FROM preview_enrichment_jobs
-      WHERE status = 'pending' AND next_run_at <= ?
-      ORDER BY next_run_at ASC, created_at ASC
-      LIMIT ?
-    `,
-    args: [now, limit],
+    sql:
+      `UPDATE preview_enrichment_jobs SET status = 'running', lease_token = ?, lease_until = ?
+    WHERE bookmark_uri IN (SELECT bookmark_uri FROM preview_enrichment_jobs
+      WHERE (status = 'pending' AND next_run_at <= ?) OR (status = 'running' AND lease_until <= ?)
+      ORDER BY next_run_at, created_at LIMIT ?)
+    RETURNING bookmark_uri, did, rkey, subject, status, attempts, next_run_at, last_error, source_cid, lease_token`,
+    args: [token, now + PREVIEW_LEASE_MS, now, now, limit],
   });
   return result.rows.map(rowToJob);
 }
 
-export async function markPreviewJobDone(bookmarkUri: string): Promise<void> {
-  await db.execute({
-    sql: `
-      UPDATE preview_enrichment_jobs
-      SET status = 'done', last_error = NULL, updated_at = ?
-      WHERE bookmark_uri = ?
-    `,
-    args: [Date.now(), bookmarkUri],
+/** Both source and owner must still match; deletion invalidates work too. */
+export async function isPreviewJobCurrent(
+  job: PreviewEnrichmentJob,
+  store: DbExecutor = db,
+): Promise<boolean> {
+  const row = await store.execute({
+    sql:
+      `SELECT 1 FROM preview_enrichment_jobs j JOIN bookmarks b ON b.uri = j.bookmark_uri
+    WHERE j.bookmark_uri = ? AND j.lease_token = ? AND j.status = 'running' AND j.lease_until > ?
+    AND j.source_cid = ? AND j.subject = ? AND b.cid = ? AND b.subject = ?`,
+    args: [
+      job.bookmarkUri,
+      job.leaseToken,
+      Date.now(),
+      job.sourceCid,
+      job.subject,
+      job.sourceCid,
+      job.subject,
+    ],
   });
+  return row.rows.length > 0;
+}
+
+async function settlePreviewJob(
+  job: PreviewEnrichmentJob,
+  status: PreviewJobStatus,
+  attempts: number,
+  nextRunAt: number,
+  error: string | null,
+  now: number,
+): Promise<boolean> {
+  const result = await db.execute({
+    sql:
+      `UPDATE preview_enrichment_jobs SET status = ?, attempts = ?, next_run_at = ?,
+    last_error = ?, updated_at = ?, lease_token = NULL, lease_until = 0
+    WHERE bookmark_uri = ? AND status = 'running' AND lease_token = ? AND source_cid = ? AND subject = ?
+    AND EXISTS (SELECT 1 FROM bookmarks WHERE uri = ? AND cid = ? AND subject = ?)`,
+    args: [
+      status,
+      attempts,
+      nextRunAt,
+      error,
+      now,
+      job.bookmarkUri,
+      job.leaseToken,
+      job.sourceCid,
+      job.subject,
+      job.bookmarkUri,
+      job.sourceCid,
+      job.subject,
+    ],
+  });
+  return result.rowsAffected === 1;
+}
+
+export async function markPreviewJobDone(
+  job: PreviewEnrichmentJob,
+): Promise<void> {
+  await settlePreviewJob(
+    job,
+    "done",
+    job.attempts,
+    job.nextRunAt,
+    null,
+    Date.now(),
+  );
 }
 
 export async function markPreviewJobBlockedNoSession(
   job: PreviewEnrichmentJob,
   now = Date.now(),
 ): Promise<void> {
-  await db.execute({
-    sql: `
-      UPDATE preview_enrichment_jobs
-      SET status = 'blocked_no_session', last_error = ?, updated_at = ?
-      WHERE bookmark_uri = ?
-    `,
-    args: ["no usable OAuth session", now, job.bookmarkUri],
-  });
+  await settlePreviewJob(
+    job,
+    "blocked_no_session",
+    job.attempts,
+    job.nextRunAt,
+    "no usable OAuth session",
+    now,
+  );
 }
 
 export async function markPreviewJobRetry(
@@ -472,25 +505,20 @@ export async function markPreviewJobRetry(
   now = Date.now(),
 ): Promise<"pending" | "failed"> {
   const attempts = job.attempts + 1;
-  const stopped = attempts >= 3;
-  const nextRunAt = attempts === 1 ? now + DAY : now + 7 * DAY;
+  const status = attempts >= 3 ? "failed" : "pending";
+  const next = status === "failed"
+    ? now
+    : now + (attempts === 1 ? DAY : 7 * DAY);
   const message = error instanceof Error ? error.message : String(error);
-  await db.execute({
-    sql: `
-      UPDATE preview_enrichment_jobs
-      SET status = ?, attempts = ?, next_run_at = ?, last_error = ?, updated_at = ?
-      WHERE bookmark_uri = ?
-    `,
-    args: [
-      stopped ? "failed" : "pending",
-      attempts,
-      stopped ? now : nextRunAt,
-      message.slice(0, 500),
-      now,
-      job.bookmarkUri,
-    ],
-  });
-  return stopped ? "failed" : "pending";
+  await settlePreviewJob(
+    job,
+    status,
+    attempts,
+    next,
+    message.slice(0, 500),
+    now,
+  );
+  return status;
 }
 
 /**

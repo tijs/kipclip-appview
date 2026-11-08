@@ -249,13 +249,20 @@ export function BookmarkList() {
       // Trigger refresh if pulled far enough
       if (pullDistance > 80) {
         setIsRefreshing(true);
-        loadBookmarks().finally(() => {
-          setIsRefreshing(false);
-          setPullDistance(0);
-        });
+        loadBookmarks().catch(() => toast.error("Refresh failed")).finally(
+          () => {
+            setIsRefreshing(false);
+            setPullDistance(0);
+          },
+        );
       } else {
         setPullDistance(0);
       }
+    }
+
+    function handleTouchCancel() {
+      setIsPulling(false);
+      setPullDistance(0);
     }
 
     // Listen on document level to catch all touch events
@@ -266,11 +273,13 @@ export function BookmarkList() {
       passive: false,
     });
     document.addEventListener("touchend", handleTouchEnd);
+    document.addEventListener("touchcancel", handleTouchCancel);
 
     return () => {
       document.removeEventListener("touchstart", handleTouchStart);
       document.removeEventListener("touchmove", handleTouchMove);
       document.removeEventListener("touchend", handleTouchEnd);
+      document.removeEventListener("touchcancel", handleTouchCancel);
     };
   }, [isPulling, pullDistance, isRefreshing, isSelectMode]);
 

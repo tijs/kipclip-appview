@@ -1,3 +1,4 @@
+import { toast } from "sonner";
 import { useState } from "react";
 import type { FormEvent } from "react";
 import type { EnrichedTag } from "../../shared/types.ts";
@@ -23,6 +24,19 @@ export function EditTag(
 
   // Extract rkey from URI (format: at://did:plc:xxx/com.kipclip.tag/rkey)
   const rkey = tag.uri.split("/").pop()!;
+
+  async function refreshAfterChange() {
+    try {
+      await loadBookmarks();
+    } catch {
+      toast.error("Tag saved, but bookmarks could not refresh", {
+        action: {
+          label: "Retry refresh",
+          onClick: () => void refreshAfterChange(),
+        },
+      });
+    }
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -54,14 +68,9 @@ export function EditTag(
 
       const data = await response.json();
 
-      // Refresh bookmarks since tag was renamed on them
-      if (hasChanged) {
-        await loadBookmarks();
-      }
-
-      if (data.tag) {
-        onTagUpdated(data.tag);
-      }
+      if (data.tag) onTagUpdated(data.tag);
+      // The mutation is committed; a refresh failure must not invite a repeat write.
+      void refreshAfterChange();
     } catch (err: any) {
       setError(err.message);
       setIsSubmitting(false);
@@ -104,12 +113,8 @@ export function EditTag(
         throw new Error(data.error || "Failed to delete tag");
       }
 
-      // Refresh bookmarks if any were affected
-      if (count > 0) {
-        await loadBookmarks();
-      }
-
       onTagDeleted(tag.uri);
+      if (count > 0) void refreshAfterChange();
     } catch (err: any) {
       setError(err.message);
       setIsDeleting(false);

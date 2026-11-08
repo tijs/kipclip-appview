@@ -27,7 +27,7 @@
 #      git refuse every tap-user op with "detected dubious ownership";
 #      git's safe.directory escape is NEVER used.
 #   1. Acquire the build lock (non-blocking — skip if a prior tick is
-#      still building).
+#      still building). Recover any pending activation before fetching.
 #   2. Resolve the desired ref: pin file > TAP_UPDATE_DEFAULT_REF (sha
 #      required) > $TAP_DEFAULT_BASE_SHA. Refuse branch refs / origin/*.
 #   3. Fetch, then hard-reset + clean the build tree to the immutable base
@@ -40,7 +40,8 @@
 #   5. If the resolved commit matches /opt/tap/.version AND the patch set
 #      matches .patches.sha256, exit 0.
 #   6. Build cmd/tap into /opt/tap/tap.new.
-#   7. Save /opt/tap/tap + the sha/version files as .prev (rollback target).
+#   7. Commit and flush .tap-update-txn: previous binary + provenance,
+#      including absent files. Keep the snapshot until verified success.
 #   8. Atomic-rename tap.new -> tap. Write .version/.patches.sha256/
 #      .binary.sha256. Restart tap.service.
 #   9. Health-check 127.0.0.1:2480. On failure — a FAILED restart counts
@@ -74,10 +75,10 @@ BUILD_DIR="${TAP_UPDATE_BUILD_DIR:-/var/lib/tap/build/indigo}"
 TAP_BIN_DIR="${TAP_UPDATE_TAP_BIN_DIR:-/opt/tap}"
 TAP_BIN="${TAP_BIN_DIR}/tap"
 TAP_NEW="${TAP_BIN_DIR}/tap.new"
-TAP_PREV="${TAP_BIN_DIR}/tap.prev"
 TAP_VERSION_FILE="${TAP_BIN_DIR}/.version"
 TAP_PATCHES_SHA_FILE="${TAP_BIN_DIR}/.patches.sha256"
 TAP_BINARY_SHA_FILE="${TAP_BIN_DIR}/.binary.sha256"
+TXN_DIR="${TAP_BIN_DIR}/.tap-update-txn"
 LOCK_FILE="${TAP_UPDATE_LOCK_FILE:-/var/lib/tap/.tap-update-lock}"
 
 # TAP's own SQLite db. drift-alert (kipclip user via SupplementaryGroups=tap)
@@ -124,6 +125,63 @@ health_ok() {
 
 sha256_file() {
   sha256sum "$1" | awk '{print $1}'
+}
+
+# Snapshot binary and provenance as one committed recovery unit. Absent
+# metadata is recorded explicitly, so a previous tick's .prev files cannot
+# accidentally supply provenance belonging to a different binary.
+begin_activation() {
+  local name
+  rm -rf "${TXN_DIR}.new"
+  mkdir -m 0700 "${TXN_DIR}.new"
+  for name in tap .version .patches.sha256 .binary.sha256; do
+    if [[ -f "$TAP_BIN_DIR/$name" ]]; then
+      cp -p "$TAP_BIN_DIR/$name" "${TXN_DIR}.new/$name"
+    else
+      touch "${TXN_DIR}.new/$name.absent"
+    fi
+  done
+  (cd "${TXN_DIR}.new" && sha256sum ./* ./.??* > SHA256SUMS)
+  mv "${TXN_DIR}.new" "$TXN_DIR"
+  sync
+}
+
+# Return success only after restoring the entire snapshot, restarting, and
+# checking health. Copies leave recovery retryable after interruption/failure.
+restore_activation() {
+  local name
+  if ! (cd "$TXN_DIR" && sha256sum -c SHA256SUMS >/dev/null); then
+    err "invalid TAP activation journal — manual recovery required"
+    return 1
+  fi
+  for name in tap .version .patches.sha256 .binary.sha256; do
+    if [[ -f "$TXN_DIR/$name" && ! -e "$TXN_DIR/$name.absent" ]]; then
+      cp -p "$TXN_DIR/$name" "$TAP_BIN_DIR/$name.restore" || return 1
+      mv "$TAP_BIN_DIR/$name.restore" "$TAP_BIN_DIR/$name" || return 1
+    elif [[ -f "$TXN_DIR/$name.absent" && ! -e "$TXN_DIR/$name" ]]; then
+      rm -f "$TAP_BIN_DIR/$name" || return 1
+    else
+      err "incomplete TAP activation journal — manual recovery required"
+      return 1
+    fi
+  done
+  if [[ ! -x "$TAP_BIN" ]]; then
+    err "no previous binary to roll back to; journal kept; manual recovery required"
+    return 1
+  fi
+  err "rolling back to previous binary"
+  if ! systemctl restart tap; then
+    err "rollback restart FAILED — manual recovery required (journal kept)"
+    return 1
+  fi
+  sleep 2
+  if ! health_ok; then
+    err "rollback ALSO failed health check — manual recovery required (journal kept)"
+    return 1
+  fi
+  sync || return 1
+  rm -rf "$TXN_DIR" || return 1
+  err "rollback restored TAP successfully"
 }
 
 # Resolve the desired ref to an IMMUTABLE commit sha. Branch names and
@@ -326,6 +384,7 @@ main() {
   require_tool sha256sum
   require_tool chown
   require_tool chmod
+  require_tool sync
   [[ -d "$BUILD_DIR/.git" ]] || {
     err "indigo clone missing at $BUILD_DIR — bootstrap TAP first"
     exit 1
@@ -347,6 +406,15 @@ main() {
   if ! flock -n 9; then
     exit 0
   fi
+
+  # Never let the desired-version shortcut hide an interrupted activation.
+  # Recover before fetching/building; defer any new update to the next tick.
+  if [[ -e "$TXN_DIR" ]]; then
+    log "Recovering interrupted TAP activation"
+    restore_activation || exit 1
+    exit 0
+  fi
+  rm -rf "${TXN_DIR}.new"
 
   local DESIRED_REF
   DESIRED_REF="$(resolve_ref)"
@@ -425,14 +493,7 @@ main() {
   install -m 0755 "$BUILD_OUT" "$TAP_NEW"
   rm -f "$BUILD_OUT"
 
-  # Save current binary + recorded SHAs for rollback. First-run leaves
-  # .prev absent, which the rollback path handles.
-  if [[ -x "$TAP_BIN" ]]; then
-    cp -p "$TAP_BIN" "$TAP_PREV"
-    cp -p "$TAP_VERSION_FILE" "${TAP_VERSION_FILE}.prev" 2>/dev/null || true
-    cp -p "$TAP_PATCHES_SHA_FILE" "${TAP_PATCHES_SHA_FILE}.prev" 2>/dev/null || true
-    cp -p "$TAP_BINARY_SHA_FILE" "${TAP_BINARY_SHA_FILE}.prev" 2>/dev/null || true
-  fi
+  begin_activation
 
   # Atomic rename — same filesystem.
   mv "$TAP_NEW" "$TAP_BIN"
@@ -464,6 +525,9 @@ main() {
     rollback_tap
   fi
 
+  sync
+  rm -rf "$TXN_DIR"
+
   log "✅ TAP updated source=$DESIRED_SHA binary=$(cat "$TAP_BINARY_SHA_FILE")"
   log "post-deploy: verify retry_counts stop accelerating — journalctl -u tap --since '10 minutes ago' | grep -c 'retry'"
 }
@@ -473,37 +537,7 @@ main() {
 # `systemctl restart tap` must NOT skip rollback, so both call sites guard
 # the restart below instead of letting `set -e` exit the script first.
 rollback_tap() {
-  if [[ -x "$TAP_PREV" ]]; then
-    err "rolling back to previous binary"
-    mv "$TAP_PREV" "$TAP_BIN"
-    if [[ -s "${TAP_VERSION_FILE}.prev" ]]; then
-      mv "${TAP_VERSION_FILE}.prev" "$TAP_VERSION_FILE"
-    else
-      rm -f "$TAP_VERSION_FILE"
-    fi
-    if [[ -s "${TAP_PATCHES_SHA_FILE}.prev" ]]; then
-      mv "${TAP_PATCHES_SHA_FILE}.prev" "$TAP_PATCHES_SHA_FILE"
-    else
-      rm -f "$TAP_PATCHES_SHA_FILE"
-    fi
-    if [[ -s "${TAP_BINARY_SHA_FILE}.prev" ]]; then
-      mv "${TAP_BINARY_SHA_FILE}.prev" "$TAP_BINARY_SHA_FILE"
-    else
-      rm -f "$TAP_BINARY_SHA_FILE"
-    fi
-    if systemctl restart tap; then
-      sleep 2
-      if health_ok; then
-        err "rollback restored TAP successfully: source=$(cat "$TAP_VERSION_FILE") binary=$(cat "$TAP_BINARY_SHA_FILE")"
-      else
-        err "rollback ALSO failed health check — manual recovery required"
-      fi
-    else
-      err "rollback restart FAILED — manual recovery required"
-    fi
-  else
-    err "no previous binary to roll back to; manual recovery required"
-  fi
+  restore_activation || err "rollback could not be verified — journal kept at $TXN_DIR"
   err "check: journalctl -u tap -n 50"
   exit 1
 }

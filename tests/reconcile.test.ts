@@ -21,6 +21,7 @@ import { assertEquals, assertRejects } from "@std/assert";
 
 import { reconcileDid } from "../lib/reconcile.ts";
 import {
+  deleteBookmark,
   upsertAnnotation,
   upsertBookmark,
   upsertPreferences,
@@ -219,3 +220,107 @@ Deno.test("reconcile deletes preferences only when the PDS holds none", async ()
   });
   assertEquals(Number(remaining.rows[0][0]), 0);
 });
+
+for (const mutation of ["create", "update", "delete"] as const) {
+  Deno.test(`reconciliation rejects a stale snapshot after concurrent ${mutation}`, async () => {
+    await clearMirrorTables();
+    if (mutation !== "create") await seedBookmark("concurrent");
+    const original = globalThis.fetch;
+    let release!: () => void;
+    let captured!: () => void;
+    const blocked = new Promise<void>((r) => release = r);
+    const snapshotRead = new Promise<void>((r) => captured = r);
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const collection = new URL(String(input)).searchParams.get("collection");
+      if (collection === "com.kipclip.preferences") {
+        captured();
+        await blocked;
+      }
+      return Response.json({
+        records: collection === "community.lexicon.bookmarks.bookmark" &&
+            mutation !== "create"
+          ? [bookmarkRec("concurrent")]
+          : [],
+      });
+    }) as typeof fetch;
+    try {
+      const pending = reconcileDid(DID, PDS);
+      await snapshotRead;
+      if (mutation === "delete") {
+        await deleteBookmark(bookmarkRec("concurrent").uri, DID);
+      } else if (mutation === "create") await seedBookmark("concurrent");
+      // Use a raw SQL writer as well: the fence is database-visible, not a
+      // process-local flag or a convention restricted to upsert helpers.
+      if (mutation === "update") {
+        await db.execute({
+          sql:
+            "UPDATE bookmarks SET subject = 'https://new.example' WHERE did = ?",
+          args: [DID],
+        });
+      }
+      release();
+      await assertRejects(() => pending, Error, "Mirror changed");
+      assertEquals(
+        await mirrorRkeys("bookmarks"),
+        mutation === "delete" ? [] : ["concurrent"],
+      );
+      const events = await db.execute({
+        sql: "SELECT COUNT(*) FROM app_events WHERE did = ?",
+        args: [DID],
+      });
+      assertEquals(Number(events.rows[0][0]), mutation === "delete" ? 0 : 1);
+      if (mutation === "update") {
+        const row = await db.execute({
+          sql: "SELECT subject FROM bookmarks WHERE did = ?",
+          args: [DID],
+        });
+        assertEquals(row.rows[0][0], "https://new.example");
+      }
+    } finally {
+      release();
+      globalThis.fetch = original;
+    }
+  });
+}
+
+for (const table of ["annotations", "tags", "preferences"] as const) {
+  Deno.test(`raw ${table} writer invalidates an in-flight reconciliation snapshot`, async () => {
+    await clearMirrorTables();
+    const original = globalThis.fetch;
+    let release!: () => void, captured!: () => void;
+    const blocked = new Promise<void>((r) => release = r),
+      ready = new Promise<void>((r) => captured = r);
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      if (
+        new URL(String(input)).searchParams.get("collection") ===
+          "com.kipclip.preferences"
+      ) {
+        captured();
+        await blocked;
+      }
+      return Response.json({ records: [] });
+    }) as typeof fetch;
+    try {
+      const pending = reconcileDid(DID, PDS);
+      await ready;
+      const sql = table === "preferences"
+        ? "INSERT INTO preferences (did,cid,updated_at) VALUES (?, 'new', 0)"
+        : table === "tags"
+        ? "INSERT INTO tags (did,uri,rkey,cid,value,created_at,updated_at) VALUES (?, 'at://raw/tag', 'raw', 'new', 'raw', '', 0)"
+        : "INSERT INTO annotations (did,uri,rkey,cid,subject,updated_at) VALUES (?, 'at://raw/annotation', 'raw', 'new', 'at://raw/bookmark', 0)";
+      await db.execute({ sql, args: [DID] });
+      release();
+      await assertRejects(() => pending, Error, "Mirror changed");
+      assertEquals(
+        (await db.execute({
+          sql: `SELECT COUNT(*) FROM ${table} WHERE did = ?`,
+          args: [DID],
+        })).rows[0][0],
+        1,
+      );
+    } finally {
+      release();
+      globalThis.fetch = original;
+    }
+  });
+}

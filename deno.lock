@@ -29,6 +29,8 @@
     "npm:html-entities@2.6.0": "2.6.0",
     "npm:iron-session@8.0.4": "8.0.4",
     "npm:react-dom@19.2.3": "19.2.3_react@19.2.3",
+    "npm:react-test-renderer@19.2.3": "19.2.3_react@19.2.3",
+    "npm:react@19": "19.2.3",
     "npm:react@19.2.3": "19.2.3",
     "npm:sonner@2": "2.0.7_react@19.2.3_react-dom@19.2.3",
     "npm:ws@8.21.0": "8.21.0"
@@ -627,6 +629,17 @@
         "scheduler"
       ]
     },
+    "react-is@19.3.1": {
+      "integrity": "sha512-RRieF6IyxQBkcK6pP8xOHprLTPW6QjRkbGdImtqNme+/hYVwCZkLQLdlZGOhUqXwkS9IEynaGvPJtv6XB/cz0Q=="
+    },
+    "react-test-renderer@19.2.3_react@19.2.3": {
+      "integrity": "sha512-TMR1LnSFiWZMJkCgNf5ATSvAheTT2NvKIwiVwdBPHxjBI7n/JbWd4gaZ16DVd9foAXdvDz+sB5yxZTwMjPRxpw==",
+      "dependencies": [
+        "react",
+        "react-is",
+        "scheduler"
+      ]
+    },
     "react@19.2.3": {
       "integrity": "sha512-Ku/hhYbVjOQnXDZFv2+RibmLFGwFdeeKHFcOTlrt7xplBnya5OGn/hIRDsqDiSUcfORsDC7MPxwork8jBwsIWA=="
     },
@@ -680,6 +693,7 @@
       "npm:esbuild@0.28.1",
       "npm:html-entities@2.6.0",
       "npm:react-dom@19.2.3",
+      "npm:react-test-renderer@19.2.3",
       "npm:react@19",
       "npm:react@19.2.3",
       "npm:sonner@2",

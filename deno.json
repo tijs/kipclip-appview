@@ -19,7 +19,8 @@
     "react": "npm:react@19.2.3",
     "react-dom": "npm:react-dom@19.2.3",
     "react-dom/client": "npm:react-dom@19.2.3/client",
-    "sonner": "npm:sonner@2"
+    "sonner": "npm:sonner@2",
+    "react-test-renderer": "npm:react-test-renderer@19.2.3"
   },
   "compilerOptions": {
     "noImplicitAny": false,
