@@ -31,21 +31,14 @@ jobs:
       - name: Audit dependencies
         continue-on-error: true
         run: deno audit
-      - name: Run tests with coverage
-        run: deno test --allow-all --unstable-kv --coverage=coverage/ tests/
+      - name: Run tests
+        run: deno test --allow-all --unstable-kv tests/
         env:
           KIPCLIP_TESTING: "1"
           KIPCLIP_MANIFEST_PATH: tests/fixtures/manifest.test.json
           DATABASE_URL: "file::memory:"
           COOKIE_SECRET: test-cookie-secret-32-characters-minimum
           ENCRYPTION_KEY: test-encryption-key-for-unit-tests-only-minimum-32-chars
-      - name: Generate coverage report
-        run: deno coverage coverage/ --lcov > coverage.lcov
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v6
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage.lcov
 
   runtime-contracts:
     runs-on: ubuntu-latest
