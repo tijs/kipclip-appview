@@ -4,7 +4,7 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
-## [0.28.2] - 2026-11-07
+## [0.28.2] - 2026-11-08
 
 ### Fixed
 
