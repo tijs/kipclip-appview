@@ -4,6 +4,13 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.28.3] - 2026-11-09
+
+### Added
+
+- Show the Simple Analytics badge in a shared footer on every page to keep
+  privacy-first analytics available on the free plan.
+
 ## [0.28.2] - 2026-11-08
 
 ### Fixed
@@ -1649,7 +1656,8 @@ timeout can also lead to a retry.
 - Responsive mobile and desktop layouts
 - Kip logo and "Find it, Kip it" tagline
 
-[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.28.2...HEAD
+[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.28.3...HEAD
+[0.28.3]: https://github.com/tijs/kipclip-appview/compare/v0.28.2...v0.28.3
 [0.28.2]: https://github.com/tijs/kipclip-appview/compare/v0.28.1...v0.28.2
 [0.28.1]: https://github.com/tijs/kipclip-appview/compare/v0.28.0...v0.28.1
 [0.28.0]: https://github.com/tijs/kipclip-appview/compare/v0.27.2...v0.28.0
