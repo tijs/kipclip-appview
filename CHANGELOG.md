@@ -4,6 +4,15 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.28.4] - 2026-11-13
+
+### Security
+
+- Update the Node HTTP adapter to `@hono/node-server` 2.1.6, including its
+  request-path security fix, and synchronize the npm and Deno lockfiles.
+- Update Hono to 4.13.18 across the Deno and Node runtimes to include its latest
+  security fixes.
+
 ## [0.28.3] - 2026-11-09
 
 ### Added
