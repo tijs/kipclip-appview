@@ -1,8 +1,7 @@
 {
   "version": "5",
   "specifiers": {
-    "jsr:@hono/hono@4.13.13": "4.13.13",
-    "jsr:@hono/hono@^4.13.13": "4.13.13",
+    "jsr:@hono/hono@^4.13.18": "4.13.18",
     "jsr:@panva/jose@6.1.0": "6.1.0",
     "jsr:@std/assert@1": "1.0.19",
     "jsr:@std/dotenv@0.225": "0.225.6",
@@ -18,14 +17,14 @@
     "jsr:@tijs/oauth-client-deno@5.1.0": "5.1.0",
     "npm:@atproto/syntax@0.3.0": "0.3.0",
     "npm:@atproto/syntax@0.4.0": "0.4.0",
-    "npm:@hono/node-server@2.1.6": "2.1.6_hono@4.13.13",
+    "npm:@hono/node-server@2.1.6": "2.1.6_hono@4.13.18",
     "npm:@libsql/client@0.17.3": "0.17.3",
     "npm:@sentry/bun@10.76.2": "10.76.2_@opentelemetry+core@2.12.0",
     "npm:@sentry/deno@10.34.0": "10.34.0",
     "npm:@sentry/node@10.76.2": "10.76.2_@opentelemetry+core@2.12.0",
     "npm:@types/node@*": "24.2.0",
     "npm:esbuild@0.28.1": "0.28.1",
-    "npm:hono@4.13.13": "4.13.13",
+    "npm:hono@4.13.18": "4.13.18",
     "npm:html-entities@2.6.0": "2.6.0",
     "npm:iron-session@8.0.4": "8.0.4",
     "npm:react-dom@19.2.3": "19.2.3_react@19.2.3",
@@ -36,8 +35,8 @@
     "npm:ws@8.21.0": "8.21.0"
   },
   "jsr": {
-    "@hono/hono@4.13.13": {
-      "integrity": "dec817b8600fc2835c259d875a69e849a706f6d25e8d0643d75c97f7d0afcdf8"
+    "@hono/hono@4.13.18": {
+      "integrity": "2e9a294f8ed5ca8f0dddf08927ad46111e756f3329f1483db550cd60757f7e21"
     },
     "@panva/jose@6.1.0": {
       "integrity": "9ecffef33d822f4326341ace652bf30eef30d4dc9f7134faf7901e5480c2e761"
@@ -253,7 +252,7 @@
       "os": ["win32"],
       "cpu": ["x64"]
     },
-    "@hono/node-server@2.1.6_hono@4.13.13": {
+    "@hono/node-server@2.1.6_hono@4.13.18": {
       "integrity": "sha512-p/KH9MnfNcsm3sR6x4lNgm5j+QN4Et8srKredl9DZfXiyZ1UQ3aQ2YVpFLbqktYN5JI+DB+VZFKM2PqE5hLKjQ==",
       "dependencies": [
         "hono"
@@ -557,8 +556,8 @@
     "estraverse@5.3.0": {
       "integrity": "sha512-MMdARuVEQziNTeJD8DgMqmhwR11BRQ/cBP+pLtYdSTnf3MIO8fFeiINEbX36ZdNlfU/7A9f3gUw49B3oQsvwBA=="
     },
-    "hono@4.13.13": {
-      "integrity": "sha512-CQ46U0ZkAGmbT/4UxdzzGJpacP2IeKgY4a5/tOI9AABbpOMfK739wfDXmv1usCk+3RkKj1hQy4/fjhiwa2xlrA=="
+    "hono@4.13.18": {
+      "integrity": "sha512-H9q/E1XizaWstJxUW881dmLxEj+t/TrGGnyxINkm4+sK0qUwsMtFdo2BWI9Vs3cIS19MU6b6iCijoUoEf4f3DA=="
     },
     "html-entities@2.6.0": {
       "integrity": "sha512-kig+rMn/QOVRvr7c86gQ8lWXq+Hkv6CbAH1hLu+RG338StTpE8Z0b44SDVaqVu7HGKf27frdmUYEs9hTUX/cLQ=="
@@ -679,7 +678,7 @@
   },
   "workspace": {
     "dependencies": [
-      "jsr:@hono/hono@^4.13.13",
+      "jsr:@hono/hono@^4.13.18",
       "jsr:@std/assert@1",
       "jsr:@std/dotenv@0.225",
       "jsr:@std/encoding@1",
@@ -706,7 +705,7 @@
         "npm:@libsql/client@0.17.3",
         "npm:@sentry/bun@10.76.2",
         "npm:@sentry/node@10.76.2",
-        "npm:hono@4.13.13",
+        "npm:hono@4.13.18",
         "npm:ws@8.21.0"
       ]
     }
