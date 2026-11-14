@@ -4,6 +4,13 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.28.5] - 2026-11-14
+
+### Changed
+
+- Replace the large analytics image badge with the compact Simple Analytics text
+  link in the shared footer.
+
 ## [0.28.4] - 2026-11-13
 
 ### Security
@@ -1665,7 +1672,9 @@ timeout can also lead to a retry.
 - Responsive mobile and desktop layouts
 - Kip logo and "Find it, Kip it" tagline
 
-[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.28.3...HEAD
+[Unreleased]: https://github.com/tijs/kipclip-appview/compare/v0.28.5...HEAD
+[0.28.5]: https://github.com/tijs/kipclip-appview/compare/v0.28.4...v0.28.5
+[0.28.4]: https://github.com/tijs/kipclip-appview/compare/v0.28.3...v0.28.4
 [0.28.3]: https://github.com/tijs/kipclip-appview/compare/v0.28.2...v0.28.3
 [0.28.2]: https://github.com/tijs/kipclip-appview/compare/v0.28.1...v0.28.2
 [0.28.1]: https://github.com/tijs/kipclip-appview/compare/v0.28.0...v0.28.1
