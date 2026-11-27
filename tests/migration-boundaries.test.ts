@@ -345,7 +345,7 @@ Deno.test("migration secondary public proxy response/cache and hydration", async
         "Second request uses 24h in-process cache",
       );
     }
-    assertEquals(calls.length, 5);
+    assertEquals(calls.length, 7);
   });
 });
 

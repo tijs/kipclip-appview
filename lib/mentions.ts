@@ -16,12 +16,12 @@ import {
 } from "./cached-fetch.ts";
 
 const TARGET_URL = "https://kipclip.com";
-const CONSTELLATION = "https://constellation.microcosm.blue/links" +
-  "?target=" + encodeURIComponent(TARGET_URL) +
-  "&collection=app.bsky.feed.post" +
-  "&path=" +
-  encodeURIComponent(".facets[].features[app.bsky.richtext.facet#link].uri") +
-  "&limit=25";
+const LINK_PATHS = [
+  ".facets[].features[app.bsky.richtext.facet#link].uri",
+  ".embed.external.uri",
+  ".embed.media.external.uri",
+];
+const CONSTELLATION = "https://constellation.microcosm.blue/links";
 const APPVIEW_GET_POSTS =
   "https://public.api.bsky.app/xrpc/app.bsky.feed.getPosts";
 
@@ -106,30 +106,34 @@ function toMention(post: BskyPost): Mention {
 }
 
 async function fetchMentions(): Promise<Mention[]> {
-  const constellationRes = await fetchWithTimeout(CONSTELLATION);
-  if (!constellationRes.ok) {
-    throw new Error(`constellation status ${constellationRes.status}`);
+  const sources = await Promise.all(LINK_PATHS.map(async (path) => {
+    const params = new URLSearchParams({
+      target: TARGET_URL,
+      collection: "app.bsky.feed.post",
+      path,
+      limit: "25",
+    });
+    const res = await fetchWithTimeout(`${CONSTELLATION}?${params}`);
+    if (!res.ok) throw new Error(`constellation status ${res.status}`);
+    const body = await res.json() as ConstellationResponse;
+    return body.linking_records ?? [];
+  }));
+  const uris = [...new Set(sources.flat().map(buildAtUri))];
+  const posts: BskyPost[] = [];
+  // Bluesky accepts at most 25 URIs per hydration request.
+  for (let i = 0; i < uris.length; i += 25) {
+    const params = new URLSearchParams();
+    for (const uri of uris.slice(i, i + 25)) params.append("uris", uri);
+    const res = await fetchWithTimeout(`${APPVIEW_GET_POSTS}?${params}`);
+    if (!res.ok) throw new Error(`appview status ${res.status}`);
+    const body = await res.json() as { posts?: BskyPost[] };
+    posts.push(...(body.posts ?? []));
   }
-  const constellation = await constellationRes.json() as ConstellationResponse;
-  const links = constellation.linking_records ?? [];
-  if (links.length === 0) return [];
-
-  const params = new URLSearchParams();
-  for (const link of links) params.append("uris", buildAtUri(link));
-
-  const postsRes = await fetchWithTimeout(
-    `${APPVIEW_GET_POSTS}?${params.toString()}`,
-  );
-  if (!postsRes.ok) {
-    throw new Error(`appview status ${postsRes.status}`);
-  }
-  const body = await postsRes.json() as { posts?: BskyPost[] };
-  const posts = body.posts ?? [];
 
   return posts
     .filter(isMention)
     .map(toMention)
-    .sort((a, b) => b.likeCount - a.likeCount)
+    .sort((a, b) => Date.parse(b.indexedAt) - Date.parse(a.indexedAt))
     .slice(0, MAX_MENTIONS);
 }
 

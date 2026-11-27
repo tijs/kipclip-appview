@@ -39,16 +39,16 @@ Deno.test("migration public proxy cold failure, recovery and stale fail-open kee
           }
         };
         await check(true); // No cache yet: empty fallback, marked stale.
-        assertEquals(calls.length, 3);
+        assertEquals(calls.length, 5);
         fail = false;
         await check(false); // Failed fetches did not poison the cache.
-        assertEquals(calls.length, 6);
+        assertEquals(calls.length, 10);
         fail = true;
         await check(false); // Within24h TTL: no upstream fetch at all.
-        assertEquals(calls.length, 6);
+        assertEquals(calls.length, 10);
         elapsed = 25 * 60 * 60 * 1000;
         await check(true); // Past TTL: previous successful value is retained.
-        assertEquals(calls.length, 9);
+        assertEquals(calls.length, 15);
       },
     );
   } finally {

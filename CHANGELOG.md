@@ -4,6 +4,13 @@ All notable changes to kipclip are documented in this file.
 
 ## [Unreleased]
 
+## [0.28.6] - 2026-11-27
+
+### Fixed
+
+- Show homepage Bluesky mentions newest first and discover preview-card links,
+  including cards attached to quote posts.
+
 ## [0.28.5] - 2026-11-14
 
 ### Changed
